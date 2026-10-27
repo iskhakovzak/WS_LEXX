@@ -11,6 +11,7 @@ import { sessionFor } from "../lib/marketDays";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { reviewT } from "../i18n/ns";
 import { langOf, type Lang } from "../i18n";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -309,6 +310,7 @@ router.get("/big7/gaprisk", asyncHandler(async (req, res): Promise<void> => {
 
 // ─── Personal stats on the board tickers (own trades) ───────────────────────
 // GET /api/big7/mystats?symbols=AAPL,MSFT&days=90[&trader=]   (days=0 ⇒ all time)
+//     …&from=YYYY-MM-DD&to=YYYY-MM-DD   a window by dates instead of days (the page's «Период…»; wins over days).
 // Net (pnl − |fees|), win rate W/(W+L), per ticker and per entry-time bucket (NY time).
 // Scope: a trader always gets their own book; staff may pass ?trader= (default: themselves).
 // Share classes are folded onto the board symbol (GOOG ⇄ GOOGL).
@@ -343,7 +345,7 @@ const outAgg = (a: Agg) => ({
   net: Math.round(a.net * 100) / 100,
   wins: a.wins,
   losses: a.losses,
-  wr: a.wins + a.losses > 0 ? Math.round((a.wins / (a.wins + a.losses)) * 1000) / 10 : null,
+  wr: a.wins + a.losses > 0 ? Math.round(((winRateOf(a.wins, a.losses) ?? 0)) * 1000) / 10 : null,
   avg: a.n > 0 ? Math.round((a.net / a.n) * 100) / 100 : null,
 });
 
@@ -375,15 +377,20 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
     toBoard.set(s, s);
     for (const a of ALIASES[s] ?? []) if (!board.includes(a)) toBoard.set(a, s);
   }
-  const from = days > 0 ? nyAddDays(nyDate(), -days) : null;
+  const ymd = (v: unknown): string | null => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const qFrom = ymd(req.query.from), qTo = ymd(req.query.to);
+  const ranged = !!qFrom && !!qTo && qFrom <= qTo;
+  const from = ranged ? qFrom : days > 0 ? nyAddDays(nyDate(), -days) : null;
+  const to = ranged ? qTo : null;
   const { rows } = await pool.query<{ ticker: string; side: string | null; net: string | number | null; res: string | null; entry_min: number | null; d: string }>(
     `SELECT UPPER(t.ticker) AS ticker, t.side, ${netPnlSql("t")} AS net, ${resultSql("t")} AS res,
             ${ENTRY_MIN_SQL} AS entry_min, substring(t.date from 1 for 10) AS d
      FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.pnl IS NOT NULL
        AND UPPER(t.ticker) = ANY($2::text[])
-       AND ($3::text IS NULL OR substring(t.date from 1 for 10) >= $3)`,
-    [scope, Array.from(toBoard.keys()), from],
+       AND ($3::text IS NULL OR substring(t.date from 1 for 10) >= $3)
+       AND ($4::text IS NULL OR substring(t.date from 1 for 10) <= $4)`,
+    [scope, Array.from(toBoard.keys()), from, to],
   );
 
   // Early-close days (13:00) among the days with an entry between 13:00 and 16:00: one cached calendar read per date.
@@ -425,6 +432,7 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
   res.json({
     trader: scope,
     from,
+    to,
     total: outAgg(total),
     tickers: board.filter((s) => per.has(s)).map((s) => {
       const p = per.get(s)!;

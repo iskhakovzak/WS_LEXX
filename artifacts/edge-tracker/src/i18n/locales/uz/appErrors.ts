@@ -12,7 +12,8 @@ export default {
   noise: {
     hidden: { one: "{count} ta ishlab chiqish xatosi yashirildi (kod qayta yuklanishi)", other: "{count} ta ishlab chiqish xatosi yashirildi (kod qayta yuklanishi)" },
     show: "Koʻrsatish",
-    hide: "Ishlab chiqish shovqinini yashirish",
+    toggle: "Ishlab chiqish shovqinini koʻrsatish",
+    chip: "Ishlab chiqish shovqini bilan",
     badge: "ishlab chiqish",
     badgeTitle: "Foydalanuvchi xatosi emas, dasturchining kod qayta yuklanishi iziga oʻxshaydi",
   },

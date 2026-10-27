@@ -9,6 +9,10 @@
  * Privacy: candidates and trades are read by the viewer's own trader name only (ownStore.ts); staff get no other
  * trader's days here.
  *
+ * The gap + catalyst day rule (lib/sim/catalyst.ts, owner 2026-10-25) does NOT apply here: «Мои дни» replays the
+ * player's own losing trade, whatever the day was — filtering by gap would hide most of the trader's real mistakes,
+ * and nothing is secret (the player knows the ticker and the date). The game still gets «Контекст дня» (context.ts).
+ *
  * Trainer eligibility (lib/trainer/eligibility.ts): a trade with a fill at 15:50–16:00 NY, held < 25 min or with a
  * fill without a time is never offered, nor is any trade on a ticker-day the desk traded in the closing auction.
  */

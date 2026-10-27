@@ -1,80 +1,92 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { BarChart3, ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, Receipt, RefreshCw, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { FeePlanBox } from "@/components/what-if/fee-plan-box";
+import type { CommissionPlan } from "@/components/shared/what-if-rules";
+import { ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, RefreshCw, Rows3, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented } from "@/components/ds";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { ChartSkeleton, EmptyLink, EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
+import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { comparePersonNames, personName } from "@/i18n";
-import { DEFAULT_FILTERS, type AnalyticsFilters } from "@/components/analytics-page/metrics";
 import {
-  type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfFees, useWhatIfRun, useWhatIfSuggestions,
+  type Scope, type Suggestion, useDebounced, useDeleteScenario, useMyRules, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfCombos, useWhatIfRun,
+  useWhatIfSuggestions,
 } from "@/components/what-if/api";
+import { MonthPanel } from "@/components/what-if/month-panel";
+import { ComboPanel, ownSet } from "@/components/what-if/combo-panel";
+import { MyRulesPanel } from "@/components/what-if/my-rules-panel";
 import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, mergeRule, removeRule, subtractRule } from "@/components/what-if/rules";
-import { SuggestionCards } from "@/components/what-if/suggestions-panel";
+import { SuggestionCards, SuggestionsNote } from "@/components/what-if/suggestions-panel";
+import { useBestRulePrefill } from "@/components/what-if/best-rule";
 import { ScenarioBar } from "@/components/what-if/scenario-bar";
 import { BootstrapDetails, DeltaHeadline, KeyMetrics, MetricsTable } from "@/components/what-if/compare-panel";
-import { ChartSkeleton, DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
+import { DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
 import { RuleBuilder } from "@/components/what-if/rule-builder";
-import { FeesBlock } from "@/components/what-if/fees-tab";
-import { CostsByGroup } from "@/components/analytics-page/CostsTab";
 import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
 import { type Question, buildQuestions, changedDays, presetsWithLimits } from "@/components/what-if/presets";
 import { useLocation } from "wouter";
-import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM } from "@/components/people/staff-scope";
+import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { WhatIfScopeToolbar } from "@/components/what-if/scope-toolbar";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
+import { useAnalyticsScope } from "@/hooks/use-analytics-scope";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 /**
  * /what-if — «Что если» (was /simulator; old links with ?r= / ?p= / ?trader= redirect here): the trader's own closed trades re-run under other rules (server engine
  * api-server/src/lib/whatIf.ts). One page, top to bottom: questions («а что если бы я…», one click each) → the
  * result first (before → after in $ and R, the difference big, equity curves, the days that change most — each
- * opens /day-report) → suggestions found in the data → own rule builder → fees. The scenario, period and trader
- * live in the URL (?r=…&p=…&trader=…), so a link opens exactly the same view. Nothing is stored unless
- * a scenario is saved explicitly. This is the one place for rule and fee what-ifs: the analytics «Что если» tab
- * is a compact summary that links here (with #fees for the fee block).
+ * opens /day-report) → suggestions found in the data → own rule builder. The scenario, period and trader
+ * live in the URL (?r=…&period=…&trader=…; period and person are the group's shared scope), so a link opens exactly the same view. Nothing is stored unless
+ * a scenario is saved explicitly. This is the one place for rule what-ifs: the analytics «Что если» tab is a compact
+ * summary that links here. Commission tariffs are not simulated for traders (the desk does not choose its broker fees);
+ * staff get one plan what-if box (components/what-if/fee-plan-box, roadmap R2.4 — the API refuses it to non-staff).
  */
 
-type PeriodKey = "30d" | "90d" | "ytd" | "all";
-const PERIOD_KEYS: PeriodKey[] = ["30d", "90d", "ytd", "all"];
-const ALL = "__all__";
 const PREFS_KEY = "ws.simulator.prefs.v1";
 
-function periodFrom(p: PeriodKey, today: string): string {
-  switch (p) {
-    case "30d": return addDays(today, -30);
-    case "90d": return addDays(today, -90);
-    case "ytd": return `${today.slice(0, 4)}-01-01`;
-    default: return "";
-  }
+/** The old prefs of the page (read once; the shared analytics scope took over): "__all__" = «Вся команда». */
+function legacyScope() {
+  const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") as { period?: string; trader?: string; from?: string; to?: string } | null;
+  return p ? { period: p.period, from: p.from, to: p.to, trader: p.trader === "__all__" ? TEAM : p.trader } : null;
 }
 
-const isPeriod = (v: unknown): v is PeriodKey => PERIOD_KEYS.includes(v as PeriodKey);
-
-function loadPrefs(): { period: PeriodKey; trader: string } {
-  try {
-    const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<{ period: PeriodKey; trader: string }>;
-    return { period: isPeriod(p.period) ? p.period : "all", trader: typeof p.trader === "string" ? p.trader : "" };
-  } catch {
-    return { period: "all", trader: "" };
-  }
-}
-
-/** Initial state: URL first (shared link), then the viewer's last choice. */
-function initialState(me: string) {
-  const sp = new URLSearchParams(window.location.search);
-  const prefs = loadPrefs();
-  const p = sp.get("p");
-  return {
-    period: isPeriod(p) ? p : prefs.period,
-    trader: sp.get("trader") ?? (prefs.trader || me),
-    rules: decodeRules(sp.get("r")),
-  };
+/** Loading: the page's own order — questions (chips) → result panel (headline, key metrics, equity chart) → suggestion cards. */
+function WhatIfSkeleton() {
+  return (
+    <>
+      {/* Same order as the page: questions (chips) → result panel → suggestion cards. */}
+      <div className="flex flex-col gap-2" aria-hidden="true">
+        <Skeleton className="h-4 w-48 rounded-md" />
+        <div className="flex flex-wrap gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-9 w-44 rounded-full" />)}</div>
+      </div>
+      {/* Result panel: headline delta, key metrics, the equity chart. */}
+      <div className="glass-panel flex h-[560px] flex-col gap-4 rounded-2xl p-[var(--panel-p)]" aria-hidden="true">
+        <Skeleton className="h-6 w-2/3 max-w-md rounded-md" />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {Array.from({ length: 4 }, (_, i) => <div key={i} className="space-y-2 rounded-xl border border-border/40 p-3"><Skeleton className="h-3 w-16 rounded" /><Skeleton className="h-6 w-24 rounded" /></div>)}
+        </div>
+        <ChartSkeleton bare title={false} height={340} />
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-hidden="true">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="glass-panel flex h-[168px] flex-col gap-2 rounded-2xl p-4">
+            <Skeleton className="h-4 w-3/4 rounded" />
+            <Skeleton className="h-3 w-full rounded" />
+            <Skeleton className="h-3 w-2/3 rounded" />
+            <Skeleton className="mt-auto h-8 w-28 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
 }
 
 export default function WhatIf() {
@@ -84,35 +96,44 @@ export default function WhatIf() {
   const [, navigate] = useLocation();
   const me = user?.role !== "guest" ? user?.traderName ?? "" : "";
 
-  const [init] = useState(() => initialState(me));
-  const [period, setPeriod] = useState<PeriodKey>(init.period);
-  const [trader, setTrader] = useState<string>(init.trader);
-  const [rules, setRules] = useState<Rule[]>(init.rules);
+  // The group's shared scope (hooks/use-analytics-scope): period + person in the URL (?period=&from=&to=&trader=; old
+  // ?p= links still open), the same on /stats, /analytics, /behavior. The scenario stays in ?r=.
+  const sc = useAnalyticsScope({ legacy: legacyScope, legacyPeriodParams: ["p"], person: isCurator });
+  const { period, custom } = sc;
+  const [initRules] = useState(() => decodeRules(new URLSearchParams(window.location.search).get("r")));
+  const [rules, setRules] = useState<Rule[]>(initRules);
+  // «Вся команда» = TEAM → ""; no pick = the viewer's own book.
+  const trader = sc.trader === TEAM ? "" : sc.trader || me;
 
-  // Persist the viewer's period/trader; mirror everything into the URL (replaceState: no history spam).
-  useEffect(() => {
-    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ period, trader })); } catch { /* storage unavailable */ }
-  }, [period, trader]);
+  // Mirror the scenario into the URL (replaceState: no history spam); the scope writes its own params.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const r = encodeRules(rules);
     if (r) sp.set("r", r); else sp.delete("r");
-    if (period !== "all") sp.set("p", period); else sp.delete("p");
-    if (isCurator && trader) sp.set("trader", trader); else sp.delete("trader");
     const q = sp.toString();
     const next = `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, "", next);
-  }, [rules, period, trader, isCurator]);
+  }, [rules]);
 
-  const today = nyDate();
   // Traders see only themselves (the server enforces it anyway); staff pick a trader or the whole team.
-  const scopeTrader = isCurator ? (trader === ALL ? "" : trader) : "";
-  const scope = useMemo<Scope>(() => ({ trader: scopeTrader, from: periodFrom(period, today), to: "" }), [scopeTrader, period, today]);
-  const scenarioOwner = isCurator ? (trader === ALL ? "" : trader) : me;
-  const periodPhrase = t(`period.${period}.phrase`);
-  const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
+  const scopeTrader = isCurator ? trader : "";
+  // Presets end today (the server's default «to»); every preset moves its start daily: the suggestions take the fast
+  // path there (no honest verdict can resolve).
+  const win = period === "custom" && custom ? custom : { from: sc.window?.from ?? "", to: "" };
+  // «Разрезы»: x* params on every engine request (base, run, suggestions) — the engine only sees the trades that pass.
+  const rf = useRangeFacets({ from: win.from || null, to: win.to || null, trader: scopeTrader || null }, user?.role !== "guest");
+  const scope = useMemo<Scope>(
+    () => ({ trader: scopeTrader, from: win.from, to: win.to, rolling: period !== "all" && period !== "custom", facets: rf.query || undefined }),
+    [scopeTrader, win.from, win.to, period, rf.query],
+  );
+  // The honest check runs on «всё время»: a short period's note and a card that outruns the year offer the switch.
+  const showAllTime = period === "all" ? undefined : () => sc.setPreset("all");
+  const scenarioOwner = isCurator ? trader : me;
+  const periodPhrase = period === "custom" ? (custom ? fmtDayRange(custom) : t("period.all")) : t(`period.${period}`);
   // Fee table by trader / account / month / setup / horizon (/api/edge/costs) — same trader and period as the page.
-  const costFilters = useMemo<AnalyticsFilters>(() => ({ ...DEFAULT_FILTERS, period, trader: scopeTrader }), [period, scopeTrader]);
+
+  // The page header's assistant question reads the same period and trader.
+  useAssistantContext({ ...(win.from ? { from: win.from } : {}), ...(win.to ? { to: win.to } : {}), ...(scopeTrader ? { trader: scopeTrader } : {}) });
 
   const traders = useMemo(
     () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
@@ -123,10 +144,17 @@ export default function WhatIf() {
   // Presets and the day-stop question follow the trader's own limits (DENIS-36); the whole team has none.
   const limitsOf = isCurator ? scopeTrader : me;
   const limits = useTraderLimits(limitsOf).data ?? null;
-  const presets = useMemo(() => presetsWithLimits(base.data?.presets ?? [], limits ?? {}), [base.data?.presets, limits]);
+  const presets = useMemo(
+    () => presetsWithLimits(base.data?.presets ?? [], limits ?? {})
+      .map((p) => ({ ...p, rules: p.rules.filter((r) => r.type !== "commissionPlan") }))
+      .filter((p) => p.rules.length > 0),
+    [base.data?.presets, limits],
+  );
   const hasTrades = (base.data?.trades.length ?? 0) > 0;
   // Older API builds do not list ruleTypes: then only the legacy rules are offered and sent.
-  const supported = useMemo(() => new Set<RuleType>(base.data?.ruleTypes ?? LEGACY_RULE_TYPES), [base.data?.ruleTypes]);
+  // Broker commissions are not the desk's choice (owner 2026-10-22): no tariff what-ifs — the commission-plan rule is
+  // never offered, applied from a preset or sent.
+  const supported = useMemo(() => new Set<RuleType>((base.data?.ruleTypes ?? LEGACY_RULE_TYPES).filter((x) => x !== "commissionPlan")), [base.data?.ruleTypes]);
   const sendable = useMemo(() => rules.filter((r) => supported.has(r.type)), [rules, supported]);
   const unsupported = useMemo(
     () => rules.filter((r) => !supported.has(r.type)).map((r) => ({ rule: r.type, reason: t("unsupportedRule") })),
@@ -141,7 +169,10 @@ export default function WhatIf() {
 
   const run = useWhatIfRun(scope, runRules, hasRules && hasTrades);
   const suggestions = useWhatIfSuggestions(scope, hasTrades);
-  const fees = useWhatIfFees(scope, hasTrades);
+  const { isAuto } = useBestRulePrefill({ linked: initRules.length > 0, suggestions: suggestions.data?.suggestions, supported, rules, setRules });
+  // «Набор правил» (the best sets + the scenario as a set) and «Мои правила в деле» (the trader's own rules).
+  const combos = useWhatIfCombos(scope, useMemo(() => ownSet(runRules), [runRules]), hasTrades);
+  const myRules = useMyRules(isCurator ? scopeTrader : "", hasTrades && user?.role !== "guest");
   const saved = useSavedScenarios(scenarioOwner, canEdit);
   const save = useSaveScenario(scenarioOwner);
   const del = useDeleteScenario();
@@ -153,35 +184,12 @@ export default function WhatIf() {
     () => buildQuestions(base.data?.trades ?? [], presets, limits ?? {}).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: t("unsupportedQuestion") } : q)),
     [base.data?.trades, presets, limits, supported, t],
   );
-  const dayTrader = isCurator ? (trader === ALL ? "" : trader) : "";
+  const dayTrader = isCurator ? trader : "";
   const openDay = (day: string) => navigate(`/day-report?date=${day}${dayTrader ? `&trader=${encodeURIComponent(dayTrader)}` : ""}`);
 
   // Also while a period / trader switch loads: the previous base stays on screen (placeholder), dimmed.
   const recalculating = (hasRules && (run.isFetching || pendingRecalc)) || base.isPlaceholderData;
-  // A link with #fees (e.g. from the analytics «Что если» tab) scrolls to the fee block once it is rendered.
-  const feesReady = !!base.data && (base.data.trades.length ?? 0) > 0;
-  useEffect(() => {
-    if (!feesReady || window.location.hash !== "#fees") return;
-    const id = window.setTimeout(() => document.getElementById("fees")?.scrollIntoView({ block: "start" }), 50);
-    return () => window.clearTimeout(id);
-  }, [feesReady]);
-  const controls = (
-    <>
-      <Segmented<PeriodKey> ariaLabel={t("periodAria")} value={period} onChange={setPeriod} options={periodOptions} />
-      {isCurator && (
-        <StaffTraderPicker
-          value={!trader || trader === ALL ? TEAM : trader}
-          onChange={(v) => setTrader(v === TEAM ? ALL : v)}
-          me={me}
-          names={traders}
-          teamLabel={t("wholeTeam")}
-          className="h-10 w-[220px]"
-          ariaLabel={t("traderAria")}
-        />
-      )}
-    </>
-  );
-  const header = (
+  const header = (<>
     <PageHeader
       title={t("title")}
       icon={FlaskConical}
@@ -193,9 +201,11 @@ export default function WhatIf() {
           <span className="tabular-nums">{t("meta", { trades: commonI18n.t("units.trades", { count: base.data.trades.length }), days: t("tradingDays", { count: base.data.baseline.days }), period: periodPhrase })}</span>
         ) : null
       }
-      actions={controls}
+      actions={<HelpButton id="whatIf" />}
     />
-  );
+    <WhatIfScopeToolbar sc={sc} rf={rf} staff={isCurator} me={me} traders={traders} filters={user?.role !== "guest"} />
+    <PageHint id="whatIf" />
+  </>);
 
   if (base.isError) {
     return (
@@ -206,7 +216,7 @@ export default function WhatIf() {
             icon={SearchX}
             title={t("loadError")}
             description={(base.error as Error | null)?.message ?? t("loadErrorHint")}
-            action={<Button variant="outline" className="rounded-full" onClick={() => void base.refetch()} disabled={base.isFetching}><RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
+            action={<Button className="rounded-full" onClick={() => void base.refetch()} disabled={base.isFetching}><RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
           />
         </Panel>
       </Page>
@@ -217,15 +227,7 @@ export default function WhatIf() {
     return (
       <Page>
         {header}
-        {/* Same order as the page: questions (chips) → result panel → suggestion cards. */}
-        <div className="flex flex-col gap-2" aria-hidden="true">
-          <Skeleton className="h-4 w-48 rounded-md" />
-          <div className="flex flex-wrap gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-9 w-44 rounded-full" />)}</div>
-        </div>
-        <Skeleton className="h-[560px] rounded-2xl" />
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-hidden="true">
-          {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[168px] rounded-2xl" />)}
-        </div>
+        <WhatIfSkeleton />
         <span className="sr-only" role="status">{t("loadingTrades")}</span>
       </Page>
     );
@@ -241,7 +243,7 @@ export default function WhatIf() {
             icon={SearchX}
             title={scopeTrader ? t("empty.titleOf", { trader: personName(scopeTrader), period: periodPhrase }) : t("empty.title", { period: periodPhrase })}
             description={period !== "all" ? (isCurator ? t("empty.longerCurator") : t("empty.longer")) : (isCurator ? t("empty.syncCurator") : t("empty.sync"))}
-            action={period !== "all" ? <Button className="rounded-full bg-primary-solid" onClick={() => setPeriod("all")}>{t("empty.showAll")}</Button> : undefined}
+            action={period !== "all" ? <Button className="rounded-full" onClick={() => sc.setPreset("all")}>{t("empty.showAll")}</Button> : <EmptyLink href={links.myPlan()}>{commonI18n.t("emptyActions.toPlan")}</EmptyLink>}
           />
         </Panel>
       </Page>
@@ -259,11 +261,10 @@ export default function WhatIf() {
     <Page>
       {header}
 
-      <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
-
-
-      <Panel title={t("result")} icon={TrendingUp} aria-busy={recalculating || undefined}>
+      {/* Scenarios and the result first, in one panel right under the header (design audit wave 2B). */}
+      <Panel title={t("result")} icon={TrendingUp} aria-busy={recalculating || undefined} actions={isAuto ? <Pill tone="neutral" title={t("autoPickedHint")}>{t("autoPicked")}</Pill> : undefined}>
         <div className="flex flex-col gap-4">
+          <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
           <ScenarioBar
             rules={rules}
             skipped={skipped}
@@ -292,10 +293,13 @@ export default function WhatIf() {
               {t("runError", { message: (run.error as Error | null)?.message ?? t("serverError") })}
             </p>
           )}
-          <div className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none", recalculating && "opacity-60")}>
+          {/* Phones: the answer (before → after) is the first number on the screen, above the question chips. */}
+          <div className={cn("transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none max-sm:order-first", recalculating && "opacity-60")}>
             <DeltaHeadline baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} bootstrap={r?.bootstrap ?? null} />
+          </div>
+          <div className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none", recalculating && "opacity-60")}>
             {hasRules && !r ? (
-              <ChartSkeleton />
+              <ChartSkeleton bare title={false} height={340} />
             ) : (
               <EquityChart base={r?.baselineEquity ?? b.equity} scenario={r?.scenarioEquity ?? []} hasScenario={showScenario} onDay={openDay} />
             )}
@@ -305,14 +309,16 @@ export default function WhatIf() {
         </div>
       </Panel>
 
+      {showScenario && <MonthPanel trades={b.trades} run={r!} onDay={openDay} />}
+
       <section aria-labelledby="sim-suggestions" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="sim-suggestions" className="flex items-center gap-2 text-sm font-semibold">
             <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("suggestionsTitle")}
           </h2>
-          <p className="text-xs text-muted-foreground">{t("suggestionsHint", { period: periodPhrase })}</p>
+          <SuggestionsNote data={suggestions.data} periodPhrase={periodPhrase} onAllTime={showAllTime} />
         </div>
-        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} />
+        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} onAllTime={showAllTime} onDay={openDay} />
         {suggestions.isError && (
           <p className="flex flex-wrap items-center gap-2 text-xs text-down" role="alert">
             {t("suggestionsError")}
@@ -323,12 +329,11 @@ export default function WhatIf() {
         )}
       </section>
 
-      <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
-        <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
-      </Panel>
+      <ComboPanel data={combos.data} isLoading={combos.isLoading} rules={rules} onApply={(set) => setRules((rs) => set.reduce(mergeRule, rs))} />
+      <MyRulesPanel data={myRules.data} isLoading={myRules.isLoading} />
 
-      <Panel title={t("feesTitle")} icon={Receipt} id="fees" className="scroll-mt-[calc(var(--sticky-top,0px)+1rem)]">
-        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} error={fees.error} onRetry={() => void fees.refetch()} presets={presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
+      <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
+        <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} team={b.scope == null} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
       </Panel>
 
       {showScenario && (
@@ -336,7 +341,8 @@ export default function WhatIf() {
           <ExcludedTable excluded={r!.excluded} changed={r!.changed} />
         </Fold>
       )}
-      <Fold title={t("allTitle")} icon={BarChart3} hint={t("allHint")}>
+      {isCurator && hasTrades && <FeePlanBox scope={scope} preset={tariffPreset(base.data?.presets)} />}
+      <Fold title={t("allTitle")} icon={Rows3} hint={t("allHint")}>
         <div className="flex flex-col gap-5">
           <MetricsTable baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} />
           <div>
@@ -354,6 +360,12 @@ export default function WhatIf() {
       </Fold>
     </Page>
   );
+}
+
+/** The server's «tariff» preset plan (staff box default). */
+function tariffPreset(presets: { id: string; rules: Rule[] }[] | undefined): CommissionPlan | null {
+  const r = presets?.find((p) => p.id === "tariff")?.rules.find((x) => x.type === "commissionPlan");
+  return r && r.type === "commissionPlan" ? r : null;
 }
 
 /** Collapsed-by-default section in a glass panel. */

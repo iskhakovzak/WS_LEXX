@@ -15,6 +15,7 @@ import { questsI18n } from "@/i18n/ns/quests";
 import { useQuestsMe } from "./api";
 import { AchievementsGrid } from "./achievements-grid";
 import { QuestsBoard } from "./quests-board";
+import { AchievementCeremony } from "./ceremony";
 
 /** Level and points (the same discipline summary as the dashboard «Награды» block) + quest / achievement totals. */
 function ProgressHeader({ data, discipline: d, extra }: { data: QuestsMe; discipline: DisciplineSummary | null | undefined; extra?: ReactNode }) {
@@ -119,5 +120,10 @@ export function QuestsProgressTab({ header, extra }: { header?: ReactNode; extra
   }, [missing, focus.quest, q]);
   if (q.isLoading) return <PanelSkeleton />;
   if (!q.data) return <EmptyState icon={Swords} title={q.isError ? t("curator.loadFailed") : t("board.empty")} description={q.isError ? undefined : t("board.emptyHint")} />;
-  return <QuestsProgressView data={q.data} discipline={daily.data?.discipline} focus={focus} header={header} extra={extra} />;
+  return (
+    <>
+      <QuestsProgressView data={q.data} discipline={daily.data?.discipline} focus={focus} header={header} extra={extra} />
+      <AchievementCeremony me={q.data} />
+    </>
+  );
 }

@@ -11,8 +11,8 @@ export default {
     z: " · z = {z}",
   },
   leak: {
-    feeTitle: "Комиссия больше результата",
-    feeDetail: "{n} сдел. с комиссией выше |брутто|: комиссии {fees}, нетто {net}",
+    feeTitle: "Комиссии съели результат",
+    feeDetail: "{n} сдел., где комиссия не окупилась брутто: комиссии {fees}, нетто {net}",
     peakTitle: "Отдача после пика дня",
     peakDetail: "Пик {peak} в {time}, закрытие {final}: отдано {giveback} за {n} сдел.",
     revengeTitle: "Вход < {min} мин после убытка",

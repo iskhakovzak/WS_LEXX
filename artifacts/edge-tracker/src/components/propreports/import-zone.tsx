@@ -147,7 +147,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
           <div className="grid gap-1">
             <Label className="text-xs text-muted-foreground">{t("import.format")}</Label>
             <Select value={kind} onValueChange={(v) => { setKind(v as Kind); setPreview(null); }}>
-              <SelectTrigger className="w-56" aria-label={t("import.format")}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-64 max-w-full" aria-label={t("import.format")}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">{t("import.kind.auto")}</SelectItem>
                 <SelectItem value="fills">{t("import.kind.fills")}</SelectItem>

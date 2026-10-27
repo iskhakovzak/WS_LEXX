@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildChecklist, buildDeskConclusions, buildPositives, buildTips, disciplineOf, feeShareOf, pfOf, tipCandidates,
-  type BehaviorReport, type ChecklistInput, type FeeReport, type WeekKpi,
+  buildChecklist, buildDeskConclusions, buildPositives, buildTips, disciplineOf, feeShareOf, pfOf, simTipStrength, tipCandidates,
+  type BehaviorReport, type ChecklistInput, type FeeReport, type SimSuggestion, type WeekKpi,
 } from "@/lib/weeklyInsights";
 
 const WEEK = "2026-10-05";
@@ -106,6 +106,23 @@ describe("weeklyInsights · tips", () => {
     const tips = tipCandidates({ ...input, suggestions: [{ label: "Без сделок после 15:30", improvement: 400, ci: { lo: 120, hi: 650 }, excluded: 12 }] });
     expect(tips[0].id).toBe("sim:best");
     expect(tips[0].amount).toBe(400);
+  });
+
+  it("the simulator tip: «Правило на неделю» only for a confirmed rule; a robust fast card is worded as a check; never a hypothesis, «предварительно» or «разбор»", () => {
+    const sim = (s: Partial<SimSuggestion>) => tipCandidates({ ...input, suggestions: [{ label: "X", improvement: 400, ...s }] }).find((t) => t.id === "sim:best");
+    expect(sim({ status: "confirmed", timing: "exante" })?.action).toBe("Правило на неделю: «X».");
+    expect(sim({ robust: true, timing: "exante" })?.action).toBe("Проверь «X» в «Что если» на периоде «Всё время» — пока это не доказано.");
+    for (const s of [
+      { status: "hypothesis" as const, timing: "exante" as const }, { status: "preliminary" as const, robust: true, timing: "exante" as const },
+      { robust: false, timing: "exante" as const }, { status: "confirmed" as const, timing: "review" as const }, { robust: true, kind: "label" as const },
+    ]) expect(sim(s), JSON.stringify(s)).toBeUndefined();
+    // The biggest eligible card wins, not the biggest card.
+    const tips = tipCandidates({ ...input, suggestions: [
+      { label: "Без сетапа ORB", improvement: 1200, timing: "review", status: "hypothesis" },
+      { label: "До 11:30", improvement: 300, timing: "exante", status: "confirmed" },
+    ] });
+    expect(tips.find((t) => t.id === "sim:best")?.amount).toBe(300);
+    expect(simTipStrength({ label: "x", improvement: 0, status: "confirmed" })).toBeNull();
   });
 });
 

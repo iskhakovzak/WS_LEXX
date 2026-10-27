@@ -54,7 +54,7 @@ function SetupSearch({ today, initialQuery, onPick }: { today: PlaybookToday; in
       ) : (
         groups.map(({ w, list }) => (
           <section key={w.key} aria-label={windowLabel(w.key)}>
-            <h3 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-foreground/70">{windowLabel(w.key)} · {w.from}–{w.to}</h3>
+            <h3 className="mb-1 px-1 text-xs font-semibold text-foreground/70">{windowLabel(w.key)} · {w.from}–{w.to}</h3>
             <ul className="flex flex-col gap-0.5">
               {list.map((s) => <QuickRow key={s.id} s={s} onPick={onPick} />)}
             </ul>

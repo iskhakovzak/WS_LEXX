@@ -43,7 +43,7 @@ export function CreateIdeaButton({ entry, compact }: { entry: PlaybookEntry; com
         {!compact && <span>{pt("idea.button")}</span>}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto">
+        <DialogContent size="lg" className="max-h-[92dvh]">
           <DialogHeader>
             <DialogTitle>{pt("idea.title")}</DialogTitle>
             <DialogDescription>{pt("idea.description", { name: entry.name })}</DialogDescription>

@@ -6,13 +6,13 @@
  * before the response leaves it, so nothing here relies on hiding for privacy; admin blocks are simply not mounted.
  */
 import * as React from "react";
-import { AlertTriangle, Building2, CalendarDays, Clock, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
-import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
+import { useSearchParam } from "@/hooks/use-search-param";
+import { AlertTriangle, BadgeCheck, Building2, CalendarDays, Clock, GraduationCap, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
+import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/http";
-import { fmtDay, monthLong, useOfficeStats, type Unit } from "@/components/office-stats/api";
+import { monthLong, useOfficeStats, type Unit } from "@/components/office-stats/api";
 import { nyDate } from "@/lib/trading-date";
 import {
   CalendarHeatmap, DayDetail, GeneralChart, InsightsStrip, KpiRow, PacePanel, type Ctx,
@@ -21,11 +21,24 @@ import { StrategyMonthMatrix, StrategyMultiples, StrategyTable, TotalNetByStrate
 import { BestWorstDays, DailyHistogram, StreaksPanel, Tickers, TimeOfDay, Underwater, WeekdayProfile } from "@/components/office-stats/time-risk";
 import { CapitalPanel, CsvButton, RulesPopover, TradersTable } from "@/components/office-stats/team";
 import { MonthlyPanel } from "@/components/office-stats/monthly";
+import { OfficeRecommendations } from "@/components/office-stats/recommendations";
+import { WeeklyPulseCard } from "@/components/office-stats/pulse-card";
+import { officeRecsI18n } from "@/i18n/ns/officeRecs";
+import { JuniorCostDesk } from "@/components/office-stats/junior-cost-desk";
+import { juniorCostI18n } from "@/i18n/ns/juniorCost";
+import { scrollBehavior } from "@/lib/motion";
 import { officeI18n } from "@/i18n/ns/officeStats";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
+import { useAuth } from "@/contexts/auth-context";
+import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
+import { rangeFacetChips, resetRangeFacets, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { OfficeScopeBar } from "@/components/office-stats/office-scope-bar";
+import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { readOfficeUrl, useStoredState, writeOfficeUrl, type OfficeMode as PeriodMode } from "@/components/office-stats/office-period";
 
-type PeriodMode = "ytd" | "quarter" | "month" | "custom";
+const MODES: PeriodMode[] = ["ytd", "quarter", "month", "custom"];
 
 const nyToday = (): string => nyDate();
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -34,6 +47,8 @@ const minYmd = (a: string, b: string) => (a < b ? a : b);
 
 const SECTIONS = [
   { id: "overview", icon: LayoutDashboard },
+  { id: "advice", icon: BadgeCheck },
+  { id: "juniors", icon: GraduationCap, staff: true },
   { id: "strategies", icon: Layers },
   { id: "time", icon: Clock },
   { id: "risk", icon: ShieldAlert },
@@ -44,7 +59,7 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
   return (
     // The scroller's scroll-padding (--scroll-pad-top) already clears a stuck bar; the margin is just breathing room.
     <section id={`office-${id}`} aria-labelledby={`office-${id}-h`} className="flex scroll-mt-3 flex-col gap-[var(--grid-gap)]">
-      <div className="flex items-baseline gap-3 pt-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pt-2">
         <h2 id={`office-${id}-h`} className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
       </div>
@@ -52,8 +67,6 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
     </section>
   );
 }
-
-const scrollBehavior = (): ScrollBehavior => (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
 
 /**
  * Section jump: land the heading right under the sticky section nav, measured (the nav's height and the header
@@ -77,18 +90,23 @@ export default function OfficeStatsPage() {
   // Years with desk trades (from the last answer): no chips for empty years (OWNER-13: 2023 / 2024 before the data starts).
   const [dataYears, setDataYears] = React.useState<number[] | null>(null);
   const yearChoices = React.useMemo(() => [ty - 3, ty - 2, ty - 1, ty].filter((y) => y === ty || !dataYears || dataYears.includes(y)), [ty, dataYears]);
-  const [years, setYears] = usePersistentState<number[]>("office-stats.years", [ty - 1, ty]);
+  // The period lives in the URL (?period=&q=&m=&years=, components/office-stats/office-period); the device keys are
+  // the fallback for a bare /office.
+  const [url] = React.useState(() => readOfficeUrl(typeof window === "undefined" ? "" : window.location.search));
+  const [years, setYears] = useStoredState<number[]>("office-stats.years", url.years, [ty - 1, ty]);
   const selYears = React.useMemo(() => {
     const ok = years.filter((y) => yearChoices.includes(y)).sort((a, b) => a - b);
     return ok.length ? ok : [ty];
   }, [years, ty, yearChoices]);
   const focusYear = selYears[selYears.length - 1];
 
-  const [mode, setMode] = usePersistentState<PeriodMode>("office-stats.period", "ytd");
+  const [storedMode, setMode] = useStoredState<PeriodMode>("office-stats.period", url.mode, "ytd");
   const curQ = Math.floor((Number(today.slice(5, 7)) - 1) / 3) + 1;
-  const [quarter, setQuarter] = React.useState<number>(focusYear === ty ? curQ : 4);
-  const [month, setMonth] = React.useState<number>(focusYear === ty ? Number(today.slice(5, 7)) : 12);
-  const [custom, setCustom] = React.useState<{ from: string; to: string }>({ from: `${focusYear}-01-01`, to: minYmd(`${focusYear}-12-31`, today) });
+  const [quarter, setQuarter] = React.useState<number>(url.q ?? (focusYear === ty ? curQ : 4));
+  const [month, setMonth] = React.useState<number>(url.m ?? (focusYear === ty ? Number(today.slice(5, 7)) : 12));
+  const [storedCustom, setCustom] = useStoredState<DayRange | null>("office-stats.custom", url.mode === "custom" ? url.custom : null, null);
+  const custom = parseDayRange(storedCustom?.from, storedCustom?.to);
+  const mode: PeriodMode = MODES.includes(storedMode) && (storedMode !== "custom" || custom) ? storedMode : "ytd";
 
   // A month / quarter picked for an earlier year can lie in the future of the current one (December → 2026 in
   // October): clamp it to today, otherwise the period would start after it ends.
@@ -103,19 +121,27 @@ export default function OfficeStatsPage() {
     const cap = (ymd: string) => minYmd(ymd, today);
     if (mode === "quarter") { const m0 = (quarter - 1) * 3 + 1; return { from: `${y}-${pad2(m0)}-01`, to: cap(`${y}-${pad2(m0 + 2)}-${lastDay(y, m0 + 2)}`) }; }
     if (mode === "month") return { from: `${y}-${pad2(month)}-01`, to: cap(`${y}-${pad2(month)}-${lastDay(y, month)}`) };
-    if (mode === "custom" && custom.from && custom.to) return custom.from <= custom.to ? custom : { from: custom.to, to: custom.from };
+    if (mode === "custom" && custom) return custom;
     return { from: `${y}-01-01`, to: cap(`${y}-12-31`) };
-  }, [mode, effQuarter, effMonth, custom, focusYear, today]);
+  }, [mode, effQuarter, effMonth, custom?.from, custom?.to, focusYear, today]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    writeOfficeUrl({ mode, custom, q: effQuarter, m: effMonth, years: selYears });
+  }, [mode, custom?.from, custom?.to, effQuarter, effMonth, selYears]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const periodLabel = mode === "quarter"
     ? t("period.quarterOfYear", { q: effQuarter, year: focusYear })
     : mode === "month"
       ? t("period.monthOfYear", { month: monthLong(effMonth - 1), year: focusYear })
-      : mode === "custom"
-        ? commonI18n.t("time.range", { from: fmtDay(period.from), to: fmtDay(period.to) })
+      : mode === "custom" && custom
+        ? fmtDayRange(custom)
         : t("period.ytdOf", { year: focusYear });
 
-  const q = useOfficeStats({ years: selYears, from: period.from, to: period.to });
+  // «Разрезы» for partners only: a member's facet buckets would be the own book, not the office the numbers are about.
+  const { user, isCurator: isStaff } = useAuth();
+  const partner = user?.role === "admin";
+  const rf = useRangeFacets({ from: period.from, to: period.to }, partner);
+  const q = useOfficeStats({ years: selYears, from: period.from, to: period.to, facets: rf.query || undefined });
   const data = q.data;
   const answerYears = data?.dataYears;
   React.useEffect(() => { if (answerYears) setDataYears((cur) => (cur && cur.join() === answerYears.join() ? cur : answerYears)); }, [answerYears]);
@@ -129,8 +155,9 @@ export default function OfficeStatsPage() {
   const view = data ? (data.role === "admin" ? (unit === "usd" ? data.usd : data.pct) : data.pct) : undefined;
   const focus = view?.years.find((y) => y.year === focusYear);
 
-  const [day, setDay] = React.useState<string | null>(null);
-  React.useEffect(() => { setDay(null); }, [focusYear]);
+  const [dayParam, setDay] = useSearchParam("day", ""); // ?day= — the drilled-in day survives a reload
+  const day = dayParam || null;
+  React.useEffect(() => { if (day && !day.startsWith(String(focusYear))) setDay(null); }, [focusYear]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickDay = (d: string) => { setDay(d); document.getElementById("office-day")?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" }); };
   const pickMonth = (m: number) => { setMonth(m); setMode("month"); };
   const navRef = React.useRef<HTMLElement>(null);
@@ -145,7 +172,8 @@ export default function OfficeStatsPage() {
   const forbidden = q.error instanceof ApiError && (q.error.status === 403 || q.error.status === 401);
   const memberNoCapital = data?.role === "member" && !capitalSet;
   const adminPctNoCapital = isAdmin && unit === "pct" && !capitalSet;
-  const ctx: Ctx | null = view && focus ? { unit, view, focus, isAdmin } : null;
+  const liveKey = q.isPlaceholderData ? "loading" : [unit, selYears.join(","), period.from, period.to, rf.query ?? ""].join("|");
+  const ctx: Ctx | null = view && focus ? { unit, view, focus, isAdmin, liveKey } : null;
   const showAdminHint = isAdmin && !capitalSet;
 
   return (
@@ -177,83 +205,22 @@ export default function OfficeStatsPage() {
         )}
       </PageHeader>
 
-      {/* Filters: one row above everything (wraps on phones). */}
-      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.yearsAria")}>
-          <span className="mr-1 text-xs text-muted-foreground">{t("filters.years")}</span>
-          {yearChoices.map((y) => {
-            const on = selYears.includes(y);
-            return (
-              <button
-                key={y}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggleYear(y)}
-                className={cn(
-                  "min-h-8 rounded-full border px-3 text-sm font-medium tabular-nums transition-colors",
-                  on ? "border-primary/40 bg-primary/12 text-foreground" : "border-[var(--glass-border)] text-muted-foreground hover:text-foreground",
-                  on && y === focusYear && "border-primary bg-primary/20",
-                )}
-                title={on && y === focusYear ? t("filters.yearFocus") : on ? t("filters.yearRemove") : t("filters.yearAdd")}
-              >
-                {y}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented<PeriodMode>
-            ariaLabel={t("period.label")}
-            value={mode}
-            onChange={setMode}
-            size="sm"
-            options={[{ value: "ytd", label: t("period.ytd") }, { value: "quarter", label: t("period.quarter") }, { value: "month", label: t("period.month") }, { value: "custom", label: t("period.custom") }]}
-          />
-          {mode === "quarter" && (
-            <Segmented<string> ariaLabel={t("period.quarter")} size="sm" value={String(effQuarter)} onChange={(v) => setQuarter(Number(v))}
-              options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: t("period.quarterShort", { q: n }), disabled: focusYear === ty && n > curQ }))} />
-          )}
-          {mode === "month" && (
-            <select
-              aria-label={t("period.month")}
-              value={effMonth}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              className="glass-field h-8 rounded-full bg-transparent px-3 text-sm text-foreground"
-            >
-              {Array.from({ length: 12 }, (_, i) => monthLong(i)).map((m, i) => (
-                <option key={i} value={i + 1} disabled={focusYear === ty && i + 1 > Number(today.slice(5, 7))}>{m}</option>
-              ))}
-            </select>
-          )}
-          {mode === "custom" && (
-            <span className="flex flex-wrap items-center gap-1.5">
-              <Input type="date" aria-label={t("period.from")} value={custom.from} max={today} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} className="h-8 w-[9.5rem]" />
-              <span className="text-muted-foreground">—</span>
-              <Input type="date" aria-label={t("period.to")} value={custom.to} max={today} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} className="h-8 w-[9.5rem]" />
-            </span>
-          )}
-        </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2 lg:ml-auto">
-            <span className="text-xs text-muted-foreground">{t("filters.units")}</span>
-            <Segmented<Unit>
-              ariaLabel={t("filters.units")}
-              size="sm"
-              value={unit}
-              onChange={setUnitPref}
-              options={[{ value: "pct", label: t("filters.pctOfCapital"), disabled: !capitalSet, title: capitalSet ? undefined : t("filters.needCapital") }, { value: "usd", label: "$" }]}
-            />
-          </div>
-        )}
-      </div>
+      <OfficeScopeBar
+        yearChoices={yearChoices} selYears={selYears} focusYear={focusYear} onToggleYear={toggleYear}
+        mode={mode} custom={custom} period={period} today={today} onMode={setMode} onCustom={(r) => { setCustom(r); setMode("custom"); }}
+        quarter={effQuarter} onQuarter={setQuarter} maxQuarter={focusYear === ty ? curQ : 4}
+        month={effMonth} onMonth={setMonth} maxMonth={focusYear === ty ? Number(today.slice(5, 7)) : 12}
+        unit={isAdmin ? { value: unit, onChange: setUnitPref, capitalSet } : null} rf={rf}
+      />
+      <ActiveFilters items={rangeFacetChips(rf)} onReset={() => resetRangeFacets(rf)} />
 
       {/* Section anchors (sticky). */}
       {ctx && !memberNoCapital && (
         <nav ref={navRef} aria-label={t("page.sectionsNav")} className="sticky top-2 z-sticky -my-1 flex justify-center">
           <div className="glass-panel scrollbar-none flex h-10 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
-            {SECTIONS.filter((s) => !("admin" in s) || isAdmin).map((s) => (
+            {SECTIONS.filter((s) => (!("admin" in s) || isAdmin) && (!("staff" in s) || isStaff)).map((s) => (
               <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`page.sections.${s.id}`)}
+                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{s.id === "advice" ? officeRecsI18n.t("title") : s.id === "juniors" ? juniorCostI18n.t("desk.title") : t(`page.sections.${s.id}`)}
               </button>
             ))}
           </div>
@@ -294,18 +261,29 @@ export default function OfficeStatsPage() {
           )}
 
           <Section id="overview" title={t("page.sections.overview")} hint={periodLabel}>
-            <InsightsStrip insights={view.insights} />
+            {/* The answer first (design audit wave 2B): the year's totals, then the pace to the goal beside the curve;
+                the automatic insights and the week's pulse follow. */}
             <KpiRow ctx={ctx} period={view.period} onJump={jump} />
             <BentoGrid>
               <GeneralChart ctx={ctx} onPickDay={pickDay} />
               <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-4">
-                <PacePanel ctx={ctx} />
+                <PacePanel ctx={ctx} today={data.today} />
                 <div id="office-day" className="flex-1"><DayDetail ctx={ctx} date={day} onClear={() => setDay(null)} /></div>
               </div>
+            </BentoGrid>
+            <BentoGrid>
+              {view.insights.length > 0 && <div className="lg:col-span-12 xl:col-span-8"><InsightsStrip insights={view.insights} /></div>}
+              <WeeklyPulseCard ctx={ctx} today={data.today} onPickDay={pickDay} className={view.insights.length > 0 ? "lg:col-span-12 xl:col-span-4" : "lg:col-span-6"} />
             </BentoGrid>
             <CalendarHeatmap ctx={ctx} selected={day} onPickDay={pickDay} onPickMonth={pickMonth} />
             <MonthlyPanel ctx={ctx} today={data.today} onPickMonth={pickMonth} />
           </Section>
+
+          <Section id="advice" title={officeRecsI18n.t("title")} hint={officeRecsI18n.t("hint")}>
+            <OfficeRecommendations />
+          </Section>
+
+          {isStaff && <Section id="juniors" title={juniorCostI18n.t("desk.title")} hint={juniorCostI18n.t("desk.hint")}><JuniorCostDesk /></Section>}
 
           <Section id="strategies" title={t("page.sections.strategies")} hint={t("page.strategiesHint")}>
             <BentoGrid>

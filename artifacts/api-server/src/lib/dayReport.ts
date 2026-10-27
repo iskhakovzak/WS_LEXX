@@ -7,14 +7,16 @@
  *   2. внутридневная кривая эквити по фактическому времени закрытия (exit-исполнение), пик и max DD;
  *   3. таймлайн сделок по ET-времени: тикер, удержание, результат, пауза между сделками;
  *   4. разрезы: тикер / час входа (ET) / сторона;
- *   5. «утечки» (правила с суммами в $): комиссия > |брутто|, сделки после пика дня (отдача), вход < N мин
+ *   5. «утечки» (правила с суммами в $): комиссии по правилу lib/feeRule, сделки после пика дня (отдача), вход < N мин
  *      после убытка, рост размера после убытка, торговля после дневного лимита;
  *   6. «что получилось»: топ-3 сделки, тикеры/сетапы с преимуществом в этот день;
  *   7. «план на завтра»: 3–5 рекомендаций по шаблонам из флагов.
  * Деньги — нетто = брутто − |комиссии| (lib/tradeMath.netPnl). Время — America/New_York.
  */
 import { isOpeningDay } from "./dayReportRules";
-import { netPnl, num, normResult } from "./tradeMath";
+import { DEFAULTS as BEHAVIOR } from "./behaviorEngine";
+import { feeCost, feeMinUsd, feeShares } from "./feeRule";
+import { netPnl, num, normResult, winRateOf } from "./tradeMath";
 import { dayReportT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
 
@@ -69,14 +71,13 @@ export interface DayReportInput {
 }
 
 export interface DayReportOptions {
-  /** Вход быстрее этого числа минут после убыточного выхода = «реванш». По умолчанию 2. */
+  /** Вход быстрее этого числа минут после убыточного выхода = быстрый перезаход (lib/behaviorEngine DEFAULTS, 10). */
   revengeMin?: number;
-  /** Рост размера после убытка: $ нотионал (|qty| × вход) > нотионал предыдущей убыточной × factor (как behaviorEngine). По умолчанию 1.3. */
+  /** Рост размера после убытка: $ нотионал > нотионал предыдущей убыточной × factor (behaviorEngine DEFAULTS.martingaleRatio). */
   sizeUpFactor?: number;
   /** Окно сравнения, торговых дней. По умолчанию 20. */
   lookbackDays?: number;
-  /** Language of the texts (default RU). */
-  lang?: Lang;
+  lang?: Lang; // language of the texts (default RU)
 }
 
 export interface TradeRef {
@@ -344,7 +345,7 @@ function bucketize(trades: DayTrade[], keyOf: (t: DayTrade) => string | null, la
     const losses = ts.filter(isLoss).length;
     return {
       key, label: labelOf(key), trades: ts.length, wins, losses,
-      winRate: wins + losses ? wins / (wins + losses) : null,
+      winRate: winRateOf(wins, losses),
       net: r2(sum(ts.map((t) => t.net ?? 0))), gross: r2(sum(ts.map((t) => t.gross ?? 0))), fees: r2(sum(ts.map((t) => t.fees))),
     };
   });
@@ -370,7 +371,7 @@ export function computeSummary(trades: DayTrade[]): Summary {
     wins: wins.length,
     losses: losses.length,
     be,
-    winRate: wins.length + losses.length ? wins.length / (wins.length + losses.length) : null,
+    winRate: winRateOf(wins.length, losses.length),
     net: r2(net),
     gross: r2(gross),
     fees: r2(fees),
@@ -487,13 +488,12 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
   const closed = trades.filter((t) => t.net != null);
   const out: Leak[] = [];
 
-  // 1. Комиссия больше |брутто| — сделка заведомо не окупила издержки.
-  const feeHeavy = closed.filter((t) => t.fees > 0 && t.fees > Math.abs(t.gross ?? 0));
-  if (feeHeavy.length) {
-    const fees = sum(feeHeavy.map((t) => t.fees));
+  const k = feeShares(), dayFeeCost = feeCost(sum(closed.map((t) => t.gross ?? 0)), sum(closed.map((t) => t.fees)), feeMinUsd(), k);
+  const feeHeavy = closed.filter((t) => t.fees > 0 && t.fees >= k.feesShare * Math.max(t.gross ?? 0, 0));
+  if (dayFeeCost != null && feeHeavy.length) {
     out.push(leak("fee_over_gross", L("leak.feeTitle"),
-      L("leak.feeDetail", { n: feeHeavy.length, fees: usd(fees), net: usd(sum(feeHeavy.map((t) => t.net!)), true) }),
-      feeHeavy, fees));
+      L("leak.feeDetail", { n: feeHeavy.length, fees: usd(sum(feeHeavy.map((t) => t.fees))), net: usd(sum(feeHeavy.map((t) => t.net!)), true) }),
+      feeHeavy, -dayFeeCost));
   }
 
   // 2. Сделки, закрытые после пика дня (отдача): берём только реально закрытые позже пика.
@@ -673,8 +673,8 @@ export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" |
 
 export function buildDayReport(input: DayReportInput): DayReport {
   const opts: Required<DayReportOptions> = {
-    revengeMin: input.options?.revengeMin ?? 2,
-    sizeUpFactor: input.options?.sizeUpFactor ?? 1.3,
+    revengeMin: input.options?.revengeMin ?? BEHAVIOR.revengeMin,
+    sizeUpFactor: input.options?.sizeUpFactor ?? BEHAVIOR.martingaleRatio,
     lookbackDays: input.options?.lookbackDays ?? 20,
     lang: input.options?.lang ?? "ru",
   };

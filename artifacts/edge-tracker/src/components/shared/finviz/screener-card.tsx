@@ -6,8 +6,8 @@
  */
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookMarked, Check, ChevronDown, ChevronUp, Plus, RefreshCw, ScanSearch } from "lucide-react";
-import { ErrorState, Panel, Segmented, SortableTh, DataTable, usePersistentState, toneOf, toneText } from "@/components/ds";
+import { BookMarked, Check, ChevronDown, ChevronUp, Plus, RefreshCw, ScanLine } from "lucide-react";
+import { ErrorState, Panel, RowActions as DsRowActions, Segmented, SortableTh, DataTable, usePersistentState, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToastAction } from "@/components/ui/toast";
@@ -24,12 +24,14 @@ import { finvizI18n } from "@/i18n/ns/finviz";
 import { screenerQuery, useFinvizRefresh, useFinvizStatus, usePlanTickerDoc } from "./api";
 import { useAddToPlan } from "../add-to-plan";
 import { EarningsFlagPill, FinvizOff, useMinuteClock } from "./earnings";
+import { syncStale } from "@/lib/trading-date";
 import {
-  DEFAULT_SORT, PLAN_MAX_TICKERS, SCREENER_PRESETS, catalystLine, earningsFlagOf, morningState, planTickers, rowMove, screenerSummary, sortRows,
+  DEFAULT_SORT, PLAN_MAX_TICKERS, SCREENER_PRESETS, catalystLine, earningsFlagOf, morningState, planTickers, rowMove, rvolValue, screenerSummary, sortRows,
   type ScreenerPreset, type ScreenerRow, type ScreenerSortKey,
 } from "./model";
 
-const SHOW = 8;
+/** Rows before «Показать все»: the screener is a side block of the morning, not the plan (design audit wave 2B). */
+const SHOW = 5;
 
 type RowActions = {
   inPlan: (ticker: string) => boolean;
@@ -44,40 +46,42 @@ function MoveCell({ r, preset }: { r: ScreenerRow; preset: ScreenerPreset }) {
   return <span className={cn("font-semibold tabular-nums", toneText(toneOf(m)))}>{fmtPct(m, 1)}</span>;
 }
 
+/**
+ * «В план» (the row's one action) + «В плейбук» in the «…» menu (components/ds RowActions): shown on row hover / focus
+ * on desktop, always on touch. A ticker already in the plan keeps its ✓ visible at all times.
+ */
 function Actions({ r, a, compact }: { r: ScreenerRow; a: RowActions; compact?: boolean }) {
   const { t } = finvizI18n.useT();
   const date = fmtDeskDate(a.planDate, "dayMonth");
   const has = a.inPlan(r.ticker);
   return (
     <div className="flex shrink-0 items-center justify-end gap-1">
-      {a.canPlan && (
-        <Button
-          type="button"
-          size="sm"
-          variant={has ? "ghost" : "outline"}
-          className="h-8 gap-1 px-2"
-          disabled={has || a.adding === r.ticker}
-          onClick={() => a.onAdd(r)}
-          title={has ? t("screener.inPlanTitle", { ticker: r.ticker, date }) : t("screener.toPlanTitle", { ticker: r.ticker, date })}
-          aria-label={has ? t("screener.inPlanTitle", { ticker: r.ticker, date }) : t("screener.toPlanTitle", { ticker: r.ticker, date })}
-        >
-          {has ? <Check className="h-4 w-4 text-up" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-          <span className={cn(compact && "sr-only")}>{has ? t("screener.inPlan") : t("screener.toPlan")}</span>
-        </Button>
+      {a.canPlan && has && (
+        <span className="inline-flex h-8 items-center gap-1 px-2 text-xs text-muted-foreground" title={t("screener.inPlanTitle", { ticker: r.ticker, date })}>
+          <Check className="h-4 w-4 text-up" aria-hidden="true" />
+          <span className={cn(compact && "sr-only")}>{t("screener.inPlan")}</span>
+        </span>
       )}
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="h-8 gap-1 px-2"
-        onClick={() => openSetupSheet()}
-        title={t("screener.toPlaybookTitle", { ticker: r.ticker })}
-        aria-label={t("screener.toPlaybookTitle", { ticker: r.ticker })}
-        aria-haspopup="dialog"
+      <DsRowActions
+        menuLabel={t("screener.toPlaybookTitle", { ticker: r.ticker })}
+        more={[{ label: t("screener.toPlaybook"), icon: BookMarked, onSelect: () => openSetupSheet() }]}
       >
-        <BookMarked className="h-4 w-4" aria-hidden="true" />
-        <span className="sr-only lg:not-sr-only">{t("screener.toPlaybook")}</span>
-      </Button>
+        {a.canPlan && !has && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 px-2"
+            disabled={a.adding === r.ticker}
+            onClick={() => a.onAdd(r)}
+            title={t("screener.toPlanTitle", { ticker: r.ticker, date })}
+            aria-label={t("screener.toPlanTitle", { ticker: r.ticker, date })}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            <span className={cn(compact && "sr-only")}>{t("screener.toPlan")}</span>
+          </Button>
+        )}
+      </DsRowActions>
     </div>
   );
 }
@@ -101,7 +105,7 @@ function PhoneList({ rows, preset, a, day }: { rows: ScreenerRow[]; preset: Scre
             </div>
             <p className="truncate text-xs tabular-nums text-muted-foreground">
               {[
-                r.relVolume != null ? `RVOL ${fmtNum(r.relVolume, 1)}` : null,
+                rvolValue(r.relVolume) != null ? `RVOL ${fmtNum(r.relVolume, 1)}` : null,
                 r.float != null ? `Float ${fmtCompact(r.float)}` : null,
                 r.shortFloatPct != null ? `SI ${fmtPct(r.shortFloatPct, { decimals: 1, signed: false })}` : null,
                 r.price != null ? `$${fmtPrice(r.price)}` : null,
@@ -159,7 +163,7 @@ function DeskTable({ rows, preset, a, day, sort, onSort }: {
                 )}
               </td>
               <td className="text-right"><MoveCell r={r} preset={preset} /></td>
-              <td className="text-right">{fmtNum(r.relVolume, 1)}</td>
+              <td className="text-right">{rvolValue(r.relVolume) == null ? <span className="text-muted-foreground">—</span> : fmtNum(r.relVolume, 1)}</td>
               <td className="text-right">{fmtCompact(r.float)}</td>
               <td className="text-right">{fmtPct(r.shortFloatPct, { decimals: 1, signed: false })}</td>
               <td className="text-right">{fmtNum(r.atr)}</td>
@@ -263,6 +267,8 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   const shown = all ? rows : rows.slice(0, SHOW);
   const actions: RowActions = { inPlan: (x) => inPlanSet.has(x.toUpperCase()), canPlan, adding, onAdd: (r) => onAdd(r, preset), planDate };
   const updated = q.data?.asOf ? t("screener.updated", { ago: fmtRelative(q.data.asOf) }) : t("screener.notYet");
+  // One freshness rule for every «последнее обновление» (lib/trading-date syncStale, design audit wave 2A/3).
+  const stale = syncStale(q.data?.asOf, now).stale;
   const onSort = (k: ScreenerSortKey) =>
     setSort((s) => {
       const cur = s ?? sort;
@@ -277,7 +283,7 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   if (!open) {
     return (
       <section aria-label={t("screener.aria")} className={cn("glass-panel flex min-w-0 items-center gap-3 rounded-2xl px-[var(--panel-p)] py-2", className)}>
-        <ScanSearch className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <ScanLine className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="-my-1 min-h-10 min-w-0 flex-1 truncate rounded-md text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8">
           <span className="font-semibold">{t("screener.title")}</span>
           <span className="text-muted-foreground">
@@ -305,7 +311,9 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   } else {
     body = (
       <>
-        {isMobile ? <PhoneList rows={shown} preset={preset} a={actions} day={planDate} /> : <DeskTable rows={shown} preset={preset} a={actions} day={planDate} sort={sort} onSort={onSort} />}
+        <div className={cn(stale && "opacity-60")}>
+          {isMobile ? <PhoneList rows={shown} preset={preset} a={actions} day={planDate} /> : <DeskTable rows={shown} preset={preset} a={actions} day={planDate} sort={sort} onSort={onSort} />}
+        </div>
         {rows.length > SHOW && (
           <Button type="button" variant="ghost" size="sm" className="mt-1 self-start" onClick={() => setAll((v) => !v)}>
             {all ? t("screener.showLess") : t("screener.showAll", { n: rows.length })}
@@ -319,8 +327,8 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
     <Panel
       aria-label={t("screener.aria")}
       title={t("screener.title")}
-      description={`${t(`screener.presetHint.${preset}`)} · ${updated}`}
-      icon={ScanSearch}
+      description={<>{t(`screener.presetHint.${preset}`)} · {stale ? <span className="font-medium text-warn">{t("screener.stale", { ago: fmtRelative(q.data!.asOf!) })}</span> : updated}</>}
+      icon={ScanLine}
       className={className}
       actions={
         <>

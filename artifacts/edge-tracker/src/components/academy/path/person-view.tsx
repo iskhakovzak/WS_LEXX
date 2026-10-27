@@ -3,6 +3,7 @@ import * as React from "react";
 import { Link } from "wouter";
 import { ArrowRight, Flag, History, Loader2, Send, ShieldCheck, Target, Undo2, UserCog } from "lucide-react";
 import { EmptyState, ErrorState, Panel, Pill, ProgressRing, StatCard, StatGrid } from "@/components/ds";
+import { PromotionRevealDialog, StageMedal, medalStageOf, usePromotionReveal } from "@/components/shared/medals";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +20,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personName } from "@/i18n";
 import { CriterionRow, Field, StageLadder, selectCls } from "./bits";
+import { BindingLine, PaceBar, StageDays } from "./realism";
 import { criterionLabel, headlineText, noteText, stageName, stageTitle } from "./labels";
 
 /** Exams of a trader: own page for self, `?user=` for staff looking at someone else. */
@@ -49,6 +51,8 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
   const stages = config?.stages ?? [];
   const data = q.data;
   const r = data?.report ?? null;
+  // The trader's own promotion plays its medal reveal once; a mentor viewing the path never consumes it.
+  const reveal = usePromotionReveal(r?.user, q.isPlaceholderData ? undefined : data?.history, !!me && r?.user === me);
 
   if (q.isLoading) return <div className="flex flex-col gap-3"><Skeleton className="h-28 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div>;
   if (q.isError) return <ErrorState error={q.error} onRetry={q.refetch} title={t("person.loadFailed")} />;
@@ -81,16 +85,20 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
   return (
     // Switching the student keeps the previous report (dimmed, not clickable) until the new one arrives.
     <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
+      <PromotionRevealDialog row={reveal.row} onClose={reveal.close} />
       <StageLadder stages={stages} current={stageKey} readyFor={r.ready ? r.nextStage?.key : null} />
 
       <Panel>
         <div className="flex flex-wrap items-center gap-4">
+          {/* Phones: the ladder above already shows the medal; here it would squeeze the headline. */}
+          {stageKey && <StageMedal stage={stageKey} size={88} className="hidden sm:block" />}
           <ProgressRing value={pct} size={72} stroke={6} tone={r.ready ? "up" : pct >= 70 ? "warn" : "accent"} label={<span className="text-sm font-semibold tabular-nums">{r.passed}/{r.total}</span>} ariaLabel={t("person.ringAria", { passed: r.passed, count: r.total })} />
           <div className="min-w-0 flex-1">
             <p className={cn("text-lg font-semibold", r.ready ? "text-up" : "text-foreground")} role="status">{headline}</p>
             <p className="text-sm text-muted-foreground">
               {[personName(r.user), stagePart, t("person.meta.asOf", { date: fmtDate(r.today) })].join(" · ")}
             </p>
+            <StageDays days={r.stageDays} signal={r.stageSignal} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {/* Connectedness: the exam is the step that moves the trader up — one click from the report. */}
@@ -104,6 +112,12 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
               : r.nextStage && r.stage && (isSelf || isStaff) && <RequestButton user={r.user} ready={r.ready} />}
           </div>
         </div>
+        {(r.bindingConstraint || r.pace) && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--field-border)] pt-3">
+            <BindingLine b={r.bindingConstraint} />
+            <PaceBar pace={r.pace} />
+          </div>
+        )}
       </Panel>
 
       <StatGrid>
@@ -146,8 +160,9 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
         {data?.history.length ? (
           <ol className="flex flex-col gap-2">
             {data.history.map((h) => (
-              <li key={h.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+              <li key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
                 <span className="tabular-nums text-xs text-muted-foreground">{fmtInstant(h.createdAt)}</span>
+                {medalStageOf(h.toStage) && <StageMedal stage={medalStageOf(h.toStage) ?? "junior"} size={20} decorative />}
                 <span className="font-medium text-foreground">
                   {t("person.historyLine", { action: academyPathI18n.tryT(`person.actions.${h.action}`) ?? h.action, from: stageName(stages, h.fromStage), to: stageName(stages, h.toStage) })}
                 </span>

@@ -1,27 +1,18 @@
-import { useMemo, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useId, useMemo } from "react";
 import { LineChart as LineIcon } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { EmptyState, Panel, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Segmented, usePersistentState } from "@/components/ds";
 import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
+import {
+  ACTIVE_DOT, BAR_RADIUS, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
+  barGradients, pnlColor, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion,
+} from "@/components/shared/charts";
 import { fmtMetricCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
 import { fmtMonth } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
-
-export const CHART_TOOLTIP = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-} as const;
-export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.08)" };
-const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
 
 /** "2026-10" → «окт 26» / «Oct 26». */
 const monthLabel = (m: string) => {
@@ -32,7 +23,7 @@ const monthLabel = (m: string) => {
 type View = "equity" | "monthly";
 
 export function EquityPanel({
-  equity, monthly, metric, trades, trader, daily = false,
+  equity, monthly, metric, trades, trader, daily = false, onMetric,
 }: {
   equity: EquityPoint[];
   /** The points are end-of-day closes (staff view, GET /api/stats/aggregate), not single trades. */
@@ -43,10 +34,17 @@ export function EquityPanel({
   trades?: EquityTradeInput[];
   /** Trader for the day-report link (null / "all" — derived from the trades). */
   trader?: string | null;
+  /** The series switch (R / $ нетто / $ брутто) in the chart's header: the metric is the curve's series (and the
+   * report's unit below it). */
+  onMetric?: (m: Metric) => void;
 }) {
   const { t } = statsI18n.useT();
-  const [view, setView] = useState<View>("equity");
-  const reduce = useReducedMotion();
+  const [view, setView] = usePersistentState<View>("stats.equity.view", "equity");
+  const motion = useChartMotion();
+  const gid = useId().replace(/:/g, "");
+  const paint = useMemo(() => pnlPaint(`statsEq${gid}`, equity.map((p) => p.equity)), [equity, gid]);
+  const focus = useBarFocus();
+  const rows = useMemo(() => equity.map((p, i) => ({ ...p, step: i ? p.equity - equity[i - 1].equity : p.equity })), [equity]);
   const unit = metric === "r" ? "R" : "$";
   const last = equity.at(-1)?.equity ?? null;
   const eqUnit = metric === "r" ? "r" : metric === "usd" ? "gross" : "net";
@@ -63,13 +61,24 @@ export function EquityPanel({
           : t("equity.hintMonthly", { unit })
       }
       actions={
-        <Segmented<View>
-          size="sm"
-          ariaLabel={t("equity.viewAria")}
-          value={view}
-          onChange={setView}
-          options={[{ value: "equity", label: t("equity.viewCurve") }, { value: "monthly", label: t("equity.viewMonthly") }]}
-        />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onMetric && (
+            <Segmented<Metric>
+              size="sm"
+              ariaLabel={t("metricAria")}
+              value={metric}
+              onChange={onMetric}
+              options={[{ value: "r", label: t("metric.r") }, { value: "net", label: t("metric.net") }, { value: "usd", label: t("metric.usd") }]}
+            />
+          )}
+          <Segmented<View>
+            size="sm"
+            ariaLabel={t("equity.viewAria")}
+            value={view}
+            onChange={setView}
+            options={[{ value: "equity", label: t("equity.viewCurve") }, { value: "monthly", label: t("equity.viewMonthly") }]}
+          />
+        </div>
       }
     >
       {view === "equity" && trades ? (
@@ -78,7 +87,7 @@ export function EquityPanel({
           unit={eqUnit}
           trader={trader && trader !== "all" ? trader : soleTrader(trades)}
           storageKey="stats.equity"
-          height={400}
+          height={440}
         />
       ) : view === "equity" ? (
         equity.length >= 2 ? (
@@ -91,37 +100,32 @@ export function EquityPanel({
             </div>
             <div className="h-[240px]" role="img" aria-label={t("equity.aria", { value: fmtValue(last, metric) })}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={equity} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="statsEq" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="idx" {...AXIS} minTickGap={48} />
-                  <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
-                  <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
+                <AreaChart data={rows} margin={MARGIN}>
+                  {paint.defs}
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="idx" {...X_AXIS} minTickGap={48} />
+                  <YAxis {...Y_AXIS} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
+                  <ReferenceLine {...ZERO_LINE} />
                   <Tooltip
-                    contentStyle={CHART_TOOLTIP}
-                    cursor={{ stroke: "hsl(var(--border))" }}
+                    {...tooltipProps("line")}
+                    content={<GlassTooltip tone="pnl" delta={(r) => r.step as number} deltaFormat={(v) => fmtValue(v, metric)} deltaLabel={daily ? t("equity.deltaDay") : t("equity.deltaTrade")} />}
                     labelFormatter={(_l, payload) => (payload?.[0]?.payload as EquityPoint | undefined)?.label ?? ""}
                     formatter={(v: number, name: string) => [fmtValue(v, metric), name === "equity" ? t("equity.accumulated") : t("equity.drawdown")]}
                   />
                   <Area
-                    type="monotone" dataKey="drawdown" stroke="hsl(var(--down))" strokeWidth={1}
-                    fill="hsl(var(--down) / 0.18)" dot={false} isAnimationActive={!reduce}
+                    {...motion} type="linear" dataKey="drawdown" stroke={tint("down", 0.7)} strokeWidth={STROKE_THIN}
+                    fill={tint("down", 0.12)} dot={false} activeDot={false}
                   />
                   <Area
-                    type="monotone" dataKey="equity" stroke="hsl(var(--chart-1))" strokeWidth={2}
-                    fill="url(#statsEq)" dot={false} isAnimationActive={!reduce}
+                    {...motion} type="linear" dataKey="equity" stroke={paint.stroke} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round"
+                    fill={paint.fill} dot={false} activeDot={{ ...ACTIVE_DOT, fill: pnlColor(last) }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-full bg-chart-1" aria-hidden="true" />{t("equity.accumulated")}</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-full bg-down/40" aria-hidden="true" />{t("equity.drawdown")}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-3 rounded-full bg-up" aria-hidden="true" />{t("equity.accumulated")}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-sm bg-down/25" aria-hidden="true" />{t("equity.drawdown")}</span>
             </div>
           </>
         ) : (
@@ -134,19 +138,20 @@ export function EquityPanel({
       ) : monthly.length > 0 ? (
         <div className="h-[268px]" role="img" aria-label={t("equity.monthlyAria")}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthly} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="month" {...AXIS} tickFormatter={monthLabel} />
-              <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
-              <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
+            <BarChart data={monthly} margin={MARGIN} {...focus.chartProps}>
+              {barGradients(`statsMo${gid}`)}
+              <CartesianGrid {...GRID} />
+              <XAxis dataKey="month" {...X_AXIS} tickFormatter={monthLabel} />
+              <YAxis {...Y_AXIS} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
+              <ReferenceLine {...ZERO_LINE} />
               <Tooltip
-                contentStyle={CHART_TOOLTIP}
-                cursor={CHART_CURSOR}
+                {...tooltipProps("bar")}
+                content={<GlassTooltip tone="pnl" footer={(r) => commonI18n.t("units.trades", { count: (r as { count: number }).count })} />}
                 labelFormatter={(l: string) => monthLabel(l)}
-                formatter={(v: number, _n, item) => [`${fmtValue(v, metric)} · ${commonI18n.t("units.tradesShort", { count: (item?.payload as { count: number }).count })}`, t("equity.result")]}
+                formatter={(v: number) => [fmtValue(v, metric), t("equity.result")]}
               />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={36} isAnimationActive={!reduce}>
-                {monthly.map((m) => <Cell key={m.month} fill={m.value >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"} />)}
+              <Bar dataKey="value" radius={BAR_RADIUS} maxBarSize={36} {...motion}>
+                {monthly.map((m, i) => <Cell key={m.month} fill={`url(#statsMo${gid}-${m.value >= 0 ? "up" : "down"})`} fillOpacity={focus.opacity(i)} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

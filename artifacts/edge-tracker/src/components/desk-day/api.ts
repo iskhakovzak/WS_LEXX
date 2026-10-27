@@ -140,3 +140,16 @@ export function useDayCandles(ticker: string, date: string, enabled = true) {
     meta: { i18n: false },
   });
 }
+
+/** GET /api/desk-day/top: the desk's most traded tickers of its last trading day on or before `upTo` (page prefill). */
+export type DeskDayTop = { date: string | null; items: { ticker: string; traders: number; trades: number; traded: boolean }[] };
+
+export function useDeskDayTop(upTo: string, enabled = true) {
+  return useQuery<DeskDayTop, ApiError>({
+    queryKey: ["desk-day", "top", upTo],
+    queryFn: ({ signal }) => http.get<DeskDayTop>("/api/desk-day/top", { query: { upTo }, signal }),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: noRetry,
+  });
+}

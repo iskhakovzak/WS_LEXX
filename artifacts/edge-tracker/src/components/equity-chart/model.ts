@@ -10,6 +10,7 @@
  * Then folded into weeks / months and enriched with the running peak and the underwater curve.
  */
 import { toWeekCandles, weekStart, type EquityCandle, type EquityUnit } from "@/components/equity-candles/lib";
+import { winRateOf } from "@/lib/trade-math";
 
 export type EquityAgg = "day" | "week" | "month";
 export type { EquityCandle, EquityUnit };
@@ -61,7 +62,7 @@ export function fromDashboardDays(days: DashboardDayLike[], unit: "net" | "r"): 
     const close = unit === "r" ? d.cumR : d.cumPnl;
     const c = blank(d.date.slice(0, 10), prev, close);
     c.trades = d.trades; c.wins = d.wins; c.losses = d.losses; c.be = d.be ?? 0;
-    c.winRate = d.wins + d.losses ? d.wins / (d.wins + d.losses) : null;
+    c.winRate = winRateOf(d.wins, d.losses);
     if (d.pnl != null) { c.net = d.pnl; c.gross = d.pnlGross; c.fees = Math.abs(d.fees ?? 0); }
     out.push(c);
     prev = close;
@@ -104,7 +105,7 @@ export function toMonthCandles(days: EquityCandle[]): EquityCandle[] {
       m.gross = m.gross == null && d.gross == null ? null : round((m.gross ?? 0) + (d.gross ?? 0));
       m.fees = round(m.fees + d.fees);
       m.trades += d.trades; m.wins += d.wins; m.losses += d.losses; m.be += d.be;
-      m.winRate = m.wins + m.losses ? m.wins / (m.wins + m.losses) : null;
+      m.winRate = winRateOf(m.wins, m.losses);
       m.peakIn = round(m.high - m.open);
       m.troughIn = round(m.low - m.open);
       if (d.best && (!m.best || d.best.value > m.best.value)) m.best = d.best;

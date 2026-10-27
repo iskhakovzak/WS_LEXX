@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Link } from "wouter";
 import {
-  Ban, BookOpen, CalendarCheck, Download, Flame, KeyRound, MoreHorizontal, Search, ShieldAlert, UserCheck, UserCog, Users,
+  Ban, BookOpen, CalendarCheck, Download, Flame, KeyRound, MoreHorizontal, ShieldAlert, UserCheck, UserCog, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
@@ -13,12 +13,13 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { QueryError } from "@/components/query-error";
 import {
-  DataTable, EmptyState, FilterChip, Kbd, Panel, Pill, ProgressRing, SortableTh, StatRow, useTableSort, type Tone,
+  DataTable, EmptyState, FilterChip, Panel, Pill, ProgressRing, SortableTh, StatRow, Toolbar, useTableSort, type Tone,
 } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { VirtualRows } from "@/components/ds/virtual";
 import { cn } from "@/lib/utils";
 import { ActivityStrip } from "./ActivityStrip";
-import { downloadCsv, isTypingTarget, roleLabel, timeAgo, type DeskPulse, type PulseUser } from "./api";
+import { downloadCsv, roleLabel, timeAgo, type DeskPulse, type PulseUser } from "./api";
 import { useUserActions } from "./useUserActions";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 import { fmtDate } from "@/lib/format";
@@ -126,7 +127,10 @@ export function TradersTable({
   filter: filterProp,
   onFilterChange,
   riskStatus,
+  viewSwitch,
 }: {
+  /** The people tab's view switch (Управление / Активность): the one Segmented of this toolbar. */
+  viewSwitch?: ReactNode;
   /** trader → risk-desk status; undefined when /api/risk/desk is unavailable (column hidden). */
   riskStatus?: Map<string, RiskStatus>;
   actor: string;
@@ -150,20 +154,9 @@ export function TradersTable({
   };
   const { t } = adminI18n.useT();
   const [q, setQ] = useState("");
-  const [openName, setOpenName] = useState<string | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [openParam, setOpenName] = useSearchParam("person", ""); // ?person= — the open card survives a reload
+  const openName = openParam || null;
   const actions = useUserActions(actor, onChange);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && !isTypingTarget(e.target) && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const users = pulse?.users ?? [];
   const counts = useMemo(() => {
@@ -242,31 +235,12 @@ export function TradersTable({
   const violationsAvailable = pulse?.violationsAvailable ?? false;
 
   return (
-    <Panel
-      title={t("activity.title")}
-      description={pulse ? t("activity.description", { date: pulse.date }) : undefined}
-      icon={Users}
-      actions={
-        <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}>
-          <Download /> CSV
-        </Button>
-      }
-    >
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <div className="relative w-full lg:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              ref={searchRef}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
-              placeholder={t("activity.searchPlaceholder")}
-              aria-label={t("activity.searchPlaceholder")}
-              className="pl-9 pr-10"
-            />
-            <Kbd className="absolute right-3 top-1/2 -translate-y-1/2">/</Kbd>
-          </div>
+    <>
+    <Toolbar>
+      <ToolbarSearch value={q} onChange={setQ} placeholder={t("activity.searchPlaceholder")} />
+      {viewSwitch}
+      <FiltersButton count={filter !== "all" ? 1 : 0} onReset={() => setFilter("all")} resultCount={rows.length}>
+        <FilterSection title={t("activity.filterAria")}>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("activity.filterAria")}>
             {FILTERS.filter((f) => !SIGNAL_FILTERS.has(f) || counts[f] > 0 || filter === f).map((f) => (
               <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={counts[f]} className="shrink-0">
@@ -274,7 +248,19 @@ export function TradersTable({
               </FilterChip>
             ))}
           </div>
-        </div>
+        </FilterSection>
+      </FiltersButton>
+      <span className="ml-auto" />
+      {users.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{t("shownOf", { shown: rows.length, total: users.length })}</span>}
+      {rows.length > 0 && <Button variant="ghost" size="sm" onClick={exportCsv}><Download /> CSV</Button>}
+    </Toolbar>
+    <ActiveFilters items={[filter !== "all" && { key: "filter", label: t(`activity.filter.${filter}`), onRemove: () => setFilter("all") }]} />
+    <Panel
+      title={t("activity.title")}
+      description={pulse ? t("activity.description", { date: pulse.date }) : undefined}
+      icon={Users}
+    >
+      <div className="flex flex-col gap-3">
 
         {error ? (
           <QueryError error={error} onRetry={onRetry} />
@@ -382,6 +368,7 @@ export function TradersTable({
       />
       {actions.dialog}
     </Panel>
+    </>
   );
 }
 

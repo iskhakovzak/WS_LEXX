@@ -60,6 +60,7 @@ import { AppError, conflict, forbidden, notFound, sendError, unauthorized, type 
 import { ruCohorts } from "../lib/academyI18n";
 import { DEMO, DEMO_URL } from "../lib/academyCohortsDemo";
 import { langOf, type Lang, type Params } from "../i18n";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 const router: IRouter = Router();
 
@@ -703,16 +704,26 @@ router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   if (b.room !== undefined) set("room", b.room || null);
   if (b.meetingUrl !== undefined) set("meeting_url", cleanUrl(b.meetingUrl));
   if (!sets.length) return badRequest(res, "NO_FIELDS");
+  // One transaction: an end before the start is refused AND not stored (it used to be saved, then answered 400).
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query<CohortRow>(
+    await client.query("BEGIN");
+    const { rows } = await client.query<CohortRow>(
       `UPDATE academy_cohorts c SET ${sets.join(", ")}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, params);
-    if (!rows[0]) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
     const r = rows[0];
-    if (r.starts_on && r.ends_on && r.ends_on < r.starts_on) return badRequest(res, "DATE_RANGE_INVALID");
+    if (!r || (r.starts_on && r.ends_on && r.ends_on < r.starts_on)) {
+      await client.query("ROLLBACK");
+      if (!r) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
+      return badRequest(res, "DATE_RANGE_INVALID");
+    }
+    await client.query("COMMIT");
     res.json(mapCohort(r));
   } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
     if (err?.code === "23505") { sendError(res, conflict("COHORT_NAME_TAKEN")); return; }
     throw err;
+  } finally {
+    client.release();
   }
 }));
 
@@ -1157,6 +1168,7 @@ router.post("/academy/one-on-ones", asyncHandler(async (req, res) => {
   );
   const items = [];
   for (const a of b.actionItems) items.push(mapAction(await insertAction(b.student, a, rows[0].id, v.me)));
+  await logInterventionSafe({ trader: b.student, kind: "one_on_one", author: v.me, params: { format: b.format }, startedOn: nyDate(new Date(b.metAt)), sourceTable: "academy_one_on_ones", sourceId: rows[0].id });
   res.status(201).json({ ...mapMeeting(rows[0], true), actionItems: items });
 }));
 

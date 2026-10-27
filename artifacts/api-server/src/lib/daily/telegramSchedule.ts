@@ -36,6 +36,9 @@ export function weekdayCronAt(minutes: number): string {
   return `${m % 60} ${Math.floor(m / 60)} * * 1-5`;
 }
 
+/** Curator evening digest (roadmap R3, lib/curatorDigest): curator.digestTime, weekdays NY. */
+export const curatorDigestCron = (): string => weekdayCronAt(minutesOf(setting("curator.digestTime"), SETTINGS["curator.digestTime"].default));
+
 export const morningCron = (): string => weekdayCronAt(morningSendMinutes());
 export const eveningCron = (): string => weekdayCronAt(eveningSendMinutes());
 

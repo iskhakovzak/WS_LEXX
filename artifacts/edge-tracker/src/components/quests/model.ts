@@ -5,7 +5,9 @@
  */
 import type { Params } from "@/i18n/core";
 import { questsI18n } from "@/i18n/ns/quests";
-import type { Achievement, AchievementCategory, AchievementTier, AchievementTierState, Quest, QuestScope, QuestsMe, TextItem } from "@/lib/quests/types";
+import { academyPathI18n } from "@/i18n/ns/academyPath";
+import { sliceLabel } from "@/components/shared/edge-map/model";
+import type { Achievement, AchievementCategory, AchievementItem, AchievementTier, AchievementTierState, Quest, QuestScope, QuestsMe, TextItem } from "@/lib/quests/types";
 import { addDays } from "@/lib/trading-date";
 
 export const SCOPE_ORDER: readonly QuestScope[] = ["onboarding", "curator", "daily", "weekly", "monthly"];
@@ -19,7 +21,7 @@ const stepOrder = (template: string) => {
   return i < 0 ? ONBOARDING_ORDER.length : i;
 };
 export const TIER_ORDER: readonly AchievementTier[] = ["bronze", "silver", "gold", "platinum"];
-export const CATEGORY_ORDER: readonly AchievementCategory[] = ["discipline", "review", "focus", "risk", "planning", "learning", "growth"];
+export const CATEGORY_ORDER: readonly AchievementCategory[] = ["discipline", "risk", "review", "focus", "planning", "records", "leaks", "mastery", "learning", "growth", "social"];
 
 // ─── texts ──────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,9 @@ function cleanParams(p: TextItem["params"], extra: Params): Params {
   const out: Params = { ...extra };
   for (const [k, v] of Object.entries(p ?? {})) if (v != null) out[k] = v;
   if (out.count == null && out.target != null) out.count = out.target;
+  // Dynamic lines (achievements v2) carry codes: an edge-map slice key, an academy-path metric.
+  if (typeof out.slice === "string" && out.slice.includes(":")) out.slice = sliceLabel(out.slice);
+  if (typeof out.metric === "string") out.metric = academyPathI18n.tryT(`metrics.${out.metric}.label`) ?? out.metric;
   return out;
 }
 
@@ -166,6 +171,7 @@ export function sortAchievements(list: readonly Achievement[]): Achievement[] {
   return [...list].sort((a, b) =>
     CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
     || Number(isHidden(a)) - Number(isHidden(b))
+    || STATUS_ORDER.indexOf(achievementStatus(a)) - STATUS_ORDER.indexOf(achievementStatus(b))
     || rank(b) - rank(a)
     || achievementPct(b) - achievementPct(a)
     || a.id.localeCompare(b.id));
@@ -173,4 +179,43 @@ export function sortAchievements(list: readonly Achievement[]): Achievement[] {
 
 export function categoriesOf(list: readonly Achievement[]): AchievementCategory[] {
   return CATEGORY_ORDER.filter((c) => list.some((a) => a.category === c));
+}
+
+// ─── achievements v2: status, «ещё N …», items ──────────────────────────────
+
+export type AchievementStatus = "earned" | "progress" | "locked";
+const STATUS_ORDER: readonly AchievementStatus[] = ["earned", "progress", "locked"];
+
+/** Earned = a tier is held; in progress = some progress toward the next tier; locked = nothing yet. */
+export function achievementStatus(a: Pick<Achievement, "tier" | "current" | "tiers" | "items">): AchievementStatus {
+  if (a.tier) return "earned";
+  if (a.current > 0 || (a.items ?? []).some((i) => i.state === "open")) return "progress";
+  return "locked";
+}
+
+/** «ещё 2 дня» for the next tier (null when every tier is earned). */
+export function leftText(a: Pick<Achievement, "unit" | "current" | "tiers">): string | null {
+  const next = nextTier(a);
+  if (!next) return null;
+  const left = Math.max(1, next.target - a.current);
+  return questsI18n.tryT(`achievements.left.${a.unit ?? "count"}`, { count: left }) ?? null;
+}
+
+export function shelfSummary(list: readonly Achievement[]): Record<AchievementStatus, number> {
+  const out: Record<AchievementStatus, number> = { earned: 0, progress: 0, locked: 0 };
+  for (const a of list) out[achievementStatus(a)]++;
+  return out;
+}
+
+/** «Ближайшая победа: Разбор без пропусков — ещё 2 дня». */
+export function nearestText(me: Pick<QuestsMe, "nearest">): string | null {
+  const n = me.nearest;
+  if (!n) return null;
+  const title = textOf(n.title, `ach.${n.id}.title`) ?? questsI18n.t("ach.fallback");
+  const left = questsI18n.tryT(`achievements.left.${n.unit}`, { count: n.left }) ?? String(n.left);
+  return questsI18n.t("nearest.label", { title, left });
+}
+
+export function itemLabel(i: AchievementItem): string {
+  return textOf(i.label, null) ?? i.key;
 }

@@ -236,6 +236,8 @@ export default {
     avgCompare: "сделка с нарушением в среднем {broken} против {clean}",
   },
   violations: {
+    ruleTitle: "Правило",
+    archiveChip: "С архивом",
     filters: { all: "Все", open: "Новые", acknowledged: "Принятые", resolved: "Решённые" },
     showArchive: "Показать архив",
     archiveEmpty: "В архиве пусто",
@@ -281,6 +283,8 @@ export default {
     reopen: "Вернуть в работу",
   },
   log: {
+    catsTitle: "Категория",
+    moreActions: "Ещё действия с записью",
     deleted: "Запись удалена",
     restoreAlt: "Вернуть запись",
     restoreFailed: "Не удалось вернуть запись",

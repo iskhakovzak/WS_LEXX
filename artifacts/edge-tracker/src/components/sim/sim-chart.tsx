@@ -147,7 +147,7 @@ export function SimChart({
     const theme = readChartTheme();
     const chart = createChart(el, {
       width: el.clientWidth || 600, height: el.clientHeight || 480,
-      layout: { background: { color: "transparent" }, textColor: theme.muted(), fontFamily: theme.font, fontSize: 11, attributionLogo: false },
+      layout: { background: { color: "transparent" }, textColor: theme.muted(), fontFamily: theme.font, fontSize: 12, attributionLogo: false },
       grid: { vertLines: { color: theme.border(theme.dark ? 0.22 : 0.35) }, horzLines: { color: theme.border(theme.dark ? 0.22 : 0.35) } },
       timeScale: {
         timeVisible: intraday, secondsVisible: false, borderColor: theme.border(), rightOffset: 14, barSpacing: intraday ? 7 : 8, minBarSpacing: 1,

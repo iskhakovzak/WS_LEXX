@@ -31,6 +31,33 @@ export interface DailyChallengeState {
   window?: { from: { date: string; time: string }; until: { date: string; time: string }; open: boolean };
 }
 
+/** «Контекст дня» of a trainer exercise (server lib/sim/context.ts DayContext; catalyst rules lib/sim/catalyst.ts). */
+export interface TrainerCatalyst {
+  kind: "earnings" | "news";
+  source: "earnings" | "news" | "event" | "big7" | "analyst";
+  /** After the previous close / before the open / during the session; null = unknown. */
+  timing: "prevAfter" | "pre" | "session" | null;
+  /** Before the reveal: the headline with the ticker, company names and dates masked («***»), or null (generic text). */
+  headline: string | null;
+  publisher: string | null;
+  /** Analyst action: up / down / init, or "targets" = several firms moved their targets (firms = how many). */
+  analyst: { action: string; firm: string | null; from: string | null; to: string | null; firms?: number } | null;
+  /** After the reveal only. */
+  full: { headline: string | null; at: string | null; url: string | null } | null;
+}
+
+export interface TrainerDayContext {
+  /** Gap % vs the previous close: premarket price (gapAt "pre") or the open ("open"). */
+  gapPct: number | null;
+  gapAt: "pre" | "open";
+  minGapPct: number;
+  catalysts: TrainerCatalyst[];
+  /** usd: 2 significant digits, null before the reveal for a mega cap; basis "day" = shares × the previous close. */
+  cap: { usd: number | null; bucket: "nano" | "micro" | "small" | "mid" | "large" | "mega"; basis: "day" | "now" } | null;
+  floatShares: number | null;
+  pmVolume: number | null;
+}
+
 export interface FindEntryDrill {
   id: number;
   setupId: number;
@@ -42,6 +69,12 @@ export interface FindEntryDrill {
   bars: { t: number; o: number; h: number; l: number; c: number; v: number }[];
   /** The window (bar indices) in which the entry should be picked. */
   window: { from: number; to: number };
+  /** «Контекст дня» + the daily chart before the day (fake dates); absent on older servers. */
+  context?: {
+    day: TrainerDayContext;
+    daily: { t: number; o: number; h: number; l: number; c: number; v: number }[];
+    levels: { pdc: number | null; hi52: number | null; lo52: number | null };
+  };
 }
 
 export interface FindEntryAnswer {
@@ -52,6 +85,8 @@ export interface FindEntryAnswer {
   revealed: { ticker: string; date: string; source: "playbook_example" | "desk_trade" };
   barsAfter: { t: number; o: number; h: number; l: number; c: number; v: number }[];
   masteryDelta: number;
+  /** «Контекст дня» with the full catalyst text; absent on older servers. */
+  context?: { day: TrainerDayContext };
 }
 
 /** GET /api/trainer/home */
@@ -79,4 +114,6 @@ export interface ChartDrawing {
   points: { t: number; p: number }[]; // unix seconds + price
   label?: string | null;
   color?: "accent" | "up" | "down" | "warn" | null; // theme roles, not hex
+  /** The trade a note belongs to (/chart-lab notes); absent = the ticker in general. */
+  tradeId?: number | null;
 }

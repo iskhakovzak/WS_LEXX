@@ -1,8 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
+import {
+  BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, REF_LINE, X_AXIS, Y_AXIS, tint, tooltipProps, useChartMotion,
+} from "@/components/shared/charts";
 import {
   Brain, Lightbulb, TrendingUp, TrendingDown, Minus, Moon, Activity, Gauge, CalendarDays, RefreshCw, Sparkles,
 } from "lucide-react";
@@ -11,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, periodRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { type AnalyticsFilters, filtersRange } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
@@ -75,21 +78,26 @@ export function PsychologyTab({
   isOwn,
   filters,
   trades,
+  behaviorLink,
 }: {
   userId: string;
   isOwn: boolean;
   filters: AnalyticsFilters;
   trades: Trade[];
+  /** The link card to /behavior with the same slice (it replaces the behaviour block this tab used to copy). */
+  behaviorLink?: ReactNode;
 }) {
   const { t } = analyticsI18n.useT();
+  const motion = useChartMotion();
   const params = useMemo(() => {
     const sp = new URLSearchParams({ userId });
-    const r = periodRange(filters.period);
+    const r = filtersRange(filters);
     if (r) { sp.set("from", r.from); sp.set("to", r.to); }
     if (filters.side) sp.set("side", filters.side);
     if (filters.ticker) sp.set("ticker", filters.ticker);
     if (filters.setup) sp.set("setup", filters.setup);
     if (filters.horizon) sp.set("horizon", filters.horizon);
+    if (filters.facets) new URLSearchParams(filters.facets).forEach((v, k) => sp.set(k, v)); // «Разрезы»
     return sp.toString();
   }, [userId, filters]);
 
@@ -141,7 +149,6 @@ export function PsychologyTab({
   const ranked = psych.rankedInsights ?? [];
   const maxImpact = Math.max(0.01, ...ranked.map((i) => i.impact));
   const factors = psych.factors ?? [];
-  const behavior = psych.behavior ?? [];
   const useR = (cov?.tradesWithR ?? 0) >= (cov?.tradesWithPnl ?? 0);
   const convCorr = useR ? psych.convictionRCorrelation : psych.convictionPnlCorrelation ?? psych.convictionRCorrelation;
   const gradeCorr = useR ? psych.confidenceRCorrelation : psych.confidencePnlCorrelation ?? psych.confidenceRCorrelation;
@@ -150,7 +157,7 @@ export function PsychologyTab({
   const nothing = (cov?.trades ?? 0) === 0 && psych.recentCheckins.length === 0;
 
   return (
-    <div className={cn("flex flex-col gap-4 sm:gap-5 transition-opacity", isFetching && "opacity-70")}>
+    <div className={cn("flex flex-col gap-section transition-opacity", isFetching && "opacity-70")}>
       {!isOwn && (
         <p className="text-sm text-muted-foreground">{t("psych.ofTrader", { name: personName(userId) })}</p>
       )}
@@ -173,7 +180,7 @@ export function PsychologyTab({
         />
         <StatCard
           label={t("psych.withGrade")}
-          value={cov?.tradesWithGrade ?? 0}
+          value={cov ? cov.tradesWithGrade : "—"}
           hint={cov && cov.trades ? t("psych.gradeShare", { share: fmtRate(cov.tradesWithGrade / cov.trades) }) : undefined}
           icon={Sparkles}
         />
@@ -238,44 +245,40 @@ export function PsychologyTab({
             )}
           </Panel>
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
-            <ComparisonPanel
-              icon={Moon}
-              title={t("psych.wellbeing")}
-              description={t("psych.wellbeingHint")}
-              rows={factors}
-              empty={t("psych.wellbeingEmpty")}
-            />
-            <ComparisonPanel
-              icon={Activity}
-              title={t("psych.behavior")}
-              description={t("psych.behaviorHint")}
-              rows={behavior}
-              empty={t("psych.behaviorEmpty")}
-            />
-          </div>
+          {/* Behaviour without check-ins (after a loss, busy days…) is /behavior's job: one link card with the same slice. */}
+          <ComparisonPanel
+            icon={Moon}
+            title={t("psych.wellbeing")}
+            description={t("psych.wellbeingHint")}
+            rows={factors}
+            empty={t("psych.wellbeingEmpty")}
+          />
+          {behaviorLink}
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
             <Panel icon={Gauge} title={t("psych.conviction")} description={t("psych.convictionHint")}>
               {hasConviction ? (
                 <div className="h-[230px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={psych.byConviction.map((d) => ({ ...d, level: `${d.conviction}★`, wr: d.winRate == null ? null : Math.round(d.winRate * 100) }))} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                      <XAxis dataKey="level" {...AXIS} />
-                      <YAxis {...AXIS} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
-                      <ReferenceLine y={50} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                    <BarChart data={psych.byConviction.map((d) => ({ ...d, level: `${d.conviction}★`, wr: d.winRate == null ? null : Math.round(d.winRate * 100) }))} margin={MARGIN}>
+                      <CartesianGrid {...GRID} />
+                      <XAxis dataKey="level" {...X_AXIS} />
+                      <YAxis {...Y_AXIS} width={40} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
+                      <ReferenceLine y={50} {...REF_LINE} />
                       <Tooltip
-                        contentStyle={CHART_TOOLTIP_STYLE}
-                        cursor={CHART_CURSOR}
+                        {...tooltipProps("bar")}
+                        content={<GlassTooltip footer={(r) => {
+                          const d = r as { count: number; avgR?: number | null };
+                          return d.count ? `${commonI18n.t("units.trades", { count: d.count })}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : null;
+                        }} />}
                         formatter={(v: number, _n, item) => {
-                          const d = item.payload as { count: number; wr: number | null; avgR?: number | null };
-                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${commonI18n.t("units.trades", { count: d.count })}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : t("psych.noTrades"), commonI18n.t("trading.winRate")];
+                          const d = item.payload as { count: number; wr: number | null };
+                          return [d.count ? (d.wr == null ? "—" : `${v}%`) : t("psych.noTrades"), commonI18n.t("trading.winRate")];
                         }}
                       />
-                      <Bar dataKey="wr" radius={[6, 6, 0, 0]} isAnimationActive={false}>
+                      <Bar dataKey="wr" radius={BAR_RADIUS} {...motion}>
                         {psych.byConviction.map((d) => (
-                          <Cell key={d.conviction} fill={d.winRate == null ? "hsl(var(--muted-foreground))" : d.winRate >= 0.5 ? "hsl(var(--up))" : "hsl(var(--down))"} fillOpacity={d.count < 3 ? 0.4 : 0.9} />
+                          <Cell key={d.conviction} fill={d.winRate == null ? CHART.neutral : d.winRate >= 0.5 ? CHART.up : CHART.down} fillOpacity={d.count < 3 ? 0.4 : 1} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -299,18 +302,19 @@ export function PsychologyTab({
             <Panel icon={CalendarDays} title={t("psych.byMonth")} description={t("psych.byMonthHint")}>
               <div className="h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={psych.emotionalByMonth} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                    <XAxis dataKey="month" {...AXIS} tickFormatter={monthTick} />
-                    <YAxis {...AXIS} allowDecimals={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} labelFormatter={(l: string) => monthTick(l)} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} iconSize={10} iconType="circle" />
-                    <Bar dataKey="sleepWell" name={t("psych.state.sleepWell")} stackId="a" fill="hsl(var(--chart-1))" isAnimationActive={false} />
-                    <Bar dataKey="focused" name={t("psych.state.focused")} stackId="a" fill="hsl(var(--up))" isAnimationActive={false} />
-                    <Bar dataKey="stressed" name={t("psych.state.stressed")} stackId="a" fill="hsl(var(--chart-3))" isAnimationActive={false} />
-                    <Bar dataKey="anxious" name={t("psych.state.anxious")} stackId="a" fill="hsl(var(--chart-5))" isAnimationActive={false} />
-                    <Bar dataKey="tilted" name={t("psych.state.tilted")} stackId="a" fill="hsl(var(--chart-4))" isAnimationActive={false} />
-                    <Bar dataKey="revenge" name={t("psych.state.revenge")} stackId="a" fill="hsl(var(--down))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  <BarChart data={psych.emotionalByMonth} margin={MARGIN}>
+                    <CartesianGrid {...GRID} />
+                    <XAxis dataKey="month" {...X_AXIS} tickFormatter={monthTick} />
+                    <YAxis {...Y_AXIS} width={32} allowDecimals={false} />
+                    <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} labelFormatter={(l: string) => monthTick(l)} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} iconSize={8} iconType="circle" />
+                    {/* Good states in the profit hue, strained ones in warn / loss hues: polarity + strength, fixed order. */}
+                    <Bar dataKey="sleepWell" name={t("psych.state.sleepWell")} stackId="a" fill={tint("up", 0.5)} stroke={CHART.surface} strokeWidth={1} {...motion} />
+                    <Bar dataKey="focused" name={t("psych.state.focused")} stackId="a" fill={CHART.up} stroke={CHART.surface} strokeWidth={1} {...motion} />
+                    <Bar dataKey="stressed" name={t("psych.state.stressed")} stackId="a" fill={tint("warn", 0.55)} stroke={CHART.surface} strokeWidth={1} {...motion} />
+                    <Bar dataKey="anxious" name={t("psych.state.anxious")} stackId="a" fill={tint("warn", 1)} stroke={CHART.surface} strokeWidth={1} {...motion} />
+                    <Bar dataKey="tilted" name={t("psych.state.tilted")} stackId="a" fill={tint("down", 0.55)} stroke={CHART.surface} strokeWidth={1} {...motion} />
+                    <Bar dataKey="revenge" name={t("psych.state.revenge")} stackId="a" fill={CHART.down} stroke={CHART.surface} strokeWidth={1} radius={BAR_RADIUS} {...motion} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

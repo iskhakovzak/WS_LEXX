@@ -21,7 +21,7 @@ import { netPnl, signedR } from "@/lib/trade-math";
 import { nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { LISTS, LIST_LABELS, SCORE_LABELS, copyText, inPlayReasons, keyLevels, parseBreakdown, rowWritable, splitTags, type ListName, type WatchlistItem } from "./lib";
+import { LISTS, LIST_LABELS, SCORE_LABELS, copyText, fmtRvol, inPlayReasons, keyLevels, parseBreakdown, rowWritable, splitTags, type ListName, type WatchlistItem } from "./lib";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 import { commonI18n } from "@/i18n/ns/common";
 import { ScoreRing } from "./visuals";
@@ -226,7 +226,7 @@ export function WatchlistDetailSheet({
             <div className="grid grid-cols-3 gap-x-5 whitespace-nowrap rounded-2xl bg-[var(--glass-bg)] px-4 py-2 sm:grid-cols-[repeat(4,auto)_minmax(0,1fr)]">
               <StatRow label={t("sheet.gap")} value={fmtPct(q?.gapPct, 1)} tone={toneOf(q?.gapPct)} className="flex-col items-start gap-0.5" />
               {q?.premarketPct != null && <StatRow label={t("sheet.premarket")} value={fmtPct(q.premarketPct, 1)} tone={toneOf(q.premarketPct)} className="flex-col items-start gap-0.5" />}
-              <StatRow label="rVol" value={q?.relativeVolume != null ? `${q.relativeVolume.toFixed(2)}×` : "—"} tone={q?.relativeVolume != null && q.relativeVolume >= 1.5 ? "accent" : "neutral"} className="flex-col items-start gap-0.5" />
+              <StatRow label="rVol" value={fmtRvol(q?.relativeVolume, 2)} tone={q?.relativeVolume != null && q.relativeVolume >= 1.5 ? "accent" : "neutral"} className="flex-col items-start gap-0.5" />
               <StatRow label={t("sheet.atr14")} value={q?.atr != null ? `${fmtPrice(q.atr)}${q.price ? ` · ${fmtPct((q.atr / q.price) * 100, { decimals: 1, signed: false })}` : ""}` : "—"} className="flex-col items-start gap-0.5" />
               <StatRow label={t("sheet.volume")} value={`${fmtCompact(q?.volume)} / ${fmtCompact(q?.avgVolume)}`} className="flex-col items-start gap-0.5" />
               <StatRow label={t("sheet.w52")} value={q?.low52w != null && q?.high52w != null ? `${fmtPrice(q.low52w)}–${fmtPrice(q.high52w)}` : "—"} className="hidden flex-col items-start gap-0.5 sm:flex" />

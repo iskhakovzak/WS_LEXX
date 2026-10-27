@@ -88,7 +88,7 @@ export function FeedEditorDialog({ open, onOpenChange, form, setForm, editing, s
           <DialogTitle>{editing ? t("editor.titleEdit") : t("editor.titleNew")}</DialogTitle>
           <DialogDescription>{t("editor.description")}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[160px_1fr]">
           <div className="space-y-1.5">
             <Label htmlFor="feed-date">{t("editor.date")}</Label>
             <Input id="feed-date" type="date" required aria-invalid={!form.date} value={form.date} onChange={(e) => set("date", e.target.value)} />
@@ -102,7 +102,7 @@ export function FeedEditorDialog({ open, onOpenChange, form, setForm, editing, s
           <Label htmlFor="feed-tickers">{t("editor.tickers")}</Label>
           <Input id="feed-tickers" value={form.bestTickers} onChange={(e) => set("bestTickers", e.target.value)} placeholder="NVDA, META, MSFT" className="uppercase" />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <div className="flex min-h-8 items-center justify-between gap-2">
               <Label htmlFor="feed-works" className="text-up">{t("editor.works")}</Label>

@@ -175,7 +175,7 @@ export default {
     preTitle: "Premarketdagi oʻzgarish (yopilishga nisbatan)",
     postTitle: "Yopilishdan keyingi oʻzgarish",
     noReaction: "Hali reaksiya yoʻq",
-    inWatchlist: "kuzatuv roʻyxatida",
+    inWatchlist: "kuzatuvda",
     addTitle: "{ticker} ni «Bugun» kuzatuv roʻyxatiga qoʻshish",
     addToToday: "«Bugun»ga",
     more: "Yana {count}",

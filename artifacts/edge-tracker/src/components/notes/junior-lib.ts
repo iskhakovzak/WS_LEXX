@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { fmtRelative } from "@/lib/format";
 import { notesI18n } from "@/i18n/ns/notes";
 import { comparePersonNames } from "@/i18n";
@@ -234,28 +233,6 @@ const builtin = (id: BuiltinId): Template => ({
 });
 export const BUILTIN_TEMPLATES: Template[] = [builtin("regular"), builtin("red"), builtin("carry"), builtin("flat")];
 
-const MY_TEMPLATE_KEY = "ws_lexx_junior_template";
-
-export function loadMyTemplate(): Template | null {
-  try {
-    const raw = localStorage.getItem(MY_TEMPLATE_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as Sections;
-    return s && typeof s === "object" ? { id: "mine", get label() { return notesI18n.t("myTemplate"); }, sections: s } : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveMyTemplate(s: Sections): boolean {
-  try {
-    localStorage.setItem(MY_TEMPLATE_KEY, JSON.stringify(s));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Fills only empty sections so a template never overwrites what the trader already wrote. */
 export function applyTemplate(current: Sections, t: Template): Sections {
   const next = { ...current };
@@ -388,26 +365,7 @@ export function builtinSnippets(): string[] {
   return SNIPPET_KEYS.map((k) => notesI18n.t(`junior.snippets.${k}`));
 }
 
-const SNIPPETS_KEY = "ws_lexx_junior_snippets";
 const MAX_SNIPPETS = 10;
-
-export function loadMySnippets(): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SNIPPETS_KEY) ?? "[]") as unknown;
-    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, MAX_SNIPPETS) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveMySnippets(list: string[]): boolean {
-  try {
-    localStorage.setItem(SNIPPETS_KEY, JSON.stringify(list.slice(0, MAX_SNIPPETS)));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** Adds a personal snippet on top (deduplicated, trimmed, capped). */
 export function addSnippet(list: readonly string[], text: string): string[] {
@@ -505,15 +463,3 @@ export function daysSince(iso: string, today = localToday()): number {
   return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, Math.round((b - a) / 86_400_000)) : 0;
 }
 
-/* ───────────────────────── Chart styling ───────────────────────── */
-
-export const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};

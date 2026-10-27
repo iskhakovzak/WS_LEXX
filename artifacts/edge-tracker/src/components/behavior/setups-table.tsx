@@ -6,7 +6,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { Check, CheckCheck, ChevronDown, ChevronRight, RefreshCw, Sparkles, X } from "lucide-react";
-import { DataTable, EmptyState, Pill, SortableTh, toneOf, toneText, useTableSort } from "@/components/ds";
+import { DataTable, EmptyState, Pill, SortableTh, toneOf, toneText, useTableSort, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -125,7 +125,7 @@ function ConfidenceBar({ v }: { v: number }) {
 const PAGE = 100;
 
 export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }: { items: SetupItem[]; canEdit: boolean; onlyUntagged?: boolean; onShowAll?: () => void }) {
-  const [filter, setFilter] = React.useState<"all" | "suggested" | "accepted" | "rejected" | "pending">("all");
+  const [filter, setFilter] = usePersistentState<"all" | "suggested" | "accepted" | "rejected" | "pending">("behavior.setups.filter", "all");
   const [open, setOpen] = React.useState<Set<number>>(() => new Set());
   const accept = useAcceptSetup();
   const reject = useRejectSetup();

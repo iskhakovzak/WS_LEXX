@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ArrowUpRight, Camera, CircleDashed, CircleCheck, NotebookPen, Users } from "lucide-react";
@@ -30,16 +31,17 @@ export function TraderPlans({ date }: { date: string }) {
   });
   const plans = useMemo(() => q.data?.plans ?? [], [q.data]);
   const missing = useMemo(() => [...(q.data?.missing ?? [])].sort(comparePersonNames), [q.data]);
-  const [sel, setSel] = useState<string | null>(null);
+  // The picked trader rides in ?trader= (kept on reload); without one, the first plan of the day.
+  const [selParam, setSel] = useSearchParam("trader", "");
+  const sel = selParam || null;
   useEffect(() => {
-    if (!plans.length) setSel(null);
-    else if (!sel || !plans.some((p) => p.trader === sel)) setSel(plans[0]!.trader);
-  }, [plans, sel]);
+    if (plans.length && (!sel || !plans.some((p) => p.trader === sel))) setSel(plans[0]!.trader);
+  }, [plans, sel, setSel]);
   const current = plans.find((p) => p.trader === sel) ?? null;
 
   if (q.isLoading)
     return (
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]" aria-busy="true" aria-label={t("traders.loading")}>
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]" aria-busy="true" aria-label={t("traders.loading")}>
         <Skeleton className="h-80 rounded-2xl" />
         <Skeleton className="h-96 rounded-2xl" />
       </div>
@@ -60,7 +62,7 @@ export function TraderPlans({ date }: { date: string }) {
   const ready = plans.filter((p) => p.status === "ready").length;
 
   return (
-    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]">
       <Panel
         title={t("traders.title")}
         icon={Users}

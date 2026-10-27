@@ -7,7 +7,6 @@
 export default {
   title: "Поведение и сетапы",
   description: "Где поведение стоит денег, что с этим делать и какой сетап стоит за сделкой. Правила без ИИ, деньги — нетто.",
-  period: { "30d": "30 дней", "90d": "90 дней", ytd: "С начала года", all: "Всё время" },
   periodAria: "Период",
   traderAria: "Трейдер",
   sectionsAria: "Разделы",
@@ -52,7 +51,7 @@ export default {
   dur: { seconds: "{count} с", minutes: "{count} мин", hm: "{h} ч {m} мин", days: "{value} д" },
   severity: { none: "не стоит денег", few: "мало случаев", low: "низкая", medium: "средняя", high: "высокая" },
   pattern: {
-    revenge: "реванш", martingale: "мартингейл", overtrading: "овертрейдинг", tilt: "тильт", chase: "отыгрыш",
+    revenge: "быстрый перезаход", martingale: "мартингейл", overtrading: "овертрейдинг", tilt: "тильт", chase: "отыгрыш",
     euphoria: "эйфория", fatigue: "усталость", disposition: "пересиживание", firstTrade: "первая сделка",
   },
   marker: { revenge: "Р", tilt: "Т", martingale: "М", euphoria: "Э", chase: "О", overtrading: "+", disposition: "П" },
@@ -202,6 +201,12 @@ export default {
   },
 
   aggregates: {
+    rowToggle: "Сделки сетапа «{setup}»: показать или скрыть",
+    drillTitle: "Сделки сетапа «{setup}»: {trades}",
+    drillAria: "Сделки сетапа «{setup}»",
+    drillOpen: "Открыть сделку {ticker} от {date}",
+    drillAll: "Все в Сделках",
+    drillHint: "Строка таблицы открывает свои сделки",
     few: "мало данных",
     fewTitle: "Меньше 5 сделок",
     edge: "edge",
@@ -219,7 +224,7 @@ export default {
     emptyPending: "Не посчитано {trades} — нажмите «Посчитать всё».",
     emptyNone: "Нет закрытых сделок за период.",
     aria: "Агрегаты по сетапу",
-    col: { setup: "Сетап", expectancy: "Ожидание / сделку · 95% ДИ", winRate: "Win rate · 95% ДИ", net: "Нетто", confidence: "Уверенность", verdict: "Вердикт" },
+    col: { setup: "Сетап", expectancy: "Ожидание / сделку · 95% ДИ", winRate: "Винрейт · 95% ДИ", net: "Нетто", confidence: "Уверенность", verdict: "Вердикт" },
     acceptedTitle: "Принято в {trades} — открыть в журнале",
     accepted: "принято {count}",
     smallTitle: "Меньше {n} сделок: интервалы широкие, выводы ненадёжны",
@@ -299,7 +304,7 @@ export default {
     fromPatternTitle: "Создан кнопкой «Сделать правилом» на карточке паттерна",
     fromPattern: "из паттерна «{pattern}»",
     editAria: "Изменить порог «{name}»",
-    deleteAria: "Удалить триггер «{name}»",
+    moreAria: "Ещё действия: {name}",
     save: "Сохранить",
     fires: { one: "За период сработал бы {count} раз в {days};", few: "За период сработал бы {count} раза в {days};", many: "За период сработал бы {count} раз в {days};", other: "За период сработал бы {count} раза в {days};" },
     under: "под триггером {trades} с нетто",

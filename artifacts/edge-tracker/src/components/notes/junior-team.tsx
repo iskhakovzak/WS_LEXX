@@ -383,7 +383,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         )}
 
         {teamQ.isLoading ? (
-          <div className="grid gap-3 md:grid-cols-2" aria-busy="true">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy="true">
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
           </div>
         ) : teamQ.isError ? (
@@ -395,7 +395,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
             description={date === today ? t("junior.team.notesAppear") : undefined}
           />
         ) : (
-          <ul className="grid gap-3 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {notes.map((n) => {
               const isSel = selected.has(n.id);
               const mayReview = canReview(n.trader);

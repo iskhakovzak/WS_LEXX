@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { MessageSquareText } from "lucide-react";
+import { TextSearch } from "lucide-react";
 import { ErrorState, Page, PageHeader, Panel } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { nyDate } from "@/lib/trading-date";
@@ -117,7 +117,7 @@ export default function AskPage() {
     <Page>
       <PageHeader
         title={t("page.title")}
-        icon={MessageSquareText}
+        icon={TextSearch}
         description={t("page.description")}
         meta={meta}
       />

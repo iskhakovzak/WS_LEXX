@@ -100,73 +100,16 @@ export function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// ─── localStorage ───────────────────────────────────────────────────────────
-export function ls<T>(key: string, fallback: T): T {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? (JSON.parse(v) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-export function lsSet(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota / private mode */ }
-}
-export function lsRaw(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
-}
-export function lsRawSet(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch { /* noop */ }
-}
-
-export const DAY_CHANGE_EVENT = "big7-day-change";
-export function notifyDayChange() {
-  try { window.dispatchEvent(new Event(DAY_CHANGE_EVENT)); } catch { /* noop */ }
-}
-
-export type Bias = "" | "bullish" | "bearish" | "neutral" | "watching";
-export type TickerDay = {
-  bias: Bias;
-  notes: string;
-  inPlay: boolean;
-  rs: number;
-  gapPct: string;
-  atr: string;
-  sessionScore: number;
-  sessionNotes: string;
-  openPrice: string;
-  prevClose: string;
-};
-export const DEFAULT_DAY: TickerDay = {
-  bias: "", notes: "", inPlay: false, rs: 0, gapPct: "", atr: "",
-  sessionScore: 0, sessionNotes: "", openPrice: "", prevClose: "",
-};
-export function getTickerDay(ticker: string): TickerDay {
-  return { ...DEFAULT_DAY, ...ls<Partial<TickerDay>>(`big7_day_${ticker}_${big7Today()}`, {}) };
-}
-export function updateTickerDayField<K extends keyof TickerDay>(ticker: string, key: K, val: TickerDay[K]): TickerDay {
-  const next = { ...getTickerDay(ticker), [key]: val };
-  lsSet(`big7_day_${ticker}_${big7Today()}`, next);
-  notifyDayChange();
-  return next;
-}
-
-export type TickerStats = { atr: string; avgVol: string; float: string; shortInt: string; sector: string };
-export function getTickerStats(ticker: string): TickerStats {
-  return { atr: "", avgVol: "", float: "", shortInt: "", sector: "", ...ls<Partial<TickerStats>>(`big7_stats_${ticker}`, {}) };
-}
-export function saveTickerStats(ticker: string, stats: TickerStats) {
-  lsSet(`big7_stats_${ticker}`, stats);
-  notifyDayChange();
-}
-
-export type MarketCtx = { spyBias: Bias; qqBias: Bias; vixLevel: string; marketNotes: string; gapDirection: string };
-export function getMarketContext(): MarketCtx {
-  return { spyBias: "", qqBias: "", vixLevel: "", marketNotes: "", gapDirection: "", ...ls<Partial<MarketCtx>>(`big7_market_${big7Today()}`, {}) };
-}
-export function saveMarketContext(ctx: MarketCtx) {
-  lsSet(`big7_market_${big7Today()}`, ctx);
-  notifyDayChange();
+// ─── the day's hot list (on the account: users.settings.prefs["big7.hot"]) ─────
+export type HotPref = { day: string; symbols: string[] };
+/** The account value { day, symbols } or the old browser copy (a bare list of the given day). */
+export function parseHotPref(v: unknown, today: string): HotPref | null {
+  const clean = (x: unknown) => (Array.isArray(x) ? [...new Set(x.filter((s): s is string => typeof s === "string").map((s) => s.toUpperCase()))].slice(0, 40) : null);
+  if (Array.isArray(v)) return { day: today, symbols: clean(v)! };
+  if (!v || typeof v !== "object") return null;
+  const p = v as Partial<HotPref>;
+  const symbols = clean(p.symbols);
+  return typeof p.day === "string" && symbols ? { day: p.day, symbols } : null;
 }
 
 export function parseTickerSymbols(raw: string): string[] {

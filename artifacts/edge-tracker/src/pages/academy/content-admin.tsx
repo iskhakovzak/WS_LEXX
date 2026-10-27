@@ -5,11 +5,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, Toolbar } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, SplitSkeleton, Toolbar, usePersistentState } from "@/components/ds";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { api, invalidateAcademy, stageLabel, useAcademyMeta, useAdminTree, type ItemKind } from "@/components/academy/content/api";
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
@@ -17,6 +17,18 @@ import { academyLinks } from "@/components/academy/content/links";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+
+const ITEM_KINDS: readonly ItemKind[] = ["lesson", "quiz", "assignment"];
+function parseNode(raw: string | null): Selection {
+  const [k, n] = (raw ?? "").split(":");
+  const id = Number(n);
+  if (!Number.isInteger(id) || id <= 0) return { type: "program" };
+  if (k === "module") return { type: "module", id };
+  return ITEM_KINDS.includes(k as ItemKind) ? { type: "item", kind: k as ItemKind, id } : { type: "program" };
+}
+function nodeOf(sel: Selection): string | null {
+  return sel.type === "module" ? `module:${sel.id}` : sel.type === "item" ? `${sel.kind}:${sel.id}` : null;
+}
 
 /**
  * /academy/content-admin — «Редактор курсов» (наставники / staff).
@@ -37,12 +49,14 @@ export default function AcademyContentAdmin() {
   const qc = useQueryClient();
   const { t } = academyI18n.useT();
 
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = usePersistentState("academy.contentAdmin.archived", false);
   const programParam = params.get("program");
   const creatingProgram = programParam === NEW;
   const programId = Number(programParam) || null;
   const tree = useAdminTree(creatingProgram ? null : programId, showArchived, isCurator || meta.data?.staff === true);
-  const [selection, setSelection] = useState<Selection>({ type: "program" });
+  // The open module / item rides in ?node= (module:12, lesson:5…): a reload reopens it; «new» forms are per visit.
+  const [selection, setSelectionState] = useState<Selection>(() => parseNode(new URLSearchParams(window.location.search).get("node")));
+  const setSelection = (sel: Selection) => { setSelectionState(sel); replaceSearchParams({ node: nodeOf(sel) }); };
   const [seeding, setSeeding] = useState(false);
 
   const setProgram = (id: number | typeof NEW) => {
@@ -69,7 +83,7 @@ export default function AcademyContentAdmin() {
     return (
       <Page>
         <Panel>
-          <EmptyState icon={ShieldAlert} title={t("admin.mentorsOnly")} description={t("admin.mentorsOnlyDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("admin.toLearning")}</Link></Button>} />
+          <EmptyState art="laurel" icon={ShieldAlert} title={t("admin.mentorsOnly")} description={t("admin.mentorsOnlyDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("admin.toLearning")}</Link></Button>} />
         </Panel>
       </Page>
     );
@@ -101,7 +115,7 @@ export default function AcademyContentAdmin() {
       : null;
   }
   if (!editor && program) {
-    editor = <Panel><EmptyState icon={PencilRuler} title={t("admin.notFound")} description={t("admin.notFoundDesc")} /></Panel>;
+    editor = <Panel><EmptyState art="scroll" icon={PencilRuler} title={t("admin.notFound")} description={t("admin.notFoundDesc")} action={<EmptyLink href={academyLinks.admin()}>{t("learn.openEditor")}</EmptyLink>} /></Panel>;
   }
 
   return (
@@ -141,25 +155,22 @@ export default function AcademyContentAdmin() {
       </Toolbar>
 
       {tree.isLoading || meta.isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-[32rem] rounded-2xl" /></div>
+        <SplitSkeleton side="360px" rows={8} detailHeight={512} />
       ) : tree.isError ? (
         <ErrorState error={tree.error} onRetry={tree.refetch} title={t("admin.contentFailed")} />
       ) : !programs.length && !creatingProgram ? (
         <Panel>
           <EmptyState
+            art="laurel"
             icon={GraduationCap}
             title={t("matrix.noPrograms")}
             description={t("admin.noProgramsDemo")}
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>
-                <Button variant="outline" onClick={() => setProgram(NEW)}><Plus aria-hidden="true" />{t("editor.program.new")}</Button>
-              </div>
-            }
+            action={<Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>}
+            secondaryAction={<Button variant="link" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setProgram(NEW)}><Plus aria-hidden="true" />{t("editor.program.new")}</Button>}
           />
         </Panel>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="flex flex-col gap-3 lg:sticky lg:top-[var(--sticky-top)] lg:max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] lg:overflow-y-auto lg:pr-0.5" aria-label={t("admin.structureAria")}>
             {program && (
               <>

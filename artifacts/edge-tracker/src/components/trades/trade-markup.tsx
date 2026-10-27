@@ -33,7 +33,7 @@ export function TradeMarkup({ trade: t, canEdit, onTag, onPatch }: {
   const mistakes = React.useMemo(() => codesOfWords(classifyTags(t.tags).mistakes), [t.tags]);
   const grade = (t.confidenceGrade ?? "").trim();
   const setupId = linkedPlaybookId(t);
-  const row = "grid gap-1.5 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:items-center";
+  const row = "grid grid-cols-1 gap-1.5 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:items-center";
   const label = "text-xs text-muted-foreground";
   return (
     <section className="space-y-3" aria-label={tt("sheet.markup")}>

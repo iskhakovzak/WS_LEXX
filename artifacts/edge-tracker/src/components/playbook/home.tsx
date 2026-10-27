@@ -17,7 +17,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ToastAction } from "@/components/ui/toast";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
-import { Panel, Pill, Segmented, SortableTh, toneText, useTableSort } from "@/components/ds";
+import { Panel, Pill, SortableTh, toneText, usePersistentState, useTableSort } from "@/components/ds";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { periodDays, periodWindow, type DayRange, type PeriodPreset } from "@/lib/period-range";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -32,7 +34,9 @@ import { commonI18n } from "@/i18n/ns/common";
 import { playbookI18n } from "@/i18n/ns/playbook";
 
 import { personName } from "@/i18n";
-type Days = "7" | "14" | "30";
+/** The inbox look-back (design audit wave 3: the app's period words; the API takes days 1…90 or ?from=). */
+const INBOX_PERIODS: readonly PeriodPreset[] = ["week", "month"];
+type InboxPeriod = "week" | "month" | "custom";
 
 const ACCESSORS = {
   date: (t: InboxTrade) => t.closeDate ?? t.date,
@@ -57,13 +61,23 @@ export function PlaybookInbox({ onNewSetup, day = null, tag = false }: {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [onlyDay, setOnlyDay] = React.useState<string | null>(day);
-  const [days, setDays] = React.useState<Days>(() => (day && day < addDays(nyDate(), -14) ? "30" : "14"));
+  const today = nyDate();
+  const [winStored, setWin] = usePersistentState<InboxPeriod>("playbook.inbox.win", "month");
+  const [custom, setCustom] = React.useState<DayRange | null>(null);
+  const win: InboxPeriod = winStored === "custom" && !custom ? "month" : winStored; // a custom range is per visit
+  const range = win === "custom" ? custom : periodWindow(win, today, null);
+  const days = Math.min(90, periodDays(win, custom) ?? 30);
   const todayQ = useQuery({ ...playbookTodayQuery(), enabled: tag });
   const period = tag ? todayQ.data?.untaggedPeriod ?? null : null;
-  const from = tag && !onlyDay ? period?.from ?? null : null;
-  const q = usePlaybookInbox(Number(days), !tag || !!onlyDay || !todayQ.isLoading, tag || !!onlyDay, from);
+  const from = tag && !onlyDay ? period?.from ?? null : win === "custom" ? custom?.from ?? null : null;
+  const q = usePlaybookInbox(days, !tag || !!onlyDay || !todayQ.isLoading, tag || !!onlyDay, from);
   const data = q.data;
-  const trades = React.useMemo(() => (data?.trades ?? []).filter((t) => !onlyDay || (t.closeDate ?? t.date).slice(0, 10) === onlyDay), [data, onlyDay]);
+  // «Период…»: the API reads ?from= to today, so the end of the range is applied here.
+  const to = !tag && win === "custom" ? custom?.to ?? null : null;
+  const trades = React.useMemo(
+    () => (data?.trades ?? []).filter((t) => { const d = (t.closeDate ?? t.date).slice(0, 10); return (!onlyDay || d === onlyDay) && (!to || d <= to); }),
+    [data, onlyDay, to],
+  );
   const { rows, thProps } = useTableSort<InboxTrade, SortKey>(trades, ACCESSORS, "date", "desc", { ticker: "asc", setup: "asc", suggestion: "asc" });
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [dialog, setDialog] = React.useState<{ ids: number[]; preset: number | null } | null>(null);
@@ -76,7 +90,7 @@ export function PlaybookInbox({ onNewSetup, day = null, tag = false }: {
   // Older API (no inbox) or nobody to review for (staff without own trades): hide the block entirely.
   if (data === null || (data && !data.trader)) return null;
   // Nothing to review in the default window: stay out of the way (switching the period still shows the empty line).
-  if (data && data.total === 0 && days === "14" && !day && !tag) return null;
+  if (data && data.total === 0 && win === "month" && !day && !tag) return null;
   if (q.isError) return null;
 
   const openOne = (t: InboxTrade) => setDialog({ ids: [t.id], preset: t.suggestion?.id ?? null });
@@ -131,7 +145,7 @@ export function PlaybookInbox({ onNewSetup, day = null, tag = false }: {
               ? tr("inbox.descUntaggedPeriod", { from: fmtDate(period.from, "dayMonthNumeric"), to: fmtDate(period.to, "dayMonthNumeric") })
               : tr("inbox.descEmpty")
           : data && data.total > 0
-            ? week > 0 && days !== "7"
+            ? week > 0 && win !== "week"
               ? tr("inbox.descWithWeek", { trades: commonI18n.t("units.trades", { count: week }) })
               : tr("inbox.descWithTrades")
             : tr("inbox.descEmpty")
@@ -141,7 +155,10 @@ export function PlaybookInbox({ onNewSetup, day = null, tag = false }: {
         <button type="button" onClick={() => setOnlyDay(null)} className="chip min-h-8 gap-1 px-2.5 text-xs" title={tr("inbox.allDays")}>
           {tr("inbox.onlyDay", { date: fmtDate(onlyDay, "dayMonthNumeric") })} <X className="h-3 w-3" aria-hidden="true" />
         </button>
-      )}{!(tag && from) && <Segmented<Days> ariaLabel={tr("inbox.periodAria")} size="sm" value={days} onChange={setDays} options={(["7", "14", "30"] as Days[]).map((d) => ({ value: d, label: tr("inbox.days", { count: d }) }))} />}</>}
+      )}{!(tag && !onlyDay && period) && (
+        <PeriodPicker compact presets={INBOX_PERIODS} value={win} custom={custom} presetRange={range} today={today} ariaLabel={tr("inbox.periodAria")}
+          onPreset={(p) => setWin(p as InboxPeriod)} onCustom={(r) => { setCustom(r); setWin("custom"); }} />
+      )}</>}
       footer={selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm tabular-nums text-muted-foreground">{tr("inbox.selected", { count: selected.size })}</span>
@@ -161,7 +178,7 @@ export function PlaybookInbox({ onNewSetup, day = null, tag = false }: {
         </div>
       ) : !trades.length ? (
         <p className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-          <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> {tag ? tr("inbox.allTagged") : tr("inbox.allDone", { count: days })}
+          <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> {tag ? tr("inbox.allTagged") : tr("inbox.allDone")}
         </p>
       ) : (
         <div className="-mx-[var(--panel-p)] max-h-[min(62dvh,560px)] overflow-auto overscroll-contain">

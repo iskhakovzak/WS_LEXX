@@ -5,6 +5,9 @@
  *   earn   «где зарабатываю» — the top 3 setups / tickers / entry hours by net (R alongside), net > 0;
  *   lose   «где теряю»       — the costliest behaviour patterns of the period (lib/daily mistakeCosts — the same engine
  *                              as the day line and the curator's cost queue) + the worst 3 setups / tickers / hours;
+ *   edge   «где зарабатываю / где теряю» from the edge map (roadmap R4, lib/edgeMapStore): ≤ 3 STRENGTH and ≤ 3 LEAK
+ *          slices that passed every gate (desk shrinkage, BH, persistence, $ floor), each in $ per active day with its 80%
+ *          interval — the page shows these instead of the raw buckets below (kept in the answer for older clients);
  *   rule   «одно правило на завтра» — the rule tomorrow's own plan will suggest (lib/planPrefill: the costliest pattern of
  *                              the focus window), else the costliest pattern of the whole period (same pick, pickSuggestedRule).
  *
@@ -21,6 +24,8 @@ import { mistakeCosts } from "./daily/service";
 import { pickSuggestedRule, planPrefill, type SuggestedRule } from "./planPrefill";
 import type { MistakeCost } from "./daily/types";
 import { excludeImxSql, imxTotals, type ImxLine } from "./imxSummary";
+import { edgeMapView, type EdgeVerdict } from "./edgeMapStore";
+import { winRateOf } from "./coreMetrics/kpi";
 
 export const MY_REVIEW_DEFAULT_DAYS = 30;
 export const MY_REVIEW_MIN_DAYS = 7;
@@ -39,7 +44,7 @@ export type ReviewBucket = {
   net: number;
   /** Σ R of the bucket's trades with an R (null when none has one). */
   r: number | null;
-  /** wins / (wins + losses), 0..1; null when nothing was decided. */
+  /** (winRateOf(wins, losses) ?? 0), 0..1; null when nothing was decided. */
   winRate: number | null;
 };
 
@@ -55,6 +60,8 @@ export type MyReview = {
   imx?: ImxLine & { excluded: boolean };
   earn: Record<ReviewDimension, ReviewBucket[]>;
   lose: { patterns: ReviewPattern[] } & Record<ReviewDimension, ReviewBucket[]>;
+  /** Edge-map verdicts (R4): null when the map was never computed for this trader. */
+  edge: { asOf: string | null; earn: EdgeVerdict[]; lose: EdgeVerdict[] } | null;
   /** The one rule for tomorrow; `source` = «plan» (what tomorrow's plan suggests) or «period» (the period's costliest). */
   rule: (SuggestedRule & { source: "plan" | "period" }) | null;
   generatedAt: string;
@@ -131,7 +138,7 @@ export function totalsOf(rows: readonly MatrixRow[]): MyReview["totals"] {
   for (const x of rows) {
     trades += num(x.n); net += num(x.net); r += num(x.sum_r); rN += num(x.r_n); wins += num(x.wins); losses += num(x.losses);
   }
-  return { trades, net: round2(net), r: rN > 0 ? round2(r) : null, winRate: wins + losses > 0 ? Math.round((wins / (wins + losses)) * 1000) / 1000 : null };
+  return { trades, net: round2(net), r: rN > 0 ? round2(r) : null, winRate: wins + losses > 0 ? Math.round(((winRateOf(wins, losses) ?? 0)) * 1000) / 1000 : null };
 }
 
 async function matrixRows(trader: string, rows: "setup" | "ticker" | "tod", from: string, to: string, noImx = false): Promise<MatrixRow[]> {
@@ -155,7 +162,7 @@ export async function myReview(trader: string, days: number, now = new Date(), o
   const to = nyDate(now);
   const from = addDays(to, -(days - 1));
   const noImx = opts.excludeImx === true;
-  const [setups, tickers, hours, costs, imx] = await Promise.all([
+  const [setups, tickers, hours, costs, imx, edge] = await Promise.all([
     matrixRows(trader, "setup", from, to, noImx),
     matrixRows(trader, "ticker", from, to, noImx),
     matrixRows(trader, "tod", from, to, noImx),
@@ -164,6 +171,10 @@ export async function myReview(trader: string, days: number, now = new Date(), o
       return [] as MistakeCost[];
     }),
     imxTotals(trader, from, to).catch(() => null),
+    edgeMapView(trader).catch((err) => {
+      logger.warn({ err: (err as Error)?.message, trader }, "my-review: edge map failed");
+      return null;
+    }),
   ]);
   const s = splitTop(bucketsOf(setups, "setup"));
   const t = splitTop(bucketsOf(tickers, "ticker"));
@@ -180,6 +191,7 @@ export async function myReview(trader: string, days: number, now = new Date(), o
     ...(imx ? { imx: { ...imx, excluded: noImx } } : {}),
     earn: { setup: s.earn, ticker: t.earn, hour: h.earn },
     lose: { patterns: topPatterns(costs), setup: s.lose, ticker: t.lose, hour: h.lose },
+    edge: edge ? { asOf: edge.asOf, earn: edge.earn, lose: edge.lose } : null,
     rule,
     generatedAt: new Date(now).toISOString(),
   };

@@ -94,6 +94,7 @@ export function fmtPromo(unit: PromoUnit, v: number | null | undefined): string 
     case "x": return `${v.toFixed(2)}×`;
     case "score100": return `${v.toFixed(0)}/100`;
     case "score10": return `${v.toFixed(1)}/10`;
+    case "pp": return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)} ${academyPathI18n.t("units.pp")}`;
     default: return fmtCount(v, { maximumFractionDigits: 0 });
   }
 }

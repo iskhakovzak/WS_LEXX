@@ -3,6 +3,7 @@ import type { Trade } from "@workspace/api-client-react";
 import { Clock } from "lucide-react";
 import { EmptyState, Panel } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { HEAT_CELL, HEAT_FLAT, heatCellStyle } from "@/components/shared/charts/heat";
 import {
   HOUR_ORDER, REGULAR_COLS, dayKey, fmtMetricCompact, fmtValue, heatBg, hourKey, hourLabel, isClosed, isLoss, isWin, valueOf,
   weekdayIdx, weekdayLabel, type Metric,
@@ -10,6 +11,7 @@ import {
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
+import { winRateOf } from "@/lib/trade-math";
 
 const sd = (n: number) => commonI18n.t("units.tradesShort", { count: n });
 
@@ -85,7 +87,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
     };
   }, [trades, cells, metric]);
 
-  const valText = (c: Cell) => (c.v != null ? fmtMetricCompact(c.v, metric) : c.wins + c.losses ? fmtRate(c.wins / (c.wins + c.losses)) : "");
+  const valText = (c: Cell) => (c.v != null ? fmtMetricCompact(c.v, metric) : c.wins + c.losses ? fmtRate((winRateOf(c.wins, c.losses) ?? 0)) : "");
   const toneCls = (v: number | null) => (v == null ? "text-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground");
 
   return (
@@ -98,12 +100,12 @@ export function TimeHeatmap({ trades, cells, metric }: {
         <EmptyState title={t("heatmap.empty")} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[440px] border-separate border-spacing-1 text-xs">
+          <table data-density="fixed" className="w-full min-w-[440px] table-fixed border-separate border-spacing-1 text-xs">
             <thead>
               <tr>
-                <th className="w-8 text-left font-normal text-muted-foreground"><span className="sr-only">{t("heatmap.day")}</span></th>
-                {cols.map((s) => <th key={s} scope="col" className="whitespace-nowrap px-1 pb-1 text-center font-medium text-muted-foreground">{hourLabel(s)}</th>)}
-                <th scope="col" className="px-1 pb-1 text-center font-medium text-muted-foreground">{t("heatmap.total")}</th>
+                <th className="w-7 text-left font-normal text-muted-foreground"><span className="sr-only">{t("heatmap.day")}</span></th>
+                {cols.map((s) => <th key={s} scope="col" className="px-0.5 pb-1 text-center text-2xs font-medium leading-tight text-muted-foreground">{hourLabel(s)}</th>)}
+                <th scope="col" className="px-0.5 pb-1 text-center text-2xs font-semibold leading-tight text-foreground/80">{t("heatmap.total")}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,30 +113,31 @@ export function TimeHeatmap({ trades, cells, metric }: {
                 <tr key={r.d}>
                   <th scope="row" className="pr-1 text-left font-medium text-muted-foreground">{weekdayLabel(r.d)}</th>
                   {r.cells.map((c, i) => {
-                    const label = `${weekdayLabel(r.d)}, ${hourLabel(cols[i])}: ${sd(c.n)}${c.wins + c.losses ? `, WR ${fmtRate(c.wins / (c.wins + c.losses))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
+                    const label = `${weekdayLabel(r.d)}, ${hourLabel(cols[i])}: ${sd(c.n)}${c.wins + c.losses ? `, WR ${fmtRate((winRateOf(c.wins, c.losses) ?? 0))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
                     return (
                       <td
                         key={cols[i]}
                         title={label}
                         aria-label={label}
-                        style={c.n ? { backgroundColor: heatBg(c.v ?? 0, max) } : undefined}
+                        style={c.n ? heatCellStyle(heatBg(c.v ?? 0, max) ?? HEAT_FLAT) : undefined}
                         className={cn(
-                          "h-12 rounded-lg px-1 text-center align-middle tabular-nums",
-                          c.n ? (c.v ? "" : "bg-[var(--glass-hover-bg)]") : "border border-dashed border-[hsl(var(--border)/0.6)]",
+                          "h-12 border px-1 text-center align-middle tabular-nums",
+                          c.n ? cn(HEAT_CELL, "border-transparent") : "rounded-[10px] border-dashed border-[hsl(var(--border)/0.4)]",
+                          r.d >= 5 && !c.n && "opacity-50",
                         )}
                       >
                         {c.n > 0 && (
-                          <div className="leading-tight">
+                          <div className="whitespace-nowrap text-2xs leading-tight tracking-tight">
                             <div className="font-semibold text-foreground">{valText(c)}</div>
-                            <div className="text-2xs text-muted-foreground">{sd(c.n)}</div>
+                            <div className="text-2xs text-foreground/60">{sd(c.n)}</div>
                           </div>
                         )}
                       </td>
                     );
                   })}
-                  <td className="rounded-lg bg-[var(--glass-bg)] px-1 text-center tabular-nums">
+                  <td className="rounded-[10px] border border-[var(--glass-border)] bg-[var(--glass-bg)] px-1 text-center tabular-nums">
                     {r.total.n > 0 ? (
-                      <div className="leading-tight">
+                      <div className="whitespace-nowrap text-2xs leading-tight tracking-tight">
                         <div className={cn("font-semibold", toneCls(r.total.v))}>{valText(r.total)}</div>
                         <div className="text-2xs text-muted-foreground">{sd(r.total.n)}</div>
                       </div>
@@ -143,11 +146,11 @@ export function TimeHeatmap({ trades, cells, metric }: {
                 </tr>
               ))}
               <tr>
-                <th scope="row" className="pr-1 text-left font-medium text-muted-foreground">Σ</th>
+                <th scope="row" className="pr-1 pt-1 text-left font-semibold text-foreground/80">Σ</th>
                 {colTotals.map((c, i) => (
-                  <td key={cols[i]} className="h-10 rounded-lg bg-[var(--glass-bg)] px-1 text-center tabular-nums">
+                  <td key={cols[i]} className="h-10 rounded-[10px] border border-[var(--glass-border)] bg-[var(--glass-bg)] px-1 text-center tabular-nums">
                     {c.n > 0 ? (
-                      <div className="leading-tight">
+                      <div className="whitespace-nowrap text-2xs leading-tight tracking-tight">
                         <div className={cn("font-semibold", toneCls(c.v))}>{valText(c)}</div>
                         <div className="text-2xs text-muted-foreground">{sd(c.n)}</div>
                       </div>

@@ -109,7 +109,9 @@ export const TemplateBody = z.object({
   name: z.string().trim().min(1).max(80),
   kind: z.enum(["desk", "personal"]).default("personal"),
   shared: z.boolean().default(false),
-  doc: PlanBody,
+  // The quick focus rules and the rule of the day travel with a template (plan-draft applyTemplate reads them back);
+  // the bare PlanBody stripped them, so an applied template came without its rules.
+  doc: PlanBody.extend({ focusRules: TraderPlanBody.shape.focusRules, ownRule: TraderPlanBody.shape.ownRule }),
 });
 
 // ── Serialisation ─────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 // earnings of the trader's tickers) and how the trader actually trades on such days vs ordinary days.
 // Money is always net (lib/trade-math netPnl = pnl − |fees|), win rate = W/(W+L), trading day = NY date.
 // Covered by catalyst-math.test.ts (synthetic books).
-import { isOpen, netPnl, resultOf, type TradeLike } from "@/lib/trade-math";
+import { isOpen, netPnl, resultOf, type TradeLike, winRateOf } from "@/lib/trade-math";
 import { addDays } from "@/lib/trading-date";
 import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -232,7 +232,7 @@ export function aggregateDays(book: Map<string, DayStat>, dates: Iterable<string
     greenDays: green,
     greenPct: days ? Math.round((green / days) * 100) : null,
     wins, losses,
-    winRate: wins + losses ? Math.round((wins / (wins + losses)) * 1000) / 10 : null,
+    winRate: wins + losses ? Math.round(((winRateOf(wins, losses) ?? 0)) * 1000) / 10 : null,
     avgTradesDay: days ? Math.round((trades / days) * 10) / 10 : null,
     nets,
     sample: sampleOf(days),
@@ -419,7 +419,7 @@ export function pooledEarnings(edges: EarningsEdge[]) {
   }
   return {
     days, trades, net: r2(net),
-    winRate: wins + losses ? Math.round((wins / (wins + losses)) * 1000) / 10 : null,
+    winRate: wins + losses ? Math.round(((winRateOf(wins, losses) ?? 0)) * 1000) / 10 : null,
     avgNetTrade: trades ? r2(net / trades) : null,
     otherAvgNetTrade: oTrades ? r2(oNet / oTrades) : null,
     sample: sampleOf(days),

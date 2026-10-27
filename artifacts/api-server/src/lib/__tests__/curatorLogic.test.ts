@@ -101,6 +101,13 @@ describe("nextActionFor", () => {
   it("links encode trader", () => {
     expect(nextActionFor({ ...base, nearStop: true }).href).toBe(`/risk?trader=${encodeURIComponent("Артур")}`);
   });
+  it("R6: an open plateau escalation is a plateau review at 75 — above a closed day (70), below near stop (80)", () => {
+    const stuck = { ...base, plateau: { escalationOpen: true } };
+    expect(nextActionFor(stuck)).toMatchObject({ kind: "plateau_review", priority: 75 });
+    expect(nextActionFor({ ...stuck, eodPending: 1 }).kind).toBe("plateau_review");
+    expect(nextActionFor({ ...stuck, nearStop: true }).kind).toBe("near_stop");
+    expect(nextActionFor({ ...base, plateau: { escalationOpen: false } }).kind).toBe("none");
+  });
 });
 
 describe("normalizeBreachActions", () => {

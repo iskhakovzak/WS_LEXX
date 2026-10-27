@@ -4,7 +4,7 @@
  * period leaderboard (components/team/period-top) as a second tab: ?view=period.
  */
 import { useLocation, useSearch } from "wouter";
-import { CalendarDays, Trophy } from "lucide-react";
+import { CalendarDays, CalendarRange } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { SectionTabs } from "@/components/ds";
 import { PeriodTop } from "@/components/team/period-top";
@@ -27,7 +27,7 @@ export default function TopResultsPage() {
       onChange={setView}
       tabs={[
         { value: "day", label: t("tabs.day"), icon: CalendarDays },
-        { value: "period", label: t("tabs.period"), icon: Trophy },
+        { value: "period", label: t("tabs.period"), icon: CalendarRange },
       ]}
     />
   ) : undefined;

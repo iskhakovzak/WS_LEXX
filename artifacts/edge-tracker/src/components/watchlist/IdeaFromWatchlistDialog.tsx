@@ -70,7 +70,7 @@ export function IdeaFromWatchlistDialog({
 
   return (
     <Dialog open={!!item} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-h-[92vh] w-full max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] max-w-2xl">
         <DialogHeader>
           <DialogTitle>{thenTrade ? t("idea.titleTrade", { ticker: item?.ticker ?? "" }) : t("idea.titleNew", { ticker: item?.ticker ?? "" })}</DialogTitle>
           <DialogDescription>

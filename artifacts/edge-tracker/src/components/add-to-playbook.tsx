@@ -21,6 +21,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
+import { playbookSetupI18n } from "@/i18n/ns/playbookSetup";
 import { SOURCE_LABELS } from "@/components/playbook/model";
 
 const LAST_FOLDER_KEY = "ws_lexx_playbook_last_folder";
@@ -259,7 +260,9 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
       const created = await http.post<{ id?: number } | null>("/api/playbook", body);
       // «Новый сетап из сделки»: the trade becomes the new setup's first example (Tier 2 — the trader can re-tier it).
       if (payload.sourceType === "trade" && typeof created?.id === "number") {
-        await http.post(`/api/playbook/${created.id}/examples`, { tradeIds: [payload.sourceId], tier: 2 }).catch(() => null);
+        await http.post(`/api/playbook/${created.id}/examples`, { tradeIds: [payload.sourceId], tier: 2 }).catch((e: unknown) => {
+          toast({ title: playbookSetupI18n.t("form.exampleFailed"), description: humanizeApiError(e), variant: "destructive" });
+        });
       }
       return created;
     },

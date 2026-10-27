@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { ChevronRight, ClipboardPen, History, RefreshCw } from "lucide-react";
-import { EmptyState, Panel, toneOf, toneText } from "@/components/ds";
+import { EmptyState, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeResult } from "@/lib/trade-result";
@@ -13,6 +13,7 @@ import type { RecentTrade } from "./use-dashboard";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { DashCard } from "./dash-card";
 
 /** Lower-case horizon tag for multi-day trades (empty for intraday). */
 const horizonShort = (h: string) => (h === "overnight" || h === "swing" ? dashboardI18n.t(`recent.horizon.${h}`) : "");
@@ -47,11 +48,10 @@ export function RecentTradesPanel({
   const { t: tc } = commonI18n.useT();
   const list = (trades ?? []).slice(0, rows);
   return (
-    <Panel
+    <DashCard
       title={td("recent.title")}
-      icon={History}
       fill={fill}
-      bodyClassName="px-2 sm:px-3"
+      bodyClassName="-mx-2"
       footer={
         <>
           <span>{td("recent.footer")}</span>
@@ -138,7 +138,7 @@ export function RecentTradesPanel({
           })}
         </ul>
       )}
-    </Panel>
+    </DashCard>
   );
 }
 

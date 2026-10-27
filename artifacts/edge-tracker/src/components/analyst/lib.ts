@@ -5,6 +5,7 @@ import type { Tone } from "@/components/ds";
 import { fmtDate, fmtPct, fmtRelative, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
+import { PRESET_DAYS, normalizePeriod, parseDayRange, rangeDays, type DayRange, type PeriodPreset } from "@/lib/period-range";
 
 export type ActionKind = "upgrade" | "downgrade" | "initiated" | "maintain" | "reiterated" | "other";
 
@@ -280,10 +281,24 @@ export function scoreAction(a: FeedAction, ctx: ScoreCtx): { score: number; reas
 
 /* ── Filters (persisted) ───────────────────────────────────────────────── */
 
-const period = <V extends string>(value: V) => ({ value, get label() { return analystI18n.t("period.d", { count: value }); } });
-/** Data windows; labels («5д» / "5d" / "5k") follow the UI language. */
-export const PERIODS = [period("1"), period("3"), period("5"), period("14"), period("30"), period("90")] as const;
-export type Period = (typeof PERIODS)[number]["value"];
+/** Data windows: the app's period vocabulary, up to a quarter (the feed keeps ~90 days of actions), plus «Период…». */
+export const PERIOD_PRESETS_AA = ["today", "week", "month", "quarter"] as const satisfies readonly PeriodPreset[];
+export type Period = (typeof PERIOD_PRESETS_AA)[number] | "custom";
+
+/** A stored / linked period (the old day counts "1" / "3" / "5" / "14" / "30" / "90" included) → an offered value. */
+export function analystPeriod(v: unknown): Period | null {
+  if (v === "3") return "week";
+  const p = normalizePeriod(typeof v === "number" ? String(v) : v, "custom");
+  if (p === "custom") return v === "custom" ? "custom" : null;
+  if (p === "year" || p === "all") return "quarter";
+  return p;
+}
+
+/** Calendar days of actions to load for the period (a custom range: from its first day to today). */
+export function periodFetchDays(p: Period, custom: DayRange | null, today: string): number {
+  if (p === "custom") return custom ? rangeDays({ from: custom.from <= today ? custom.from : today, to: today }) : PRESET_DAYS.week;
+  return PRESET_DAYS[p];
+}
 
 export const CAP_PRESETS = [0, 1, 2, 10, 50, 200] as const;
 export const PT_SIZES = [0, 5, 10, 20] as const;
@@ -300,6 +315,8 @@ export type Filters = {
   mineOnly: boolean;
   todayOnly: boolean;
   period: Period;
+  /** The applied «Период…» range (kept when a preset is picked, so the form reopens on it). */
+  custom: DayRange | null;
   minCapB: number;
   includeUnknownCap: boolean;
 };
@@ -311,7 +328,8 @@ export const DEFAULT_FILTERS: Filters = {
   sector: null,
   mineOnly: false,
   todayOnly: false,
-  period: "5",
+  period: "week",
+  custom: null,
   minCapB: 0,
   // A min cap really filters (item 1.14): a ticker whose cap no source knows is excluded unless switched on.
   includeUnknownCap: false,
@@ -320,7 +338,9 @@ export const DEFAULT_FILTERS: Filters = {
 /** Stored value → valid Filters (older / partial objects from localStorage). */
 export function normalizeFilters(raw: unknown): Filters {
   const v = { ...DEFAULT_FILTERS, ...(raw && typeof raw === "object" ? (raw as Partial<Filters>) : {}) };
-  if (!PERIODS.some((p) => p.value === v.period)) v.period = DEFAULT_FILTERS.period;
+  v.custom = parseDayRange(v.custom?.from, v.custom?.to);
+  v.period = analystPeriod(v.period) ?? DEFAULT_FILTERS.period;
+  if (v.period === "custom" && !v.custom) v.period = DEFAULT_FILTERS.period;
   if (!(PT_SIZES as readonly number[]).includes(v.ptMin)) v.ptMin = 0;
   if (!["all", "top", "other"].includes(v.tier)) v.tier = "all";
   if (!["all", "moves", "upgrade", "downgrade", "initiated", "targets"].includes(v.type)) v.type = "all";
@@ -341,6 +361,15 @@ export function activeFilterCount(f: Filters): number {
 }
 
 export type SavedView = { id: string; name: string; filters: Filters };
+
+/** Saved views from the account (prefs "analyst.views") / the old browser copy: shape-checked, at most 30. */
+export function parseSavedViews(v: unknown): SavedView[] | null {
+  if (!Array.isArray(v)) return null;
+  return v
+    .filter((x): x is SavedView => !!x && typeof x === "object" && typeof (x as SavedView).name === "string" && !!(x as SavedView).filters && typeof (x as SavedView).filters === "object")
+    .map((x) => ({ id: String(x.id ?? x.name), name: x.name, filters: x.filters }))
+    .slice(0, 30);
+}
 
 export type FilterCtx = {
   isMine: (ticker: string) => boolean;

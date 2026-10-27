@@ -5,7 +5,9 @@
  *   fresh     same NY session, younger than its TTL (30 s rth / 5 min otherwise), covers every active ticker → answer
  *   stale     one refresh at a time (single-flight). With older numbers in hand a request answers them at once and the
  *             refresh runs in the background (a full refresh of ~350 tickers takes ~45 s: the Finviz queue + Yahoo);
- *             the next request reads its numbers. Only a cold start (no numbers at all) waits for it.
+ *             the next request reads its numbers. Only a cold start (no numbers at all) waits for it, and at most
+ *             COLD_WAIT_MS: then it answers the themes without numbers and `warming: true` (the client shows
+ *             «котировки загружаются» and asks again soon) instead of holding the request for the whole refresh.
  *   failure   the last good numbers stay; no new attempt for FAIL_BACKOFF_MS; `stale: true` once they are older
  *             than 2 × TTL or a refresh after them failed.
  * Per process: two instances may each refresh (the providers' own throttles hold). Personal themes are added per viewer
@@ -22,6 +24,8 @@ import { seedQuotes } from "./tickerCache";
 /** How long a personal board waits for its screener re-resolve before answering (lib/themes/board.ts). */
 export const SOFT_WAIT_MS = 4_000;
 export const FAIL_BACKOFF_MS = 30_000;
+/** The longest a cold start holds GET /api/themes for the first refresh (design audit: a 45 s pending request). */
+export const COLD_WAIT_MS = 5_000;
 
 type Cache = { quotes: Map<string, MemberQuote>; asOf: number; source: ThemeSource; session: ThemeSession; tickers: Set<string> };
 
@@ -30,6 +34,7 @@ export type ServiceDeps = {
   loadThemes: () => Promise<ThemeRow[]>;
   isClosed: (nyDay: string) => Promise<boolean | DaySession>;
   fetchQuotes: (tickers: readonly string[], session: ThemeSession, today: string) => Promise<QuotesResult>;
+  coldWaitMs: number;
 };
 
 const LIVE: ServiceDeps = {
@@ -37,6 +42,7 @@ const LIVE: ServiceDeps = {
   loadThemes: async () => (await listThemes(false)).map((t) => ({ id: t.id, name: t.name, tickers: t.tickers })),
   isClosed: sessionFor,
   fetchQuotes: (tickers, session, today) => fetchThemeQuotes(tickers, session, today),
+  coldWaitMs: COLD_WAIT_MS,
 };
 
 let deps: ServiceDeps = LIVE;
@@ -93,9 +99,15 @@ export async function getThemes(): Promise<ThemesResponse> {
 
   if (tickers.length && !isFresh(cache) && now - lastFailAt >= FAIL_BACKOFF_MS) {
     const job = refresh(tickers, session, today);
-    if (!cache) await job; // cold start: nothing to answer yet; otherwise the refresh lands in the background
+    // Cold start: nothing to answer yet — wait, but not for the whole refresh; otherwise it lands in the background.
+    if (!cache) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([job, new Promise<void>((r) => { timer = setTimeout(r, deps.coldWaitMs); })]);
+      clearTimeout(timer);
+    }
   }
   const c = cache as Cache | null;
+  if (!c && inflight) return { ...buildResponse(themes, null, session, false), warming: true };
   const t = deps.now();
   // Cached numbers keep the session they were fetched in (a board of the regular session is never labelled
   // post-market), and numbers of another session than the current one are stale until the refresh lands.

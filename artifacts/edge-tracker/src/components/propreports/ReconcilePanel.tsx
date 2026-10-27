@@ -226,9 +226,11 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
       {pill}
       {!compact && (
         <>
-          <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!data || !s?.discrepancies} aria-label={t("reconcile.csvAria")}>
-            <Download className="mr-1 h-4 w-4" aria-hidden="true" /> CSV
-          </Button>
+          {!!data && !!s?.discrepancies && (
+            <Button type="button" variant="outline" size="sm" onClick={exportCsv} aria-label={t("reconcile.csvAria")}>
+              <Download className="mr-1 h-4 w-4" aria-hidden="true" /> CSV
+            </Button>
+          )}
           <Button type="button" variant="ghost" size="icon" onClick={() => q.refetch()} disabled={q.isFetching} aria-label={t("reconcile.recalc")}>
             <RefreshCw className={cn("h-4 w-4", q.isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
           </Button>

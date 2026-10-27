@@ -35,6 +35,10 @@ function deltaTone(cur: number | null, prev: number | null, higherBetter = true,
 
 const finite = (v: number | null) => (v != null && Number.isFinite(v) ? v : null);
 
+/**
+ * Colour on a value says good or bad (design audit): the result, the expectancy and the profit factor carry it; a win
+ * rate, the average plus / minus, the drawdown and the streaks are read as numbers (their sign already says which way).
+ */
 export function KpiGrid({ k, prev, metric, windowLabel }: {
   k: Kpis; prev: Kpis | null; metric: Metric;
   /** The window every card is computed over («22 июл — сегодня»). */
@@ -66,7 +70,7 @@ export function KpiGrid({ k, prev, metric, windowLabel }: {
     },
     {
       key: "wr", label: commonI18n.t("trading.winRate"), title: `${t("kpi.wrTitle")} · ${wrBase}`,
-      value: fmtRate(k.winRate), tone: k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down",
+      value: fmtRate(k.winRate), tone: "neutral",
       hint: `${k.wins}W · ${k.losses}L${k.breakeven ? ` · ${k.breakeven}BE` : ""} · ${t("kpi.wrBaseShort")}`,
       cur: k.winRate, prev: p?.winRate ?? null, kind: "pct",
     },
@@ -91,32 +95,32 @@ export function KpiGrid({ k, prev, metric, windowLabel }: {
     },
     {
       key: "avgwin", label: t("kpi.avgWin"), title: t("kpi.avgWinTitle"),
-      value: fmtValue(k.avgWin, metric), tone: k.avgWin == null ? "neutral" : "up",
+      value: fmtValue(k.avgWin, metric), tone: "neutral",
       hint: k.bestTrade != null && k.bestTrade > 0 ? t("kpi.max", { value: fmtValue(k.bestTrade, metric) }) : undefined,
       cur: k.avgWin, prev: p?.avgWin ?? null, kind: "value",
     },
     {
       key: "avgloss", label: t("kpi.avgLoss"), title: t("kpi.avgLossTitle"),
-      value: fmtValue(k.avgLoss, metric), tone: k.avgLoss == null ? "neutral" : "down",
+      value: fmtValue(k.avgLoss, metric), tone: "neutral",
       hint: k.worstTrade != null && k.worstTrade < 0 ? t("kpi.min", { value: fmtValue(k.worstTrade, metric) }) : undefined,
       cur: k.avgLoss, prev: p?.avgLoss ?? null, kind: "value",
     },
     {
       key: "dd", label: t("kpi.dd"), title: t("kpi.ddTitle"),
       value: k.maxDrawdown == null ? "—" : k.maxDrawdown === 0 ? fmtValue(0, metric, { sign: false }) : fmtValue(k.maxDrawdown, metric),
-      tone: k.maxDrawdown != null && k.maxDrawdown < 0 ? "down" : "neutral",
+      tone: "neutral",
       hint: k.tradingDays ? t("kpi.greenRed", { green: k.greenDays, red: k.redDays }) : undefined,
       cur: k.maxDrawdown, prev: p?.maxDrawdown ?? null, kind: "value",
     },
     {
       key: "wstreak", label: t("kpi.bestStreak"), title: t("kpi.bestStreakTitle"),
-      value: commonI18n.t("units.wins", { count: k.longestWin }), tone: k.longestWin ? "up" : "neutral",
+      value: commonI18n.t("units.wins", { count: k.longestWin }), tone: "neutral",
       hint: k.current.kind === "win" && k.current.len > 0 ? t("kpi.nowInRow", { count: k.current.len }) : undefined,
       cur: k.longestWin, prev: p?.longestWin ?? null, kind: "count",
     },
     {
       key: "lstreak", label: t("kpi.worstStreak"), title: t("kpi.worstStreakTitle"),
-      value: commonI18n.t("units.losses", { count: k.longestLoss }), tone: k.longestLoss ? "down" : "neutral",
+      value: commonI18n.t("units.losses", { count: k.longestLoss }), tone: "neutral",
       hint: k.current.kind === "loss" && k.current.len > 0 ? t("kpi.nowInRow", { count: k.current.len }) : undefined,
 
       cur: k.longestLoss, prev: p?.longestLoss ?? null, kind: "count", higherBetter: false,

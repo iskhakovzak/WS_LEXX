@@ -15,6 +15,11 @@
  *                                                        + propreports.outbox (side effects, every 2 min)
  *   trade-structure back-fill (once at boot)           → trades.structure-backfill
  *   (new) job_runs retention                           → jobs.prune daily
+ *   (new) honest what-if verdicts per trader           → whatif.honesty (on request + after each sync + every 2 min;
+ *                                                        lib/whatIfHonestyJobDefs.ts via registerModuleJobs)
+ *   (new) silence signal                          → traders.silence (18:45 NY weekdays; lib/dayState/jobDefs.ts)
+ *   (new) live leak guard                              → leakguard.scan (after each sync + every 2 min 08–16 NY;
+ *                                                        lib/leakGuard/jobDefs.ts via registerModuleJobs)
  */
 import { pool } from "@workspace/db";
 import { config } from "../config";
@@ -22,9 +27,16 @@ import { registerJob, listJobs } from "./registry";
 import { DESK_TICK_CRON, OFF_HOURS_CRON, offHoursCron, syncCron } from "../lib/propreports/scheduler";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegramGuard";
 import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, morningEnabled } from "../lib/daily/telegramSchedule";
+import { registerCoachJobs } from "../lib/coachJobDefs";
 import { dailyPickCron } from "../lib/trainer/schedule";
 import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
+import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
+import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
+import { registerLeakGuardJobs } from "../lib/leakGuard/jobDefs";
+import { registerCapitalJobs } from "../lib/capital/jobDefs";
+import { registerMentorJobs } from "../lib/mentor/jobDefs";
+import { registerDayStateJobs } from "../lib/dayState/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -333,5 +345,12 @@ export function registerAllJobs(): void {
 /** Feature modules that declare their own jobs (kept out of registerAllJobs, which is at the function-size limit). */
 function registerModuleJobs(): void {
   registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
+  registerCoachJobs(registerJob); // coaching: reward-ping batch, curator digest (R3), edge map (R4), plateau (R6) — lib/coachJobDefs.ts
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
+  registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
+  registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
+  registerLeakGuardJobs(registerJob); // live leak guard: detect / ladder / settle after each sync (lib/leakGuard/jobDefs.ts)
+  registerCapitalJobs(registerJob); // weekly capital allocation proposals into the scaling queue (lib/capital/jobDefs.ts)
+  registerMentorJobs(registerJob); // AI mentor: escalation check, optional scheduled brief / debrief (lib/mentor/jobDefs.ts)
+  registerDayStateJobs(registerJob); // silence signal: silent traders / unclosed reviews → their curator (lib/dayState/jobDefs.ts)
 }

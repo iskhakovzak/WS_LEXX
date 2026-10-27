@@ -1,13 +1,15 @@
 import { useEffect, useId, useState } from "react";
 import { Link } from "wouter";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, ChevronDown, Footprints, PartyPopper, Swords, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
+import { ArrowRight, ChevronDown, Footprints, Medal as MedalIcon, RotateCcw, Swords, X } from "lucide-react";
 import { MOTION } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { questsI18n } from "@/i18n/ns/quests";
 import type { Quest, QuestsMe } from "@/lib/quests/types";
 import { useQuestsMe } from "./api";
-import { SCOPE_ORDER, freshlyDone, isOptionalStep, questTitle, stripView, type StripView } from "./model";
+import { SCOPE_ORDER, freshlyDone, isOptionalStep, nearestText, questTitle, stripView, type StripView } from "./model";
+import { AchievementCeremony } from "./ceremony";
 import { QuestRow, QuestStatusIcon, useIsHere } from "./quest-row";
 
 export const PROGRESS_HREF = "/ratings?tab=quests";
@@ -48,12 +50,12 @@ function Celebration({ quest, onDone }: { quest: Quest; onDone: () => void }) {
     >
       <motion.span
         aria-hidden="true"
-        initial={reduce ? false : { rotate: -25, scale: 0.6 }}
-        animate={{ rotate: 0, scale: 1 }}
+        initial={reduce ? false : { rotateY: 90, scale: 0.6 }}
+        animate={{ rotateY: 0, scale: 1 }}
         transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 12, delay: 0.08 }}
-        className="text-up"
+        className="grid place-items-center"
       >
-        <PartyPopper className="h-4 w-4" />
+        <QuestStatusIcon q={quest} size={22} />
       </motion.span>
       <span className="min-w-0 truncate font-medium">{t("strip.celebrate", { title: questTitle(quest) })}</span>
       <span className="shrink-0 text-xs font-semibold tabular-nums text-up">{t("row.reward", { points: quest.rewardPoints })}</span>
@@ -87,7 +89,7 @@ function StripPanel({ id, view, today }: { id: string; view: StripView; today: s
         <ol className="flex flex-col gap-1" aria-label={t("scope.onboarding")}>
           {view.steps.map((q) => (
             <li key={q.id} className="flex min-w-0 items-center gap-2 text-sm">
-              <QuestStatusIcon q={q} />
+              <QuestStatusIcon q={q} size={20} />
               <span className={cn("min-w-0 flex-1 truncate", q.status === "done" ? "text-muted-foreground line-through decoration-muted-foreground/50" : "text-foreground", q.id === view.next?.id && "font-medium")}>
                 {questTitle(q)}
                 {isOptionalStep(q) && <span className="ml-1.5 text-2xs font-normal text-muted-foreground">{t("strip.optional")}</span>}
@@ -127,16 +129,36 @@ function StripPanel({ id, view, today }: { id: string; view: StripView; today: s
 }
 
 /**
+ * «Ближайшая победа: …» — one quiet line (banner blindness: no card, no colour). While the trader is stopped (day state
+ * «stopped») only the comeback after the stop is shown: «После стопа: 2 из 5 дней в рамках».
+ */
+export function NearestWinLine({ me, stopped = false }: { me: QuestsMe; stopped?: boolean }) {
+  const { t } = questsI18n.useT();
+  const cb = me.comeback ?? null;
+  const text = stopped ? (cb ? t("nearest.comeback", { days: cb.days, need: cb.need }) : null) : nearestText(me);
+  if (!text) return null;
+  const href = stopped ? `${PROGRESS_HREF}&ach=stop_comeback` : `${PROGRESS_HREF}&ach=${encodeURIComponent(me.nearest?.id ?? "")}`;
+  const Icon = stopped ? RotateCcw : MedalIcon;
+  return (
+    <Link href={href} aria-label={t("nearest.aria")} className="inline-flex min-h-8 min-w-0 max-w-full items-center gap-1.5 self-start rounded-lg px-1.5 text-sm text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">{text}</span>
+    </Link>
+  );
+}
+
+/**
  * The quest line inside the dashboard day row: «Квесты 1/3» (today's quests) or «Первые шаги 3/7 · Дальше: …» for a
  * new trader; the list opens in place. A quest finished since the last visit gets a short celebration.
  */
-export function QuestStripView({ me, defaultOpen = false }: { me: QuestsMe; defaultOpen?: boolean }) {
+export function QuestStripView({ me, defaultOpen = false, stopped = false }: { me: QuestsMe; defaultOpen?: boolean; stopped?: boolean }) {
   const { t } = questsI18n.useT();
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const party = useCelebration(me);
   const view = stripView(me);
-  if (!view && !party.current) return null;
+  const nearest = <NearestWinLine me={me} stopped={stopped} />;
+  if (!view && !party.current) return nearest;
   const Icon = view?.kind === "onboarding" ? Footprints : Swords;
   const allDone = !!view && view.done === view.total;
   return (
@@ -170,13 +192,22 @@ export function QuestStripView({ me, defaultOpen = false }: { me: QuestsMe; defa
           </motion.div>
         )}
       </AnimatePresence>
+      {nearest}
     </div>
   );
 }
 
-/** Dashboard slot (passed into the day line by the page): the viewer's quests; nothing for a role without them. */
-export function QuestStrip({ enabled }: { enabled: boolean }) {
+/**
+ * Dashboard slot (passed into the day line by the page): the viewer's quests, «Ближайшая победа» and the ceremony of a
+ * big win; nothing for a role without them. `stopped` = the day state «stopped» (only the comeback progress is shown).
+ */
+export function QuestStrip({ enabled, stopped = false }: { enabled: boolean; stopped?: boolean }) {
   const q = useQuestsMe(enabled);
   if (!enabled || !q.data) return null;
-  return <QuestStripView me={q.data} />;
+  return (
+    <>
+      <QuestStripView me={q.data} stopped={stopped} />
+      <AchievementCeremony me={q.data} />
+    </>
+  );
 }

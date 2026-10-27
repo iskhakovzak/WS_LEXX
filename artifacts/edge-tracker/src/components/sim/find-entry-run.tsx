@@ -4,12 +4,14 @@
  * reveal: the reference entry next to the pick, a 0–100 score, a short explanation, the real ticker and date, the
  * bars after. Next drill (Enter). The run ends with a summary (accuracy, hits, mastery change). The next drill is
  * fetched while the player reads the reveal, so one drill takes well under 30 s.
+ * Every drill is on a day that gapped ≥ 7 % with a catalyst: «Контекст дня» sits on top of the side column (catalyst
+ * masked until the answer, full after it) and the view switch shows the long daily chart before the day.
  */
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Check, Crosshair, LogOut, RotateCcw, Timer, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Kbd, ListSkeleton, Pill, StatCard, StatGrid, toneText } from "@/components/ds";
+import { EmptyState, Kbd, ListSkeleton, Pill, Segmented, StatCard, StatGrid, toneText } from "@/components/ds";
 import { fmtDate, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -21,6 +23,9 @@ import { EMPTY_OVERLAY, type OverlayData } from "./sim-overlay";
 import { DRILL_SECONDS, RUN_LENGTH, clampPick, pickDiff, runSummary, scoreTone, type DrillResult } from "./drill-model";
 import { trainerApi, trainerHomeQuery, trainerKeys } from "./trainer-api";
 import { useFinePointer } from "./use-fine-pointer";
+import { DayContextCard } from "./day-context";
+import { DailyChart } from "./daily-chart";
+import { simI18n } from "@/i18n/ns/simulator";
 
 /** Server text params → i18n params (nulls dropped). */
 function textParams(p: Record<string, string | number | null> | undefined): Record<string, string | number> | undefined {
@@ -46,6 +51,9 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
   const [results, setResults] = React.useState<DrillResult[]>([]);
   const [sending, setSending] = React.useState(false);
   const [left, setLeft] = React.useState(DRILL_SECONDS);
+  const [view, setView] = React.useState<"intraday" | "daily">("intraday");
+  React.useEffect(() => { setView("intraday"); }, [drill?.id]);
+  const dailyBars = React.useMemo(() => (drill?.context?.daily ?? []).map((b) => fromWire([b.t, b.o, b.h, b.l, b.c, b.v])), [drill]);
   const prefetched = React.useRef<Promise<FindEntryDrill | null> | null>(null);
 
   const fetchNext = React.useCallback(() => trainerApi.drillNext(setupId), [setupId]);
@@ -156,6 +164,13 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
             <Timer className="h-3.5 w-3.5" aria-hidden="true" />{left === 0 ? t("drill.timeUp") : t("drill.seconds", { count: left })}
           </span>
         )}
+        {dailyBars.length > 0 && (
+          <Segmented
+            size="sm" ariaLabel={simI18n.t("view.label")} value={view}
+            onChange={(v) => setView(v === "daily" ? "daily" : "intraday")}
+            options={[{ value: "intraday", label: simI18n.t("view.intraday") }, { value: "daily", label: simI18n.t("view.daily"), title: simI18n.t("view.dailyHint") }]}
+          />
+        )}
         <Button variant="ghost" size="sm" className="ml-auto" onClick={exit}><LogOut aria-hidden="true" /> {t("drill.exit")}</Button>
       </div>
 
@@ -169,12 +184,21 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
             {feed && drill ? (
               <SimChart key={drill.id} feed={feed} mode="intraday" startIdx={drill.window.from} levels={NO_LEVELS} overlay={overlay} toggles={TOGGLES} className="min-h-[280px] cursor-crosshair" onPick={onPick} focus={drill.window} />
             ) : <ListSkeleton rows={6} />}
+            {view === "daily" && drill?.context && (
+              <div className="absolute inset-0 z-sticky bg-background p-2 sm:p-3">
+                <DailyChart daily={dailyBars} today={null} levels={drill.context.levels} gapPct={drill.context.day.gapPct} revealed={phase.k === "answered"} />
+              </div>
+            )}
           </div>
           <aside className="glass-panel flex flex-col gap-2.5 rounded-2xl p-3 sm:gap-3 sm:p-[var(--panel-p)]">
             {phase.k === "answered" ? (
-              <AnswerPanel answer={phase.answer} last={results.length >= RUN_LENGTH} onNext={next} fine={fine} />
+              <>
+                <AnswerPanel answer={phase.answer} last={results.length >= RUN_LENGTH} onNext={next} fine={fine} />
+                {phase.answer.context?.day && <DayContextCard day={phase.answer.context.day} revealed />}
+              </>
             ) : (
               <>
+                {drill?.context?.day && <DayContextCard day={drill.context.day} revealed={false} compact />}
                 <div className={cn("tile rounded-xl p-3 text-sm", pick && "font-medium tabular-nums")} aria-live="polite">
                   {pick && drill
                     ? t("drill.pick", { time: hhmm(fakeClock(drill.bars[pick.barIndex]?.t ?? 0).min), price: fmtPrice(pick.price) })

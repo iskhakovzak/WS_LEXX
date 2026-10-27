@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
-import { BookOpenCheck, CalendarDays, ChevronLeft, ChevronRight, CloudUpload, History, Users } from "lucide-react";
+import { CloudUpload, History, NotebookPen, Users } from "lucide-react";
 import { Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DayStepper } from "@/components/shared/day-stepper";
 import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
@@ -23,10 +23,10 @@ import {
 } from "@/components/journal/use-journal-days";
 import {
   addDays, carriedInto, computeStats, groupByDate, isIsoDate, isTypingTarget,
-  isoWeekKey, localDateStr, monthBounds, monthKey, openedCountByDate, openedOn, parseDate, pickUnit, shiftMonth,
-  stepWeekday, todayStr, weekStart, type DayStats,
+  isoWeekKey, monthBounds, monthKey, openedCountByDate, openedOn, pickUnit, shiftMonth,
+  todayStr, weekStart, type DayStats,
 } from "@/components/journal/utils";
-import { fmtDate, fmtWeekday } from "@/lib/format";
+import { fmtDate } from "@/lib/format";
 import { journalI18n } from "@/i18n/ns/journal";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -81,6 +81,7 @@ export default function JournalPage() {
   // «Разбор по сделкам» (optional per-trade review) replaces the reflection column for the trader's own day.
   const [eodMode, setEodMode] = useState<boolean>(url.eod);
   const [view, setView] = useState<View>(isCurator ? url.view : "day");
+  const isMobile = useIsMobile();
   // Staff: their own day by default, "" = the whole team, or another person (components/journal/journal-account).
   const [account, setAccount] = useState<string>(() =>
     initialJournalAccount({ staff: isCurator, me: traderName, urlTrader: url.trader, stored: readLS(ACCOUNT_KEY) }));
@@ -98,7 +99,6 @@ export default function JournalPage() {
     return m === "r" || m === "count" ? m : "pnl";
   });
   const setMetric = (m: CalMetric) => { setMetricState(m); writeLS(METRIC_KEY, m); };
-  const [calOpen, setCalOpen] = useState(false);
 
   const selectDate = useCallback((d: string) => {
     autoDay.current = false;
@@ -255,28 +255,19 @@ export default function JournalPage() {
   const prevTradeDay = useMemo(() => [...tradeDays].reverse().find((d) => d < activeDate) ?? null, [tradeDays, activeDate]);
   const nextTradeDay = useMemo(() => tradeDays.find((d) => d > activeDate) ?? null, [tradeDays, activeDate]);
 
+  // Day keys ([ ] ← → T) live in DayStepper; Shift+← / Shift+→ jump to the previous / next day with trades.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        if (e.shiftKey) { if (prevTradeDay) selectDate(prevTradeDay); }
-        else selectDate(stepWeekday(activeDate, -1));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        if (e.shiftKey) { if (nextTradeDay) selectDate(nextTradeDay); }
-        else selectDate(stepWeekday(activeDate, 1));
-      } else if ((e.key === "t" || e.key === "е" || e.key === "T" || e.key === "Е") && !e.shiftKey) { // i18n-ignore (Russian layout key)
-        selectDate(homeDate);
-      }
+      if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.key === "ArrowLeft" && prevTradeDay) { e.preventDefault(); selectDate(prevTradeDay); }
+      else if (e.key === "ArrowRight" && nextTradeDay) { e.preventDefault(); selectDate(nextTradeDay); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeDate, prevTradeDay, nextTradeDay, selectDate, homeDate]);
+  }, [prevTradeDay, nextTradeDay, selectDate]);
 
   const { t } = journalI18n.useT();
   const { t: tc } = commonI18n.useT();
-  const isToday = activeDate === today;
   const isFuture = activeDate > today;
   const showTeam = isCurator && !effectiveAccount;
   const showTradeReview = eodMode && editable && !isFuture;
@@ -292,11 +283,28 @@ export default function JournalPage() {
 
   const emptyDay = <EmptyDayNote date={activeDate} today={today} own={editable} opened={dayStats.opened} />;
 
+  // The day switcher: under the title on desktop; on phones under the day's P&L (design audit wave 2B: the number
+  // first, the controls after it).
+  const dateNav = (
+    <Toolbar>
+      <DayStepper
+        value={activeDate}
+        onChange={selectDate}
+        home={homeDate}
+        homeLabel={weekendToday ? t("page.lastTradingDay") : undefined}
+        homeTitle={t("page.todayKey")}
+        arrows
+      >
+        {dayTrades.length === 0 && !isFuture && jumpLatest}
+      </DayStepper>
+    </Toolbar>
+  );
+
   return (
     <Page>
       <PageHeader
         title={shellI18n.t("nav.journal")}
-        icon={BookOpenCheck}
+        icon={NotebookPen}
         description={view === "queue" ? t("page.descQueue") : t("page.descDay")}
         actions={
           isCurator ? (
@@ -320,82 +328,14 @@ export default function JournalPage() {
                   teamLabel={t("page.wholeTeam")}
                   icon={Users}
                   ariaLabel={tc("fields.trader")}
-                  className="w-full sm:w-[220px]"
+                  className="w-full sm:w-auto sm:min-w-[13rem] sm:max-w-[18rem]"
                 />
               )}
             </div>
           ) : null
         }
       >
-        {view === "day" && (
-          <Toolbar className="justify-between">
-            <div className="flex min-w-0 items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("page.prevDay")}
-                title={t("page.prevDayTitle")}
-                onClick={() => selectDate(stepWeekday(activeDate, -1))}
-              >
-                <ChevronLeft />
-              </Button>
-              <Popover open={calOpen} onOpenChange={setCalOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="min-w-0 rounded-xl px-2 py-1 text-center transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-[210px]"
-                    aria-label={t("page.pickDate", { date: fmtDate(activeDate, "long") })}
-                  >
-                    <span className="flex items-center justify-center gap-1.5 truncate text-base font-semibold tabular-nums sm:text-lg">
-                      <CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{fmtDate(activeDate, "long")}
-                    </span>
-                    <span className="block text-xs capitalize text-muted-foreground">
-                      {fmtWeekday(activeDate, "long")}
-                      {isToday && <span className="ml-1.5 normal-case text-primary">{t("page.todaySuffix")}</span>}
-                      {weekendToday && activeDate === homeDate && <span className="ml-1.5 normal-case text-primary">{t("page.lastTradingSuffix")}</span>}
-                    </span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" align="start">
-                  <Calendar
-                    mode="single"
-                    weekStartsOn={1}
-                    selected={parseDate(activeDate)}
-                    defaultMonth={parseDate(activeDate)}
-                    onSelect={(d: Date | undefined) => {
-                      if (!d) return;
-                      selectDate(localDateStr(d));
-                      setCalOpen(false);
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("page.nextDay")}
-                title={t("page.nextDayTitle")}
-                onClick={() => selectDate(stepWeekday(activeDate, 1))}
-              >
-                <ChevronRight />
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {activeDate !== homeDate && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  title={t("page.todayKey")}
-                  aria-label={weekendToday ? t("page.lastTradingAria") : t("page.todayAria")}
-                  onClick={() => selectDate(homeDate)}
-                >
-                  {weekendToday ? t("page.lastTradingDay") : tc("time.today")}
-                </Button>
-              )}
-              {dayTrades.length === 0 && !isFuture && jumpLatest}
-            </div>
-          </Toolbar>
-        )}
+        {view === "day" && !isMobile && dateNav}
       </PageHeader>
 
       {isError && <QueryError error={error} onRetry={() => refetch()} />}
@@ -415,7 +355,7 @@ export default function JournalPage() {
       {view === "queue" && isCurator ? (
         <EodQueuePanel enabled={isCurator} />
       ) : (
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.15fr)_minmax(400px,1fr)]">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.15fr)_minmax(400px,1fr)]">
           <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
             <DaySummary
               trader={effectiveAccount}
@@ -431,6 +371,7 @@ export default function JournalPage() {
               }
               empty={emptyDay}
             />
+            {isMobile && view === "day" && dateNav}
 
             {showTradeReview ? (
               <EodFlow trader={effectiveAccount} date={activeDate} today={today} onExit={() => setEodMode(false)} />

@@ -131,7 +131,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
             </p>
           )}
 
-          <div className="grid min-w-0 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
+          <div className="grid grid-cols-1 min-w-0 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
             <Panel title={t("stats.byTicker")} description={t("stats.byTickerText")} padded={false} bodyClassName="p-2">
               {!s ? <div className="skeleton m-2 h-48 rounded-xl" /> : s.byTicker.length === 0 ? (
                 <EmptyState compact icon={BarChart3} title={pending > 0 ? t("stats.stillChecking") : t("stats.noTrades")} />

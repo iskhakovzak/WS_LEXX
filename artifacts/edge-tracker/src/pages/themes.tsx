@@ -5,10 +5,12 @@
  * (copy tickers, new board from it, pin to a board, hide / edit / delete). Tickers boards: a row opens its menu («В
  * вотчлист», «В план дня», «Скопировать»). Shared themes are desk settings: admin only («Настроить темы»).
  */
-import { useState, type ReactNode } from "react";
-import { Plus, Shapes } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
+import { Loader2, Plus, RefreshCw, Shapes } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ErrorState, Page, PanelSkeleton } from "@/components/ds";
+import { EmptyState, ErrorState, Page, Panel, PanelSkeleton } from "@/components/ds";
+import { commonI18n } from "@/i18n/ns/common";
 import { useAuth } from "@/contexts/auth-context";
 import { themesI18n } from "@/i18n/ns/themes";
 import { BoardDialog, type BoardPrefill } from "@/components/themes/board-dialog";
@@ -24,17 +26,31 @@ import {
   METRICS, MAX_PERSONAL, columnsOf, isMetric, themeTickerList, type BoardColumn, type BoardMeta, type BoardTheme, type ColSort, type ThemeMetric,
 } from "@/components/themes/model";
 
+/** True once `active` has lasted `ms` (resets when it ends). */
+function useLasting(active: boolean, ms: number): boolean {
+  const [long, setLong] = useState(false);
+  useEffect(() => {
+    if (!active) { setLong(false); return; }
+    const id = window.setTimeout(() => setLong(true), ms);
+    return () => window.clearTimeout(id);
+  }, [active, ms]);
+  return active && long;
+}
+
 export default function ThemesPage() {
   const { t } = themesI18n.useT();
   const { can, canEdit } = useAuth();
   const admin = can("settings.manage");
   const w = useWorkspace();
   const { data, board, bd } = w;
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openParam, setOpenKey] = useSearchParam("theme", ""); // ?theme= — the open theme sheet survives a reload
+  const openKey = openParam || null;
   const [editingTheme, setEditingTheme] = useState<BoardTheme | null | undefined>(undefined);
   const [editingBoard, setEditingBoard] = useState<BoardMeta | null | undefined>(undefined);
   const [prefill, setPrefill] = useState<BoardPrefill | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  // Never an endless skeleton (design audit wave 2): after 9 s without an answer the board says so, with «Повторить».
+  const slow = useLasting(w.q.isPending, 9_000);
 
   const themeRows = board ? w.themeRows : w.shared;
   const openTheme = themeRows.find((th) => th.key === openKey) ?? null;
@@ -64,7 +80,14 @@ export default function ThemesPage() {
   );
 
   let body: ReactNode;
-  if (w.q.isPending) body = <PanelSkeleton height={540} title={false} />;
+  const retry = (
+    <Button type="button" variant="outline" size="sm" onClick={() => void w.q.refetch()} disabled={w.q.isFetching && !slow}>
+      <RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}
+    </Button>
+  );
+  if (w.q.isPending && slow) body = <Panel><EmptyState icon={Shapes} title={t("slow.title")} description={t("slow.desc")} action={retry} /></Panel>;
+  else if (w.q.isPending) body = <PanelSkeleton height={540} title={false} />;
+  else if (data?.warming && !board) body = <Panel><EmptyState icon={Loader2} title={t("warming.title")} description={t("warming.desc")} /></Panel>;
   else if (!data) body = <ErrorState error={w.q.error} onRetry={() => void w.q.refetch()} title={t("loadFailed")} />;
   else if (!board) {
     body = !data.themes.length

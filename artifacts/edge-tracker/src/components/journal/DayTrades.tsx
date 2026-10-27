@@ -1,7 +1,10 @@
+import { TradeChip } from "@/components/ds/trade-chip";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { ArrowUpRight, ChevronDown, ExternalLink, ListOrdered, ShieldAlert } from "lucide-react";
+import { moneyText, useBeRange } from "@/components/ds/money";
 import { EmptyState, FilterChip, Panel, Pill, SortableTh, TableScroll, toneOf, toneText, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,13 +136,22 @@ export function DayTrades({
       }
     >
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-label={tc("states.loading")}>
+          {/* Trade-row shape: side badge, ticker + time, result on the right. */}
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
+            <div key={i} className="flex h-16 items-center gap-3 rounded-xl border border-border/40 px-3" aria-hidden="true">
+              <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <Skeleton className="h-3.5 rounded" style={{ width: `${44 - i * 8}%` }} />
+                <Skeleton className="h-3 w-24 rounded" />
+              </div>
+              <Skeleton className="h-4 w-16 rounded" />
+            </div>
           ))}
         </div>
       ) : trades.length === 0 && carried.length === 0 && opened.length === 0 ? (
         <EmptyState
+          art="scroll"
           icon={ListOrdered}
           title={tj("trades.emptyTitle")}
           description={tj("trades.emptyDesc")}
@@ -269,6 +281,7 @@ function TradeItem({
   const { t: tt } = tradesI18n.useT();
   const r = signedR(t);
   const net = netPnl(t);
+  const beRange = useBeRange();
   const gross = grossPnl(t);
   const fees = gross != null ? feesOf(t) : null;
   const outcome = tradeOutcome(t);
@@ -294,7 +307,8 @@ function TradeItem({
             <span className="text-sm font-semibold">{t.ticker}</span>
             {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
             {t.setup && <span className="truncate text-xs text-muted-foreground">{t.setup}</span>}
-            {t.horizon && t.horizon !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizon] ?? t.horizon}</Pill>}
+            {t.strategy && <TradeChip group="strategy" value={t.strategy} />}
+            {t.horizon && t.horizon !== "intraday" && <TradeChip group="horizon" value={t.horizon}>{HORIZON_LABEL[t.horizon] ?? t.horizon}</TradeChip>}
             {carriedFrom && <Pill>{tj("trades.since", { date: fmtDate(carriedFrom, "dayMonth") })}</Pill>}
             {closesToday && <Pill tone="accent">{tj("trades.closesToday")}</Pill>}
             {openedHere !== undefined && (
@@ -315,7 +329,7 @@ function TradeItem({
         </span>
         <span className="flex shrink-0 flex-col items-end">
           {net != null ? (
-            <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
+            <span className={cn("text-sm font-semibold tabular-nums", moneyText(net, beRange))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
           ) : (
             <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(r)))}>{r != null ? fmtR(r) : outcomeLabel(outcome)}</span>
           )}
@@ -359,7 +373,7 @@ function TradeItem({
               </dl>
 
               {hasText && (
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {t.notes && <TextBlock label={tc("fields.notes")} text={t.notes} className="sm:col-span-2" />}
                   {t.whatWorked && <TextBlock label={tt("reviewFields.whatWorked")} text={t.whatWorked} tone="up" />}
                   {t.whatFailed && <TextBlock label={tt("reviewFields.whatFailed")} text={t.whatFailed} tone="down" />}

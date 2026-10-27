@@ -10,7 +10,8 @@ import {
   type DaySummary, type Metric, type ValueFn,
   dateOnly, monthMatrix, monthName, ymd,
 } from "@/lib/analytics-pro";
-import { fmtVal, heatClass } from "./pro-format";
+import { fmtVal } from "./pro-format";
+import { heatFill } from "@/components/shared/charts/heat";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
@@ -193,11 +194,12 @@ function YearView({
                       key={d}
                       type="button"
                       onClick={() => onDay(d)}
+                      style={hasValue(s) && s.net !== 0 ? { backgroundColor: heatFill(s.net, max) } : undefined}
                       title={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "—"} · ${commonI18n.t("units.trades", { count: s.trades })}`}
                       aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : tp("calendar.noResult")}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                       className={cn(
                         "aspect-square rounded-[4px] border border-transparent transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100",
-                        hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/25",
+                        !(hasValue(s) && s.net !== 0) && "bg-primary/25",
                         d === today && "border-primary",
                       )}
                     />
@@ -222,8 +224,8 @@ function YearView({
 function Legend({ metric }: { metric: Metric }) {
   return (
     <div className="flex flex-wrap items-center gap-3 text-2xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-down/45" aria-hidden="true" />{tp("calendar.legendLoss")}</span>
-      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-up/45" aria-hidden="true" />{tp("calendar.legendProfit")}</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: heatFill(-1, 1) }} aria-hidden="true" />{tp("calendar.legendLoss")}</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: heatFill(1, 1) }} aria-hidden="true" />{tp("calendar.legendProfit")}</span>
       <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-primary/25" aria-hidden="true" />{tp("calendar.legendNoValue", { unit: metric === "r" ? "R" : "P&L" })}</span>
       <span>{tp("calendar.legendIntensity")}</span>
     </div>
@@ -345,18 +347,20 @@ function MonthGrid({
               const base = cn(
                 "flex min-h-[56px] min-w-0 flex-col rounded-lg border p-1 text-left sm:min-h-[84px] sm:rounded-xl sm:p-2",
                 isSel ? "border-primary ring-2 ring-primary/40" : "border-border/60",
-                weekend && !s && "opacity-50",
+                // An empty weekend cell is dimmed, but never today (its marker fell to ~3.5:1).
+                weekend && !s && d !== today && "opacity-50",
               );
               return s ? (
                 <button
                   key={d}
                   type="button"
                   onClick={() => onDay(d)}
+                  style={hasValue(s) && s.net !== 0 ? { backgroundColor: heatFill(s.net, max) } : undefined}
                   aria-pressed={isSel}
                   aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : tp("calendar.noResult")}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                   className={cn(
                     base,
-                    hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/10",
+                    !(hasValue(s) && s.net !== 0) && "bg-primary/10",
                     "transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   )}
                 >

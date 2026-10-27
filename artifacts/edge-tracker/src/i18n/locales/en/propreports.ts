@@ -9,7 +9,6 @@ export default {
     signInTitle: "Sign-in required",
     signInText: "Sign in to see your accounts and import trades.",
     syncNow: "Sync now",
-    syncDisabled: "The broker API isn’t connected — trades are loaded from files. A developer sets up the connection.",
     sessionExpired: "Session expired",
     statusFailed: "Couldn’t load the status",
     tabsAria: "Integration sections",
@@ -433,6 +432,7 @@ export default {
   },
 
   perf: {
+    wlRatio: "W/L ratio",
     title: "Broker statistics (PropReports)",
     descReport: "Trade Performance report",
     descAccount: "account {account}",
@@ -451,6 +451,8 @@ export default {
     emptyStaff: "Upload the “Trade Performance” XLS from PropReports (Reports → Trade Performance → Export) on the Import tab — the format is detected automatically.",
     time: { "pre-market": "Premarket", "post-market": "After-hours" },
     hold: { h: "{h} h {m} m", m: "{m} m {s} s", s: "{s} s" },
+    barBest: "best",
+    barWorst: "worst",
     barTitle: "{label}: {trades}, win rate {winRate}, gross {gross}, fees {fees}",
     netPill: "{value} net",
     trades: "Trades",

@@ -3,7 +3,7 @@ import { pool } from "@workspace/db";
 import { forgetQuests } from "../lib/quests/cache";
 import { asyncHandler } from "../lib/asyncHandler";
 import { z } from "zod";
-import { hashPassword, verifyPassword, bumpTokenVersion, requireMember, isGuestUser, signToken } from "../lib/auth";
+import { hashPassword, verifyPassword, bumpTokenVersion, forgetTokenVersion, requireMember, isGuestUser, signToken } from "../lib/auth";
 import { sendSecurityError } from "../lib/security/respond";
 import { checkSecret, secretPolicyFor, type SecretProblem } from "../lib/security/passwordPolicy";
 import { lockoutStore } from "../lib/security/loginGuard";
@@ -13,9 +13,17 @@ import { logger } from "../lib/logger";
 import { langOf, parseLang, rememberLocale } from "../i18n";
 import { cleanNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
-import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
+import { AppError, badRequest, forbidden, notFound, tooLarge, unauthorized } from "../lib/http";
 import { clearFeedStreamCache } from "../lib/feedStream";
 import { logAudit } from "../lib/audit";
+import { cleanUserName, RenameError, renameUserInTx, type RenameReport } from "../lib/people/renameUser";
+import { invalidateDashboardCache } from "../lib/hotCache";
+import { warmSettings } from "../lib/settings/store";
+import { StoredAppearanceSchema } from "../lib/people/appearanceSchema";
+import { OnboardingStateSchema } from "../lib/people/onboarding";
+import { QuotePrefsSchema } from "../lib/people/quotePrefs";
+import { DashboardLayoutSchema } from "../lib/people/dashboardLayoutSchema";
+import { MAX_PREFS_BYTES, PrefsPatchSchema, prefsMergeSql, splitPrefsPatch } from "../lib/people/uiPrefs";
 
 const router: IRouter = Router();
 
@@ -106,7 +114,7 @@ router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {
   const { name, theme } = req.body as { name?: string; theme?: string };
   if (!name || !theme) throw new AppError("VALIDATION");
-  const allowed = ["dark", "dim", "sepia", "light"];
+  const allowed = ["dark", "dim", "platinum", "sepia", "light"];
   if (!allowed.includes(theme)) throw new AppError("INVALID_FIELD", undefined, { field: "theme" });
   if (!(await canActOnName(req, name))) throw forbidden();
   await pool.query(`UPDATE users SET theme = $1 WHERE name = $2`, [theme, name]);
@@ -234,6 +242,18 @@ const SettingsPatch = z.object({
   dailyTelegram: z.boolean().optional(),
   /** Recognition (desk feed, Telegram group, others' rankings, public titles — lib/gamification). Absent = on. */
   shareAchievements: z.boolean().optional(),
+  /** «Вид»: the personal look + up to 5 saved looks (lib/people/appearanceSchema). null removes it. */
+  appearance: StoredAppearanceSchema.nullable().optional(),
+  /** First-visit onboarding: tour / checklist / page hints seen or dismissed (lib/people/onboarding). null removes it. */
+  onboarding: OnboardingStateSchema.nullable().optional(),
+  /** Quote library: rotation seed, favourite quote ids, categories on in the card (lib/people/quotePrefs). null removes it. */
+  quotes: QuotePrefsSchema.nullable().optional(),
+  /** Dashboard tiles: order, sizes, hidden ones (lib/people/dashboardLayoutSchema). null removes it (= the default). */
+  dashboardLayout: DashboardLayoutSchema.nullable().optional(),
+  /** «Рекомендации офису» hidden for a week: rec id → until YYYY-MM-DD (lib/officeRecs/redact). null removes it. */
+  officeRecsHidden: z.record(z.string().min(1).max(80), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).refine((m) => Object.keys(m).length <= 50).nullable().optional(),
+  /** Small personal things kept across devices (saved views, templates, bookmarks…): merged PER KEY, null removes one. */
+  prefs: PrefsPatchSchema.optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -260,11 +280,32 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   }
   if (body.data.dailyTelegram !== undefined) set.dailyTelegram = body.data.dailyTelegram;
   if (body.data.shareAchievements !== undefined) set.shareAchievements = body.data.shareAchievements;
+  if (body.data.appearance === null) drop.push("appearance");
+  else if (body.data.appearance !== undefined) set.appearance = body.data.appearance;
+  if (body.data.onboarding === null) drop.push("onboarding");
+  else if (body.data.onboarding !== undefined) set.onboarding = body.data.onboarding;
+  if (body.data.quotes === null) drop.push("quotes");
+  else if (body.data.quotes !== undefined) set.quotes = body.data.quotes;
+  if (body.data.dashboardLayout === null) drop.push("dashboardLayout");
+  else if (body.data.dashboardLayout !== undefined) set.dashboardLayout = body.data.dashboardLayout;
+  if (body.data.officeRecsHidden === null) drop.push("officeRecsHidden");
+  else if (body.data.officeRecsHidden !== undefined) set.officeRecsHidden = body.data.officeRecsHidden;
+  const prefs = splitPrefsPatch(body.data.prefs ?? {});
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
     [JSON.stringify(set), drop, req.authUser!.id],
   );
+  if (body.data.prefs && rows[0]) {
+    // Per-key merge, refused (nothing written) when the whole block would outgrow its bound.
+    const r = await pool.query<{ settings: Record<string, unknown> | null }>(
+      `UPDATE users SET settings = ${prefsMergeSql("$1", "$2")}
+        WHERE id = $3 AND length(((COALESCE(settings->'prefs', '{}'::jsonb) - $2::text[]) || $1::jsonb)::text) <= $4 RETURNING settings`,
+      [JSON.stringify(prefs.set), prefs.drop, req.authUser!.id, MAX_PREFS_BYTES],
+    );
+    if (!r.rows[0]) throw tooLarge();
+    rows[0] = r.rows[0];
+  }
   if (!rows[0]) throw notFound();
   if (body.data.shareAchievements !== undefined) clearFeedStreamCache(); // recognition in the desk feed follows the switch at once
   res.json({ settings: rows[0].settings ?? {} });
@@ -431,10 +472,12 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     fields.push(`active = $${i++}`); vals.push(active);
     activeChanged = !active;
   }
+  // A new name cascades to every row keyed by the old one (lib/people/renameUser), in the same transaction.
+  let newName: string | null = null;
   if (name !== undefined) {
-    const cleanName = String(name).trim();
-    if (!cleanName || cleanName.length > 100) throw new AppError("INVALID_FIELD", undefined, { field: "name" });
-    fields.push(`name = $${i++}`); vals.push(cleanName);
+    const cleanName = cleanUserName(String(name));
+    if (!cleanName) throw new AppError("INVALID_FIELD", undefined, { field: "name" });
+    if (cleanName !== target.name) newName = cleanName;
   }
   let passwordChanged = false;
   if (password !== undefined) {
@@ -455,19 +498,37 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     fields.push(`role = $${i++}`); vals.push(newRole);
     roleChanged = newRole !== target.role;
   }
-  if (!fields.length) throw badRequest("NO_FIELDS");
+  if (!fields.length && newName === null) {
+    if (name !== undefined) { const { rows } = await pool.query<any>(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [id]); res.json(rows[0]); return; }
+    throw badRequest("NO_FIELDS");
+  }
   vals.push(id);
   try {
-    const { rows } = await pool.query<any>(
-      `UPDATE users SET ${fields.join(", ")} WHERE id = $${i}
-       RETURNING ${USER_COLUMNS}`,
-      vals
-    );
-    if (!rows[0]) throw notFound();
-    const nameChanged = typeof name === "string" && rows[0].name !== target.name;
+    const client = await pool.connect();
+    let rows: any[];
+    let renamed: RenameReport | null = null;
+    try {
+      await client.query("BEGIN");
+      if (newName !== null) renamed = await renameUserInTx(client, { userId: id, newName, actor: req.authUser?.name ?? "?" });
+      ({ rows } = await client.query(
+        `UPDATE users SET ${fields.length ? fields.join(", ") : "id = id"} WHERE id = $${i}
+         RETURNING ${USER_COLUMNS}`,
+        vals,
+      ));
+      if (!rows[0]) throw notFound();
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw e;
+    } finally {
+      client.release();
+    }
+    const nameChanged = renamed !== null;
+    if (renamed) await afterRename(renamed);
     // Invalidate existing sessions so a reset password / new role / new name takes effect immediately (the name is
-    // signed into the token: an old token would keep acting under the old name).
-    if (passwordChanged || roleChanged || activeChanged || nameChanged) await bumpTokenVersion(id);
+    // signed into the token: an old token would keep acting under the old name). A rename bumped it in its transaction.
+    if (nameChanged) forgetTokenVersion(id);
+    else if (passwordChanged || roleChanged || activeChanged) await bumpTokenVersion(id);
     // An admin reset of the secret also lifts a sign-in lock on that account.
     if (passwordChanged) await lockoutStore().clearUser(id).catch((err) => logger.warn({ err }, "users: clear login lock failed"));
     // Audit: PIN / password reset, role, (de)activation, rename — never the secret itself.
@@ -484,9 +545,28 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     res.json(rows[0]);
   } catch (e: any) {
     if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
+    if (e instanceof RenameError) throw renameHttpError(e);
     throw e;
   }
 }));
+
+function renameHttpError(e: RenameError): AppError {
+  if (e.code === "INVALID_FIELD") return new AppError("INVALID_FIELD", undefined, { field: "name" });
+  if (e.code === "NOT_FOUND") return notFound();
+  if (e.code === "USER_NAME_TAKEN") return new AppError("USER_NAME_TAKEN");
+  const rows = (e.details?.rows ?? {}) as Record<string, number>;
+  return new AppError("RENAME_DATA_CONFLICT", undefined, { count: Object.values(rows).reduce((s, n) => s + n, 0) }, { rows });
+}
+
+/** In-process caches keyed by name, after a committed rename (another API process catches up on its own TTLs). */
+async function afterRename(r: RenameReport): Promise<void> {
+  forgetQuests(r.from);
+  forgetQuests(r.to);
+  invalidateDashboardCache();
+  clearFeedStreamCache();
+  await Promise.all([reloadLatinNames(), warmSettings()]);
+  logger.info({ userId: r.userId, from: r.from, to: r.to, rows: r.total }, "users: renamed with every reference");
+}
 
 router.delete("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);

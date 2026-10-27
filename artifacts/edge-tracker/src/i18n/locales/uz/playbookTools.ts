@@ -177,7 +177,7 @@ export default {
     restoring: "Tiklanmoqda…",
   },
   export: {
-    title: "WS_LEXX — Pleybuk",
+    title: "WS_Desk — Pleybuk",
     exportedAt: "Eksport qilingan: {date}",
     totals: "Jami: {setups} · Ichki: {children}",
     totalsNotion: "Papkalar: {folders} · Setaplar: {setups} · Ichki: {children}",

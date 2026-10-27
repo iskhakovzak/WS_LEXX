@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState, Panel, Pill, StatCard, StatGrid, StatRow, toneOf, toneText } from "@/components/ds";
-import { CHART_TOOLTIP, OutcomeBar, RankDelta } from "./shared";
+import { OutcomeBar, RankDelta } from "./shared";
+import { ACTIVE_DOT, CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { useLeaderboard, winPctOf } from "./leaderboard-tab";
 import { ScorecardCard } from "./scorecards-tab";
 import { CRITERIA, buildScorecards, criterionLabel, tierLabel, weekLabel, type Rating } from "./scorecard-model";
@@ -24,13 +25,15 @@ import { ratingsI18n } from "@/i18n/ns/ratings";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { rich, slots } from "@/i18n/rich";
+import { winRateOf } from "@/lib/trade-math";
 
 export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | null; ratings: Rating[]; ratingsLoading: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = ratingsI18n.useT();
   const { t: tc } = commonI18n.useT();
-  const month = useLeaderboard("30", "auto");
+  const motion = useChartMotion();
+  const month = useLeaderboard({ period: "month", custom: null }, "auto");
   // Shared with /trade-ideas, the stats page and global search (one request).
   const ideasQ = useQuery({ ...tradeIdeasQuery<TradeIdea>(), enabled: !!me });
 
@@ -56,7 +59,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
     // Team win rate = W / (W + L): break-even trades are excluded, same as the leaderboard rows.
     const decided = month.ranked.reduce((s, l) => s + l.wins + l.losses, 0);
     const wins = month.ranked.reduce((s, l) => s + l.wins, 0);
-    return { winrate: decided ? (wins / decided) * 100 : null };
+    const wr = winRateOf(wins, decided - wins);
+    return { winrate: wr == null ? null : wr * 100 };
   }, [month.ranked]);
 
   // Feedback loop: the trader confirms they have read the curator's focus → curator sees it on the scorecard.
@@ -151,7 +155,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
         </StatGrid>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="flex flex-col gap-4 lg:col-span-2">
           {ratingsLoading ? <Skeleton className="h-80 rounded-2xl" /> : card ? (
             // The focus lives in «Фокус на неделю» below (with «Прочитал»): shown once, not on the card too (MAKSIM-31).
@@ -215,14 +219,14 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
               <>
               <div {...weekNav.wrapperProps} className={cn("h-56 w-full", weekNav.wrapperProps.className)}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -20 }} {...weekNav.chartProps}>
-                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP} labelFormatter={(l) => <>{String(l)}<PeriodHint kind="week" /></>} formatter={(v: number, n: string) => [fmtNum(v, 1), n === "overall" ? t("progress.overallShort") : t("progress.criteriaShort")]} />
+                  <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} {...weekNav.chartProps}>
+                    <CartesianGrid {...GRID} />
+                    <XAxis dataKey="week" {...X_AXIS} />
+                    <YAxis {...Y_AXIS} width={28} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} />
+                    <Tooltip {...tooltipProps("line")} content={<GlassTooltip />} labelFormatter={(l) => <>{String(l)}<PeriodHint kind="week" /></>} formatter={(v: number, n: string) => [fmtNum(v, 1), n === "overall" ? t("progress.overallShort") : t("progress.criteriaShort")]} />
                     <Legend formatter={(v: string) => <span className="text-xs text-muted-foreground">{v === "overall" ? t("overall") : t("progress.criteriaAvg")}</span>} />
-                    <Line isAnimationActive={false} dataKey="composite" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line isAnimationActive={false} dataKey="overall" stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3 }} />
+                    <Line {...motion} dataKey="composite" stroke={CHART.series[0]} strokeWidth={STROKE} dot={{ r: 3, strokeWidth: 0, fill: CHART.series[0] }} activeDot={{ ...ACTIVE_DOT, fill: CHART.series[0] }} />
+                    <Line {...motion} dataKey="overall" stroke={CHART.series[2]} strokeWidth={STROKE} strokeDasharray="4 3" dot={{ r: 3, strokeWidth: 0, fill: CHART.series[2] }} activeDot={{ ...ACTIVE_DOT, fill: CHART.series[2] }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

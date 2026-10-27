@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearch } from "wouter";
-import { Archive, CalendarDays, History as HistoryIcon, Pencil, Plus, RotateCcw, Sparkles, UserCheck, UserPlus, Users } from "lucide-react";
+import { Link } from "wouter";
+import { useSearchParam, useSearchParamId } from "@/hooks/use-search-param";
+import { Archive, CalendarDays, History as HistoryIcon, Pencil, Plus, RotateCcw, Sparkles, UserCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import {
-  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, useTableSort,
+  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, Toolbar, usePersistentState, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +17,7 @@ import { CohortDialog, EnrollDialog, EnrollmentEditDialog, RosterDialog, Session
 import {
   AttendanceSummaryView, DualTime, StagePill, StatusPill, WhereLine, dateTimeDesk, fmtYmd,
 } from "@/components/academy/cohorts/shared";
+import { WeekStepper } from "@/components/academy/cohorts/week-stepper";
 import { fmtRate } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
@@ -29,17 +31,23 @@ import { personName } from "@/i18n";
  */
 export default function AcademyCohortsPage() {
   const { t } = academyCohortsI18n.useT();
-  const search = useSearch();
-  const [archived, setArchived] = useState(false);
+  const [archived, setArchived] = usePersistentState("academy.cohorts.archived", false);
   const list = useCohorts(archived);
   const staff = !!list.data?.staff;
   const cohorts = list.data?.cohorts ?? [];
-  const [selectedId, setSelectedId] = useState<number | null>(() => Number(new URLSearchParams(search).get("id")) || null);
+  // ?id= is read and written: the open cohort survives a reload.
+  const [selectedId, setSelectedId] = useSearchParamId("id");
   useEffect(() => {
     if (!cohorts.length) return;
-    // Default: my own cohort (I am its mentor), else the first one (OLGA-19).
-    if (!selectedId || !cohorts.some((c) => c.id === selectedId)) setSelectedId((cohorts.find((c) => c.mine) ?? cohorts[0]).id);
-  }, [cohorts, selectedId]);
+    // Default (prefill, design audit wave 2): my own cohort with people in it, else the cohort with the most people,
+    // else my own, else the first — never an empty «В когорте пока никого нет» while another cohort has a roster.
+    if (!selectedId || !cohorts.some((c) => c.id === selectedId)) {
+      const people = (c: CohortListItem) => c.counts.active + c.counts.paused;
+      const fullest = [...cohorts].sort((a, b) => people(b) - people(a))[0];
+      const mine = cohorts.find((c) => c.mine && people(c) > 0);
+      setSelectedId((mine ?? (people(fullest) > 0 ? fullest : cohorts.find((c) => c.mine) ?? cohorts[0])).id);
+    }
+  }, [cohorts, selectedId, setSelectedId]);
   const [createOpen, setCreateOpen] = useState(false);
   const seed = useSeedDemo();
   const { toast } = useToast();
@@ -61,34 +69,33 @@ export default function AcademyCohortsPage() {
   return (
     <Page>
       <PageHeader
-        icon={Users}
+        icon={UsersRound}
         title={shellI18n.t("nav.academyCohorts")}
         description={t("cohortsPage.description")}
-        actions={<>
-          <Segmented ariaLabel={t("cohortsPage.showAria")} value={archived ? "arch" : "live"} onChange={(v) => setArchived(v === "arch")}
-            options={[{ value: "live", label: t("cohortsPage.live") }, { value: "arch", label: t("cohortsPage.archive") }]} />
-          {staff && <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.newCohort")}</Button>}
-        </>}
+        actions={staff && <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.newCohort")}</Button>}
       />
+      {/* The list mode sits in the Toolbar under the header, not in it (design audit wave 3). */}
+      <Toolbar>
+        <Segmented ariaLabel={t("cohortsPage.showAria")} value={archived ? "arch" : "live"} onChange={(v) => setArchived(v === "arch")}
+          options={[{ value: "live", label: t("cohortsPage.live") }, { value: "arch", label: t("cohortsPage.archive") }]} />
+      </Toolbar>
       {list.isError && <ErrorState error={list.error} onRetry={() => list.refetch()} title={t("cohortsPage.loadFailed")} />}
-      {list.isLoading && <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><Panel><ListSkeleton rows={4} /></Panel><PanelSkeleton height={320} /></div>}
+      {list.isLoading && <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><Panel><ListSkeleton rows={4} /></Panel><PanelSkeleton height={320} /></div>}
       {list.data && cohorts.length === 0 && (
         <Panel>
-          <EmptyState icon={Users} title={archived ? t("cohortsPage.archiveEmpty") : t("cohortsPage.empty")}
+          <EmptyState art="temple" icon={Users} title={archived ? t("cohortsPage.archiveEmpty") : t("cohortsPage.empty")}
             description={staff ? t("cohortsPage.emptyStaff") : t("cohortsPage.emptyStudent")}
-            action={staff && !archived ? (
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.create")}</Button>
-                {/* The demo seed is a one-off setup action: offered only while there is nothing yet (it never duplicates). */}
-                <Button variant="outline" onClick={runSeed} disabled={seed.isPending} title={t("cohortsPage.demoTitle")}>
-                  <Sparkles className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.demo")}
-                </Button>
-              </div>
+            action={staff && !archived ? <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.create")}</Button> : undefined}
+            secondaryAction={staff && !archived ? (
+              /* The demo seed is a one-off setup action: offered only while there is nothing yet (it never duplicates). */
+              <Button variant="link" size="sm" className="text-muted-foreground hover:text-foreground" onClick={runSeed} disabled={seed.isPending} title={t("cohortsPage.demoTitle")}>
+                <Sparkles className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.demo")}
+              </Button>
             ) : undefined} />
         </Panel>
       )}
       {cohorts.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <nav aria-label={t("cohortsPage.listAria")} className="flex flex-col gap-2">
             {cohorts.map((c) => <CohortCard key={c.id} c={c} active={c.id === selectedId} onClick={() => setSelectedId(c.id)} />)}
           </nav>
@@ -123,12 +130,14 @@ function CohortCard({ c, active, onClick }: { c: CohortListItem; active: boolean
 }
 
 type Tab = "members" | "schedule" | "attendance" | "history";
+const TABS: readonly Tab[] = ["members", "schedule", "attendance", "history"];
 
 function Detail({ id, staff }: { id: number; staff: boolean }) {
   const { t } = academyCohortsI18n.useT();
   const { t: ct } = commonI18n.useT();
   const q = useCohort(id);
-  const [tab, setTab] = useState<Tab>("members");
+  const [tabRaw, setTab] = useSearchParam("tab", "members", { allowed: TABS });
+  const tab = tabRaw as Tab;
   const [editOpen, setEditOpen] = useState(false);
   const archive = useArchiveCohort();
   const { toast } = useToast();
@@ -165,13 +174,14 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
             <WhereLine mode={c.format === "remote" ? "online" : c.format === "office" ? "office" : "hybrid"} room={c.room} meetingUrl={c.meetingUrl} />
           </div>
         )}
-        <StatGrid className="mt-3">
+        {/* An empty cohort shows its empty roster, not four «—» KPIs (design audit: hide KPIs on empty pages). */}
+        {(d.enrollments.length > 0 || d.sessions.length > 0) && <StatGrid className="mt-3">
           <StatCard label={t("cohortsPage.statActive")} value={active} hint={t("cohortsPage.statActiveHint", { n: d.enrollments.length })} />
           <StatCard label={t("cohortsPage.statAttendance")} value={fmtRate(d.attendance.rate)} tone={d.attendance.rate == null ? "neutral" : d.attendance.rate >= 0.9 ? "up" : d.attendance.rate >= 0.75 ? "warn" : "down"}
             hint={staff ? t("cohortsPage.hintAll") : t("cohortsPage.hintMine")} />
           <StatCard label={t("cohortsPage.statPunctuality")} value={fmtRate(d.attendance.punctuality)} hint={t("cohortsPage.punctualityHint")} />
           <StatCard label={t("cohortsPage.statSessions")} value={d.sessions.length} />
-        </StatGrid>
+        </StatGrid>}
       </Panel>
       <SectionTabs ariaLabel={t("cohortsPage.tabsAria")} value={tab} onChange={setTab} tabs={[
         { value: "members", label: t("cohortsPage.tabMembers"), icon: Users, count: d.enrollments.length },
@@ -255,8 +265,10 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                   <td className="text-right">{e.attendance30 ? fmtRate(e.attendance30.rate) : "—"}</td>
                   {staff && (
                     <td className="whitespace-nowrap text-right">
-                      <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>{t("cohortsPage.members.stageStatus")}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => remove(e)} aria-label={t("cohortsPage.members.removeAria", { name: personName(e.userName) })} title={t("cohortsPage.members.removeTitle")}><Archive className="h-4 w-4" /></Button>
+                      {/* The everyday edit stays visible; removing from the cohort (rare, destructive) folds into «…». */}
+                      <RowActions more={[{ label: t("cohortsPage.members.removeTitle"), icon: Archive, onSelect: () => remove(e) }]}>
+                        <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>{t("cohortsPage.members.stageStatus")}</Button>
+                      </RowActions>
                     </td>
                   )}
                 </tr>
@@ -279,7 +291,9 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
   const archive = useArchiveSession();
   const { toast } = useToast();
   const today = nyDate();
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekRaw, setWeekRaw] = useSearchParam("week", "0");
+  const weekOffset = Number.isInteger(Number(weekRaw)) ? Number(weekRaw) : 0;
+  const setWeekOffset = (u: number | ((w: number) => number)) => setWeekRaw(String(typeof u === "function" ? u(weekOffset) : u));
   const from = addDays(today, weekOffset * 7 - 7);
   const to = addDays(from, 20);
   const sched = useSchedule(d.cohort.id, from, to);
@@ -322,25 +336,20 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
                 </div>
               </div>
               {staff && (
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => setEdit(s)} aria-label={t("cohortsPage.schedule.editAria", { title: s.title })} title={ct("actions.edit")}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeSession(s)} aria-label={t("cohortsPage.schedule.removeAria", { title: s.title })} title={t("cohortsPage.schedule.removeTitle")}><Archive className="h-4 w-4" /></Button>
-                </div>
+                <RowActions more={[{ label: t("cohortsPage.schedule.removeTitle"), icon: Archive, onSelect: () => removeSession(s) }]}>
+                  <Button size="sm" variant="ghost" onClick={() => setEdit(s)} aria-label={t("cohortsPage.schedule.editAria", { title: s.title })} title={ct("actions.edit")}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
+                </RowActions>
               )}
             </li>
           ))}
         </ul>
       </Panel>
       <Panel title={t("cohortsPage.schedule.calendar")} icon={CalendarDays} description={t("cohortsPage.schedule.calendarDesc", { from: fmtYmd(from), to: fmtYmd(to) })}
-        actions={<div className="flex gap-1">
-          <Button size="sm" variant="outline" onClick={() => setWeekOffset((w) => w - 1)} aria-label={t("cohortsPage.schedule.prevWeek")} title={t("cohortsPage.schedule.prevWeek")}>←</Button>
-          <Button size="sm" variant="outline" onClick={() => setWeekOffset(0)} disabled={weekOffset === 0}>{ct("time.today")}</Button>
-          <Button size="sm" variant="outline" onClick={() => setWeekOffset((w) => w + 1)} aria-label={t("cohortsPage.schedule.nextWeek")} title={t("cohortsPage.schedule.nextWeek")}>→</Button>
-        </div>}>
+        actions={<WeekStepper offset={weekOffset} onChange={setWeekOffset} label={`${fmtYmd(from)} – ${fmtYmd(to)}`} />}>
         {sched.isLoading && <ListSkeleton rows={4} dense />}
         {sched.isError && <ErrorState error={sched.error} compact />}
         {sched.data && byDay.length === 0 && <p className="text-sm text-muted-foreground">{t("cohortsPage.schedule.rangeEmpty")}</p>}
-        <div aria-busy={sched.isPlaceholderData || undefined} className={cn("grid gap-2 md:grid-cols-2 2xl:grid-cols-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", sched.isPlaceholderData && "pointer-events-none opacity-60")}>
+        <div aria-busy={sched.isPlaceholderData || undefined} className={cn("grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", sched.isPlaceholderData && "pointer-events-none opacity-60")}>
           {byDay.map(([day, list]) => (
             <section key={day} aria-label={fmtYmd(day)} className={cn("glass-field rounded-xl p-2", day === today && "ring-1 ring-primary/60")}>
               <h3 className="mb-1 text-xs font-medium text-muted-foreground">{day === today ? t("cohortsPage.schedule.dayToday", { date: fmtYmd(day) }) : fmtYmd(day)}</h3>
@@ -376,7 +385,7 @@ function AttendanceTab({ d }: { d: CohortDetail }) {
   const { rows: sorted, thProps } = useTableSort(withStats, ATT_ACCESSORS, "rate", "asc");
   return (
     <Panel title={t("cohortsPage.attendanceTab.title")} icon={UserCheck} description={t("cohortsPage.attendanceTab.description")}>
-      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <AttendanceSummaryView s={d.attendance} title={t("cohortsPage.attendanceTab.wholeCohort")} />
         {withStats.length === 0 ? <p className="text-sm text-muted-foreground">{t("cohortsPage.attendanceTab.noData")}</p> : (
           <DataTable ariaLabel={t("cohortsPage.attendanceTab.tableAria")}>

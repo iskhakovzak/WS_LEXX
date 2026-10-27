@@ -33,6 +33,18 @@ export default {
       drawdown: "Maks. pasayishgacha {left}.",
     },
   },
+  mentorStop: {
+    headline: {
+      drawdown: "Kurator qaror qilguncha savdo toʻxtatildi",
+      weekly: "Haftalik limit tugadi — dushanbagacha savdo yoʻq",
+      stop: "Kunlik stop — bugun boshqa savdo yoʻq",
+    },
+    rule: {
+      drawdown: "Kurator qaror qilguncha savdo qilmang — kuratorga yozing.",
+      weekly: "Dushanbagacha savdo qilmang — kuratorga yozing.",
+      stop: "Bugun boshqa savdo qilmang — kuratorga yozing.",
+    },
+  },
   alerts: {
     daily: "Kunlik zarar limiti",
     weekly: "Haftalik zarar limiti",
@@ -92,6 +104,10 @@ export default {
     breach_review_n: "Qoidabuzarlikni tahlil qilish ({count})",
     stopped: "Stopda — bogʻlaning va pozitsiyalarni tekshiring",
     near_stop: "Stopga yaqin — ogohlantiring",
+    plateau_review: "Surʼat bosqich uchun kerakligidan past — 1:1 tahlil belgilash",
+    at_stake: "Pul xavf ostida: 20 kunlik minus va yoʻqotishlar — koʻrib chiqish",
+    dropout_risk: "Ketish xavfi: kamroq savdo qiladi va kunlarni yopadi — gaplashish",
+    trial_review: "Qoida sinovi tugayapti — natija boʻyicha qaror qilish",
     eod_review: "Yopilgan kunni tahlil qilish",
     eod_review_n: "Yopilgan kunni tahlil qilish ({count})",
     weekly_review: "Haftalik hisobotga javob berish",

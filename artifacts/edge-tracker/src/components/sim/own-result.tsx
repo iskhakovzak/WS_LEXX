@@ -56,7 +56,7 @@ export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: G
   return (
     <div className="flex flex-col gap-3">
       <div className="tile rounded-xl p-3">
-        <p className="text-2xs uppercase tracking-wide text-muted-foreground">{t("result.title")}</p>
+        <p className="text-2xs text-muted-foreground">{t("result.title")}</p>
         <p className="mt-0.5 text-xl font-semibold tracking-tight">{o.ticker} · {fmtDayMonth(o.date)}</p>
         {r.longName && <p className="truncate text-xs text-muted-foreground" title={r.longName}>{r.longName}</p>}
         <p className={cn("mt-2 text-2xl font-semibold leading-tight tabular-nums", toneText(verdictTone(o)))}>

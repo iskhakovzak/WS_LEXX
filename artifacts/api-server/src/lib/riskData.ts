@@ -11,6 +11,8 @@ import { nyDate, nyMinutes } from "./tradingDate";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql } from "./tradeMath";
 import { num, round2, type DayRow, type Horizon, type Limits, type LiveSnapshot, type Position } from "./riskMetrics";
 import { BoundedPromiseCache, onTradesPageInvalidate } from "./tradesPageCache";
+import { NO_ADJ, withRegimeLimits } from "./marketRegime/regimes";
+import { regimeAdj } from "./marketRegime/store";
 
 // ─── constants / helpers ────────────────────────────────────────────────────
 
@@ -85,6 +87,17 @@ export async function loadLimits(trader: string | null): Promise<Map<string, Lim
     .query(`SELECT * FROM trader_risk_limits WHERE ($1::text IS NULL OR trader = $1)`, [trader])
     .catch(() => ({ rows: [] as any[] }));
   return new Map(rows.map((r: any) => [String(r.trader), toLimits(r)]));
+}
+
+/**
+ * The limits the stops of `date` count against: the stored ones, with the daily loss limit × the desk regime's
+ * multiplier while settings regime.applyLimits is on (lib/marketRegime). Stored limits are never changed, so the
+ * edit form (/risk/limits) keeps the base and switching the setting off restores it at once.
+ */
+export async function loadEffectiveLimits(trader: string | null, date: string): Promise<Map<string, Limits>> {
+  const [map, adj] = await Promise.all([loadLimits(trader), regimeAdj(date).catch(() => NO_ADJ)]);
+  if (!adj.apply || !adj.regime) return map;
+  return new Map([...map].map(([name, l]) => [name, withRegimeLimits(l, adj) ?? l]));
 }
 
 

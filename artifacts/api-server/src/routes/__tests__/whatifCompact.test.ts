@@ -28,6 +28,27 @@ describe("/whatif/base?enc=2 — compact trade table (DEV-10)", () => {
     expect(col(c.rows[0], "grade")).toBeNull();
   });
 
+  it("new columns: trader / tag lists as dictionaries, flags as 1/0, stop as 1/0/null", () => {
+    const rows = [
+      trade({ id: 1, trader: "A", imx: true, reentry: false, sizeRel: 2.5, hasStop: true, ptags: ["news", "halt"], mistakes: ["fomo", "revenge"] }),
+      trade({ id: 2, trader: "B", imx: false, reentry: true, sizeRel: null, hasStop: false, ptags: [], mistakes: [] }),
+      trade({ id: 3, trader: "A", hasStop: null, ptags: ["news", "halt"] }),
+    ];
+    const c = compactTrades(rows);
+    expect(WHATIF_COLS.slice(-9, -2)).toEqual(["trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes"]);
+    expect(WHATIF_COLS.slice(-2)).toEqual(["strategy", "earnings"]);
+    const col = (r: (string | number | null)[], k: (typeof WHATIF_COLS)[number]) => r[WHATIF_COLS.indexOf(k)];
+    expect(c.dicts.trader).toEqual(["A", "B"]);
+    expect(c.dicts.ptags).toEqual(["news,halt"]);
+    expect(c.dicts.mistakes).toEqual(["fomo,revenge"]);
+    expect(c.rows.map((r) => [col(r, "trader"), col(r, "imx"), col(r, "reentry"), col(r, "sizeRel"), col(r, "hasStop"), col(r, "ptags"), col(r, "mistakes")])).toEqual([
+      [0, 1, 0, 2.5, 1, 0, 0],
+      [1, 0, 1, null, 0, null, null],
+      [0, 0, 0, null, null, 0, null],
+    ]);
+    expect(c.rows.every((r) => r.length === WHATIF_COLS.length)).toBe(true);
+  });
+
   it("regulatory sum uses the same keys as the engine's tariff (sec, taf, cat, orf, nfa)", () => {
     expect(regulatoryFees({ sec: 0.1, taf: 0.02, cat: 0.001, orf: 0.003, nfa: 0.004, comm: 5, ecn: 1 })).toBe(0.128);
     expect(regulatoryFees(undefined)).toBeNull();

@@ -1,12 +1,16 @@
-/** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section.
- * Juniors (simple menu, nav-model.ts) get the day's loop — Дашборд, План, Вечер (the journal), Сделки; the sheet lists
- * the rest. */
+/**
+ * Phone navigation (below 768 px): a floating bottom dock with the five main screens — Главная, Сделки, Дневник,
+ * Аналитика, Риск (nav-model.ts MOBILE_TABS; a screen the viewer cannot open is left out) — plus «Ещё», which opens the
+ * sheet with the rest of the sidebar. Icon + short label, 48 px targets, safe-area inset at the bottom; hidden while the
+ * on-screen keyboard is open and in print. The header keeps only secondary things (search, bell, user menu).
+ */
 import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ALL_NAV_ITEMS, isNavActive, type NavItem } from "./nav";
-import { mobileTabs, navItemOpen } from "./nav-model";
+import { isNavActive } from "./nav";
+import { mobileTabs, pinnedNavItems, simpleWithoutDock, withoutDock } from "./nav-model";
+import { useSoftKeyboardOpen } from "./use-soft-keyboard";
 import { useNavModel } from "./use-nav-model";
 import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useShellBadges } from "./use-shell-badges";
@@ -18,6 +22,14 @@ const loadSheet = () => import("./mobile-more-sheet");
 const MobileMoreSheet = lazy(loadSheet);
 const PHONE = "(max-width: 767px)";
 
+/** 48 px tall target (≥ 44), icon over a short label. */
+const dockItem =
+  "relative mx-auto flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-2xl text-2xs leading-none outline-none transition-colors duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-ring [-webkit-tap-highlight-color:transparent] [touch-action:manipulation]";
+const dockPill = "grid h-7 w-11 place-items-center rounded-full transition-colors duration-[var(--dur-1)]";
+/** The open screen: the sidebar's quiet tonal pill (foreground at 8% + a hairline), monochrome. */
+const dockPillActive = "bg-foreground/[0.08] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.06)]";
+const dockDot = "absolute right-[calc(50%-1.125rem)] top-1 h-2 w-2 rounded-full bg-down";
+
 export function MobileNav({ location }: { location: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
   // The sheet chunk is mounted (closed) once loaded: on the phone layout when idle, or on the first press on «More».
@@ -25,17 +37,21 @@ export function MobileNav({ location }: { location: string }) {
   const arm = useCallback(() => { void loadSheet().then(() => setSheetArmed(true), () => {}); }, []);
   const { t } = shellI18n.useT();
   const { groups, simple } = useNavModel();
-  const { pins } = usePinnedNav();
   const { isCurator, user, permissions } = useAuth();
+  // Same pins as the sidebar, role defaults included (the admin's «Статистика офиса»).
+  const { pins } = usePinnedNav(user?.role);
   const [moreGroupOpen, setMoreGroupOpen] = useMoreOpen(user?.traderName);
   const badges = useShellBadges();
-  // Simple menu (juniors): Дашборд, План, Вечер, Сделки + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
+  const keyboardOpen = useSoftKeyboardOpen();
+  // Главная, Сделки, Дневник (juniors: «Вечер»), Аналитика, Риск — those this viewer may open — + «Ещё».
   const tabs = React.useMemo(() => mobileTabs(groups, simple), [groups, simple]);
-  const tabHrefs = tabs.map((i) => i.href);
+  const tabHrefs = React.useMemo(() => tabs.map((i) => i.href), [tabs]);
+  // The sheet lists the rest of the sidebar (the dock's screens taken out, their children kept).
+  const sheetGroups = React.useMemo(() => withoutDock(groups, tabHrefs), [groups, tabHrefs]);
+  const sheetSimple = React.useMemo(() => (simple ? simpleWithoutDock(simple, tabHrefs) : null), [simple, tabHrefs]);
   const inTabs = tabs.some((t) => isNavActive(t, location));
-  // Same rule as the sidebar: a staff-only section pinned while signed in as curator never shows for a trader, nor a
-  // section closed for the stage.
-  const pinnedItems = pins.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i && !i.hidden && navItemOpen(i, isCurator, permissions.nav));
+  // «Закреплённые» on top, by the sidebar's rule (staff-only / closed-for-the-stage pins never show).
+  const pinnedItems = React.useMemo(() => pinnedNavItems(pins, isCurator, permissions.nav), [pins, isCurator, permissions.nav]);
   const anyAlert = Object.entries(badges).some(([href, b]) => b && !tabHrefs.includes(href));
 
   useEffect(() => { setMoreOpen(false); }, [location]);
@@ -54,9 +70,15 @@ export function MobileNav({ location }: { location: string }) {
     <>
       <nav
         aria-label={t("mobile.navLabel")}
-        className="glass-thick pb-safe fixed inset-x-2 bottom-2 z-nav rounded-[22px] px-1.5 pt-1.5 md:hidden"
+        data-tour="dock"
+        data-keyboard={keyboardOpen ? "open" : undefined}
+        inert={keyboardOpen}
+        className={cn(
+          "glass-thick pb-safe fixed inset-x-1.5 bottom-2 z-nav rounded-[22px] px-0.5 pt-1 transition-[transform,opacity] duration-[var(--dur-2)] motion-reduce:transition-none md:hidden print:hidden",
+          keyboardOpen && "pointer-events-none translate-y-[calc(100%+1rem)] opacity-0",
+        )}
       >
-        <ul className="grid grid-cols-5">
+        <ul className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
           {tabs.map((t) => {
             const active = isNavActive(t, location);
             const Icon = t.icon;
@@ -66,16 +88,13 @@ export function MobileNav({ location }: { location: string }) {
                   href={t.to ?? t.href}
                   aria-current={active ? "page" : undefined}
                   onPointerDown={() => preloadRoute(t.href)}
-                  className={cn(
-                    "relative mx-auto flex h-12 flex-col items-center justify-center gap-0.5 rounded-2xl text-2xs font-medium transition-colors",
-                    active ? "text-primary" : "text-muted-foreground",
-                  )}
+                  className={cn(dockItem, active ? "font-medium text-foreground" : "text-muted-foreground active:text-foreground")}
                 >
-                  <span className={cn("grid h-7 w-12 place-items-center rounded-full transition-colors", active && "bg-primary/15")}>
+                  <span className={cn(dockPill, active && dockPillActive)}>
                     <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                   </span>
-                  {t.short ?? t.name}
-                  {badges[t.href] && <><span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{badges[t.href]!.label}</span></>}
+                  <span className="max-w-full truncate tracking-[-0.01em]">{t.short ?? t.name}</span>
+                  {badges[t.href] && <><span className={dockDot} aria-hidden="true" /><span className="sr-only">{badges[t.href]!.label}</span></>}
                 </Link>
               </li>
             );
@@ -87,16 +106,13 @@ export function MobileNav({ location }: { location: string }) {
               onClick={() => { setSheetArmed(true); setMoreOpen(true); }}
               aria-haspopup="dialog"
               aria-expanded={moreOpen}
-              className={cn(
-                "relative mx-auto flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-2xl text-2xs font-medium",
-                !inTabs ? "text-primary" : "text-muted-foreground",
-              )}
+              className={cn(dockItem, !inTabs ? "font-medium text-foreground" : "text-muted-foreground active:text-foreground")}
             >
-              <span className={cn("grid h-7 w-12 place-items-center rounded-full", !inTabs && "bg-primary/15")}>
+              <span className={cn(dockPill, !inTabs && dockPillActive)}>
                 <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden="true" />
               </span>
-              {t("mobile.more")}
-              {anyAlert && <><span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{t("mobile.hasWarnings")}</span></>}
+              <span className="max-w-full truncate tracking-[-0.01em]">{t("mobile.more")}</span>
+              {anyAlert && <><span className={dockDot} aria-hidden="true" /><span className="sr-only">{t("mobile.hasWarnings")}</span></>}
             </button>
           </li>
         </ul>
@@ -105,8 +121,8 @@ export function MobileNav({ location }: { location: string }) {
       {sheetArmed && (
         <Suspense fallback={null}>
           <MobileMoreSheet
-            open={moreOpen} onOpenChange={setMoreOpen} location={location} groups={groups} pinnedItems={pinnedItems} badges={badges}
-            simple={simple ? { ...simple, primary: simple.primary.filter((i) => !tabHrefs.includes(i.href)) } : null}
+            open={moreOpen} onOpenChange={setMoreOpen} location={location} groups={sheetGroups} pinnedItems={pinnedItems} badges={badges}
+            simple={sheetSimple}
             moreGroupOpen={moreGroupOpen} setMoreGroupOpen={setMoreGroupOpen}
           />
         </Suspense>

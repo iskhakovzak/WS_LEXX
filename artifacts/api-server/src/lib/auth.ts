@@ -7,6 +7,7 @@ import { can, readScope, resolveActor, type Capability } from "./permissions";
 import { canReadPersonal, guestModeEnabled } from "./accessRules";
 import { AppError, sendError, unauthorized } from "./http/errors";
 import { isSessionRevoked, newSessionId, sessionKey } from "./security/sessions";
+import { allowedWhileLocked, isSessionLocked } from "./security/screenLock";
 
 const SECRET = config.jwtSecret;
 if (!SECRET) {
@@ -87,6 +88,11 @@ function invalidateTvCache(userId: number): void {
   tvCache.delete(userId);
 }
 
+/** Drop the cached token version after it was bumped in SQL elsewhere (a rename bumps it inside its transaction). */
+export function forgetTokenVersion(userId: number): void {
+  invalidateTvCache(userId);
+}
+
 /**
  * `pwc` (password change required): the account still has an issued secret (users.must_change_secret), or staff whose
  * secret is shorter than the staff minimum (lib/security/passwordPolicy).
@@ -100,6 +106,16 @@ export async function signToken(u: AuthUser, opts: { pwc?: boolean; sid?: string
     expiresIn: TOKEN_TTL_SEC,
     algorithm: JWT_ALG,
   });
+}
+
+/**
+ * A short-lived token for a server job that reads the app's own API AS a member (the nightly AI reviews gather a
+ * trader's data with the trader's own rights — lib/assistant/batch/caller.ts). Never leaves this process: it is sent
+ * only over loopback to this same server, never logged, stored or returned. Revoked like any token (token_version).
+ */
+export async function signServiceToken(u: AuthUser, ttlSec = 15 * 60): Promise<string> {
+  const tv = (await getTokenVersion(u.id)) ?? 0;
+  return jwt.sign({ sub: u.id, name: u.name, role: u.role, tv, sid: newSessionId(), svc: true }, SECRET_OK, { expiresIn: ttlSec, algorithm: JWT_ALG });
 }
 
 /** Sliding session: should GET /auth/me hand out a fresh token? (`iat` in seconds.) */
@@ -155,9 +171,10 @@ declare global {
       authUser?: AuthUser;
       /**
        * Facts about the bearer token itself (set with authUser for members). `sid` = the session's revocation key
-       * (lib/security/sessions.sessionKey), `exp` = expiry in seconds.
+       * (lib/security/sessions.sessionKey), `exp` = expiry in seconds, `locked` = the screen lock is on for this session
+       * (lib/security/screenLock).
        */
-      authMeta?: { iat?: number; exp?: number; pwc: boolean; sid: string };
+      authMeta?: { iat?: number; exp?: number; pwc: boolean; sid: string; locked?: boolean };
     }
   }
 }
@@ -179,7 +196,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
         // token_version = «signed out everywhere»; the session row = «signed out on that device» (menu «Выйти»).
         if (currentTv !== null && currentTv === decoded.tv && !(await isSessionRevoked(sid))) {
           req.authUser = { id: decoded.id, name: decoded.name, role: decoded.role };
-          req.authMeta = { iat: decoded.iat, exp: decoded.exp, pwc: decoded.pwc, sid };
+          req.authMeta = { iat: decoded.iat, exp: decoded.exp, pwc: decoded.pwc, sid, locked: await isSessionLocked(sid) };
         }
       }
     }
@@ -237,10 +254,12 @@ const PASSWORD_CHANGE_ROUTES: readonly PublicRoute[] = [
   { method: "PATCH", path: "/users/me/locale" },
 ];
 
-// Error answers go through lib/http (codes AUTH_REQUIRED / GUEST_READ_ONLY / PASSWORD_CHANGE_REQUIRED, texts in the request language).
+// Error answers go through lib/http (codes AUTH_REQUIRED / GUEST_READ_ONLY / PASSWORD_CHANGE_REQUIRED / SESSION_LOCKED,
+// texts in the request language).
 
 /**
- * 401 for anonymous callers on every non-public route; 403 for guests on every mutation.
+ * 401 for anonymous callers on every non-public route; 403 for guests on every mutation; 423 SESSION_LOCKED for a
+ * screen-locked session on everything but the unlock / lock / logout / permissions-me routes (lib/security/screenLock).
  * `req.path` is relative to the /api mount ("/trades", not "/api/trades").
  */
 export function apiAuthGate(req: Request, res: Response, next: NextFunction): void {
@@ -257,6 +276,10 @@ export function apiAuthGate(req: Request, res: Response, next: NextFunction): vo
   }
   if (req.authMeta?.pwc && !matches(PASSWORD_CHANGE_ROUTES, method === "HEAD" ? "GET" : method, path)) {
     sendError(res, new AppError("PASSWORD_CHANGE_REQUIRED"));
+    return;
+  }
+  if (req.authMeta?.locked && !allowedWhileLocked(method, path)) {
+    sendError(res, new AppError("SESSION_LOCKED"));
     return;
   }
   next();

@@ -18,6 +18,7 @@ import { unauthorized } from "../lib/http";
 import { DEFAULT_TIERS } from "../lib/scalingSeed";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { redactOthersMoney } from "../lib/moneyVisibility";
+import { maxDrawdownOfSeries, winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -198,9 +199,7 @@ function dailySharpe(daily: number[]): number | null {
 }
 
 function maxDrawdown(values: number[]): number {
-  let cum = 0, peak = 0, dd = 0;
-  for (const v of values) { cum += v; if (cum > peak) peak = cum; if (cum - peak < dd) dd = cum - peak; }
-  return dd;
+  return maxDrawdownOfSeries(values);
 }
 
 function aggregate(rows: Row[]) {
@@ -246,8 +245,8 @@ function aggregate(rows: Row[]) {
   return {
     closed, wins, losses, breakevens: bes,
     /** W / (W + L), in % (break-even excluded). */
-    winrate: decided > 0 ? round((wins / decided) * 100) : 0,
-    winRate: decided > 0 ? wins / decided : null,
+    winrate: decided > 0 ? round(((winRateOf(wins, losses) ?? 0)) * 100) : 0,
+    winRate: winRateOf(wins, losses),
     net: pnlCount > 0 ? round(net) : null,
     gross: pnlCount > 0 ? round(gross) : null,
     fees: pnlCount > 0 ? round(gross - net) : null,

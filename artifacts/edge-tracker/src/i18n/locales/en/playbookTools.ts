@@ -177,7 +177,7 @@ export default {
     restoring: "Restoring…",
   },
   export: {
-    title: "WS_LEXX — Playbook",
+    title: "WS_Desk — Playbook",
     exportedAt: "Exported: {date}",
     totals: "Total: {setups} · Children: {children}",
     totalsNotion: "Folders: {folders} · Setups: {setups} · Children: {children}",

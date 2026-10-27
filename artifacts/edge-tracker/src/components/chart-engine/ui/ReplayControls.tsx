@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut, MoreHorizontal, Pause, Play, RotateCcw, SkipForward } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut, MoreHorizontal, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,8 +22,8 @@ const OPENING = (k: ExecutionKind) => k === "entry" || k === "add";
  */
 export function ReplayDock({
   playing, speed, cursor, start, end, marks, timeLabel, startLabel, endLabel,
-  startPreset, onStartPreset, hasEntry, intraday, hasExit, nextFillLabel, pauseOnFills, onPauseOnFills, atEnd,
-  onToggle, onStep, onSpeed, onSeek, onNextFill, onEntry, onExit, onOpen, onRestart, className,
+  startPreset, onStartPreset, hasEntry, intraday, hasExit, nextFillLabel, prevFillLabel, pauseOnFills, onPauseOnFills, atEnd,
+  onToggle, onStep, onSpeed, onSeek, onNextFill, onPrevFill, onEntry, onExit, onOpen, onRestart, className,
 }: {
   playing: boolean;
   speed: ReplaySpeed;
@@ -42,6 +42,9 @@ export function ReplayDock({
   intraday: boolean;
   hasExit: boolean;
   nextFillLabel: string | null;
+  /** Step by fill backwards (B / Shift+N); absent = no button. */
+  prevFillLabel?: string | null;
+  onPrevFill?: () => void;
   pauseOnFills: boolean;
   onPauseOnFills: (v: boolean) => void;
   /** The cursor is on the last bar of the data. */
@@ -78,6 +81,12 @@ export function ReplayDock({
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <Segmented size="sm" ariaLabel={t("replay.speed")} value={String(speed)} onChange={(v) => onSpeed(Number(v) as ReplaySpeed)} options={REPLAY_SPEEDS.map((s, i) => ({ value: String(s), label: `${s}×`, title: t("replay.speedKey", { key: i + 1 }) }))} />
+        {marks.length > 0 && onPrevFill && (
+          <div className="inline-flex items-center gap-0.5" role="group" aria-label={t("replay.fillSteps")}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("replay.prevFill")} title={prevFillLabel ? t("replay.prevFillTitle", { label: prevFillLabel }) : t("replay.noFillsBehind")} onClick={onPrevFill} disabled={!prevFillLabel}><SkipBack className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("replay.nextFill")} title={nextFillLabel ? t("replay.nextFillTitle", { label: nextFillLabel }) : t("replay.noFillsAhead")} onClick={onNextFill} disabled={!nextFillLabel}><SkipForward className="h-3.5 w-3.5" /></Button>
+          </div>
+        )}
         <div className="inline-flex items-center gap-0.5" role="group" aria-label={t("replay.jumps")}>
           <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs" title={t("replay.toEntryTitle")} onClick={onEntry} disabled={!hasEntry}><LogIn className="h-3.5 w-3.5" aria-hidden="true" /> {t("replay.toEntry")}</Button>
           <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs" title={t("replay.toExitTitle")} onClick={onExit} disabled={!hasExit}><LogOut className="h-3.5 w-3.5" aria-hidden="true" /> {t("replay.toExit")}</Button>
@@ -129,12 +138,12 @@ function ShortcutHint({ className }: { className?: string }) {
   const { t } = chartI18n.useT();
   const items: [string[], string][] = [
     [[t("hotkeys.keySpace")], t("replay.hintPlay")], [["←", "→"], t("replay.hintStep")], [["1–6"], t("replay.hintSpeed")],
-    [["E"], t("replay.hintEntry")], [["X"], t("replay.hintExit")],
+    [["B", "N"], t("replay.hintFills")], [["E"], t("replay.hintEntry")], [["X"], t("replay.hintExit")],
   ];
   return (
     <p className={cn("items-center gap-2.5 whitespace-nowrap text-2xs text-muted-foreground", className)} aria-label={t("hotkeys.title")}>
       {items.map(([keys, text]) => (
-        <span key={text} className="inline-flex items-center gap-1">{keys.map((k) => <Kbd key={k} className="px-1 py-0 text-[10px]">{k}</Kbd>)} {text}</span>
+        <span key={text} className="inline-flex items-center gap-1">{keys.map((k) => <Kbd key={k} className="px-1 py-0 text-2xs">{k}</Kbd>)} {text}</span>
       ))}
     </p>
   );

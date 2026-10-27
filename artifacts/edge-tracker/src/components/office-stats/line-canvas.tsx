@@ -11,6 +11,9 @@ import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion
 import { niceTicks } from "@/components/equity-chart/scale";
 import { cn } from "@/lib/utils";
 import { fmtMonth, localeTag } from "@/lib/format";
+import { CANVAS, DRAW_MS, prefersReducedMotion } from "@/components/shared/charts/theme";
+import { monotoneCurve } from "@/components/shared/charts/path";
+import { TOOLTIP_SURFACE } from "@/components/shared/charts/tooltip";
 
 export type LinePoint = { x: number; y: number; date: string };
 export type LineSeries = {
@@ -32,8 +35,12 @@ export interface LineCanvasProps {
   xMin: number;
   xMax: number;
   xTicks?: { x: number; label: string }[];
-  /** Horizontal goal line (+ optional diagonal from (xMin, 0) to (xMax, goal)). */
-  goal?: { y: number; label: string; pace?: boolean } | null;
+  /**
+   * Horizontal goal line (+ optional diagonal from (xMin, 0) to (xMax, goal)). `fit: false` keeps the y-scale on the
+   * data: a goal beyond it is not drawn as a line, a chip with `offLabel` at the top edge says where it is, and the pace
+   * diagonal is clipped to the plot.
+   */
+  goal?: { y: number; label: string; pace?: boolean; fit?: boolean; offLabel?: string } | null;
   fmtY: (v: number) => string;
   height: number;
   compact?: boolean;
@@ -70,6 +77,21 @@ export function LineCanvas({
   const [width, setWidth] = React.useState(0);
   const [hoverX, setHoverX] = React.useState<number | null>(null);
   const themeV = useThemeVersion();
+  // Draw-in: the series reveal left → right once on mount (skipped under prefers-reduced-motion).
+  const [reveal, setReveal] = React.useState(() => (prefersReducedMotion() ? 1 : 0));
+  React.useEffect(() => {
+    if (reveal >= 1) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / DRAW_MS);
+      setReveal(1 - (1 - k) ** 3);
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -84,7 +106,7 @@ export function LineCanvas({
   const geo = React.useMemo(() => {
     let min = 0, max = 0;
     for (const s of series) for (const p of s.points) { if (p.y < min) min = p.y; if (p.y > max) max = p.y; }
-    if (goal) { min = Math.min(min, goal.y); max = Math.max(max, goal.y); }
+    if (goal && goal.fit !== false) { min = Math.min(min, goal.y); max = Math.max(max, goal.y); }
     if (max - min < 1e-9) { max += 1; min -= 1; }
     const span = max - min;
     min -= span * 0.08; max += span * 0.1;
@@ -119,7 +141,7 @@ export function LineCanvas({
     const th = readChartTheme();
     draw(ctx, th);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height, series, goal, geo, themeV, rows, compact, endLabels]);
+  }, [width, height, series, goal, geo, themeV, rows, compact, endLabels, reveal]);
 
   function draw(ctx: CanvasRenderingContext2D, th: ChartTheme) {
     const { pad, ticks } = geo;
@@ -129,8 +151,12 @@ export function LineCanvas({
     ctx.lineWidth = 1;
     for (const t of ticks) {
       const y = Math.round(sy(t)) + 0.5;
-      ctx.strokeStyle = Math.abs(t) < 1e-9 ? th.fg(th.dark ? 0.28 : 0.3) : th.border(compact ? 0.35 : 0.5);
+      // Dotted, faint horizontal guides; the zero rule is the emphasised (solid) one.
+      const zero = Math.abs(t) < 1e-9;
+      ctx.setLineDash(zero ? [] : (CANVAS.gridDash as number[]));
+      ctx.strokeStyle = zero ? th.fg(CANVAS.zeroAlpha(th.dark)) : th.border(CANVAS.gridAlpha(th.dark) * (compact ? 0.7 : 1));
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.setLineDash([]);
       if (!compact) {
         ctx.fillStyle = th.muted(0.95);
         ctx.textAlign = "right"; ctx.textBaseline = "middle";
@@ -139,7 +165,7 @@ export function LineCanvas({
     }
     if (!ticks.some((t) => Math.abs(t) < 1e-9) && geo.min < 0 && geo.max > 0) {
       const y = Math.round(sy(0)) + 0.5;
-      ctx.strokeStyle = th.fg(0.28);
+      ctx.strokeStyle = th.fg(CANVAS.zeroAlpha(th.dark));
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
     }
     // x ticks
@@ -150,16 +176,17 @@ export function LineCanvas({
       for (const t of xTicks) {
         const x = sx(t.x);
         if (x < x0 - 1 || x > x1 + 1) continue;
-        ctx.strokeStyle = th.border(0.25);
-        ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, yTop); ctx.lineTo(Math.round(x) + 0.5, yBot); ctx.stroke();
         const w = ctx.measureText(t.label).width;
         if (x - w / 2 > lastRight + 6) { ctx.fillText(t.label, x + (w / 2 < 14 ? 8 : 0), yBot + 6); lastRight = x + w / 2; }
       }
     }
     // goal + pace
+    const goalOff = !!goal && goal.fit === false && (goal.y > geo.max || goal.y < geo.min);
     if (goal) {
       const gy = Math.round(sy(goal.y)) + 0.5;
       ctx.save();
+      // Clip to the plot: with a data-fitted scale the goal (and the far end of its pace line) can lie outside.
+      ctx.beginPath(); ctx.rect(x0, yTop, x1 - x0, yBot - yTop); ctx.clip();
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = th.fg(0.55);
       ctx.lineWidth = 1.25;
@@ -171,19 +198,20 @@ export function LineCanvas({
       }
       ctx.restore();
       if (!compact) {
-        ctx.font = `600 11px ${th.font}`;
-        const w = ctx.measureText(goal.label).width + 12;
-        const lx = x0 + 6, ly = gy - 10;
+        const text = goalOff ? (goal.offLabel ?? goal.label) : goal.label;
+        ctx.font = `600 12px ${th.font}`;
+        const w = ctx.measureText(text).width + 12;
+        const lx = x0 + 6, ly = goalOff ? (goal.y > geo.max ? yTop + 10 : yBot - 10) : gy - 10;
         ctx.fillStyle = th.labelBg;
         roundRect(ctx, lx, ly - 9, w, 18, 9); ctx.fill();
         ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-        ctx.fillText(goal.label, lx + 6, ly + 0.5);
-        ctx.font = `500 11px ${th.font}`;
+        ctx.fillText(text, lx + 6, ly + 0.5);
+        ctx.font = `500 12px ${th.font}`;
       }
     }
     // series (context first, focus last)
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0 - 2, yTop - 2, x1 - x0 + 4, yBot - yTop + 4); ctx.clip();
+    ctx.beginPath(); ctx.rect(x0 - 2, yTop - 2, (x1 - x0) * reveal + 4, yBot - yTop + 4); ctx.clip();
     for (let si = series.length - 1; si >= 0; si--) {
       const s = series[si];
       if (!s.points.length) continue;
@@ -191,16 +219,23 @@ export function LineCanvas({
       if (s.area) {
         ctx.beginPath();
         ctx.moveTo(sx(pts[0].x), sy(0));
-        for (const p of pts) ctx.lineTo(sx(p.x), sy(p.y));
+        monotoneCurve(ctx, pts.map((p) => [sx(p.x), sy(p.y)] as const), true);
         ctx.lineTo(sx(pts[pts.length - 1].x), sy(0));
         ctx.closePath();
-        ctx.fillStyle = withAlpha(s.color, 0.22);
+        // Soft fade: strongest at the curve's far edge, transparent at the zero line.
+        let far = sy(0);
+        for (const p of pts) far = Math.abs(sy(p.y) - sy(0)) > Math.abs(far - sy(0)) ? sy(p.y) : far;
+        const g = ctx.createLinearGradient(0, sy(0), 0, far === sy(0) ? sy(0) + 1 : far);
+        g.addColorStop(0, withAlpha(s.color, 0));
+        g.addColorStop(1, withAlpha(s.color, CANVAS.fillTop(th.dark) + 0.06));
+        ctx.fillStyle = g;
         ctx.fill();
       }
+      // Smooth monotone line (passes through every point, no overshoot).
       ctx.beginPath();
-      pts.forEach((p, i) => (i ? ctx.lineTo(sx(p.x), sy(p.y)) : ctx.moveTo(sx(p.x), sy(p.y))));
+      monotoneCurve(ctx, pts.map((p) => [sx(p.x), sy(p.y)] as const));
       ctx.strokeStyle = s.color;
-      ctx.lineWidth = s.width ?? (compact ? 1.5 : 2);
+      ctx.lineWidth = s.width ?? (compact ? CANVAS.lineDense : CANVAS.line);
       ctx.lineJoin = "round"; ctx.lineCap = "round";
       ctx.stroke();
     }
@@ -208,7 +243,7 @@ export function LineCanvas({
     // end labels
     if (endLabels && !compact && series.length <= 4) {
       const placed: number[] = [];
-      ctx.font = `600 11px ${th.font}`;
+      ctx.font = `600 12px ${th.font}`;
       ctx.textAlign = "left"; ctx.textBaseline = "middle";
       for (const s of series) {
         const last = s.points[s.points.length - 1];
@@ -227,17 +262,16 @@ export function LineCanvas({
     if (rows.length && hoverX != null) {
       const anyPt = rows.find((r) => r.point);
       const cx = anyPt?.point ? sx(anyPt.point.x) : sx(hoverX);
-      ctx.strokeStyle = th.fg(0.35);
+      // Crosshair: a solid hairline + dots snapped onto the curves.
+      ctx.strokeStyle = th.fg(th.dark ? 0.28 : 0.24);
       ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(Math.round(cx) + 0.5, yTop); ctx.lineTo(Math.round(cx) + 0.5, yBot); ctx.stroke();
-      ctx.setLineDash([]);
       for (const r of rows) {
         if (!r.point) continue;
         ctx.beginPath();
-        ctx.arc(sx(r.point.x), sy(r.point.y), compact ? 3 : 4, 0, Math.PI * 2);
+        ctx.arc(sx(r.point.x), sy(r.point.y), compact ? 3.5 : 4.5, 0, Math.PI * 2);
         ctx.fillStyle = r.color; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = th.bg(1); ctx.stroke();
+        ctx.lineWidth = 2.5; ctx.strokeStyle = th.bg(1); ctx.stroke();
       }
     }
   }
@@ -268,7 +302,7 @@ export function LineCanvas({
       {visibleRows.length > 0 && hoverX != null && (
         <div
           className={cn(
-            "pointer-events-none absolute top-1 z-raised min-w-[9rem] max-w-[16rem] rounded-xl border border-[var(--glass-border)] bg-popover/95 px-3 py-2 text-xs shadow-lg",
+            TOOLTIP_SURFACE, "absolute top-1 z-raised min-w-[9rem] max-w-[16rem]",
             compact && "px-2 py-1.5 text-2xs",
           )}
           style={tipLeft ? { right: Math.max(4, width - tipX + 12) } : { left: Math.min(width - 150, tipX + 12) }}

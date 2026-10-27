@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { commonI18n } from "@/i18n/ns/common";
 import { DataTable, Pill, SortableTh, Sparkline, toneOf, toneText, useTableSort } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { BenchRow } from "./api";
@@ -66,7 +67,7 @@ export function BenchmarkTable({
             <th scope="col">{t("table.col.curve")}</th>
             <SortableTh {...thProps("trades")} align="right">{t("table.col.trades")}</SortableTh>
             <SortableTh {...thProps("tpd")} align="right">{t("table.col.perDay")}</SortableTh>
-            <SortableTh {...thProps("winRate")} align="right">Win rate</SortableTh>
+            <SortableTh {...thProps("winRate")} align="right">{commonI18n.t("trading.winRate")}</SortableTh>
             <SortableTh {...thProps("pf")} align="right">PF</SortableTh>
             <SortableTh {...thProps("net")} align="right">{t("table.col.net")}</SortableTh>
             <SortableTh {...thProps("expectancy")} align="right">{t("table.col.expectancy")}</SortableTh>

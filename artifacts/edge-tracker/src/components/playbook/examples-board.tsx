@@ -233,7 +233,8 @@ export function ExamplesBoard({
   return (
     <div className="flex flex-col gap-3">
       <div className="sr-only" aria-live="polite">{announce}</div>
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-3">
+      {/* Columns keep their own height (items-start): no tall empty glass under a short column (design audit). */}
+      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-3">
         {TIERS.map((t) => {
           const col = byTier[t.tier];
           return (

@@ -79,7 +79,15 @@ export function TeamDay({
       }
     >
       {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}</div>
+        <div className="space-y-2" aria-hidden="true">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex h-12 items-center gap-3 rounded-xl border border-border/40 px-3">
+              <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+              <Skeleton className="h-3.5 rounded" style={{ width: `${40 - i * 6}%` }} />
+              <Skeleton className="ml-auto h-3.5 w-14 rounded" />
+            </div>
+          ))}
+        </div>
       ) : rows.length === 0 ? (
         <EmptyState icon={Users} title={t("team.empty")} compact />
       ) : (

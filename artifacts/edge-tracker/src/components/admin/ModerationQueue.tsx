@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import {
   Ban, Check, ExternalLink, Flag, Lightbulb, MessageCircle, MessagesSquare, MoreHorizontal, ShieldCheck, Trash2, X,
 } from "lucide-react";

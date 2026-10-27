@@ -4,6 +4,7 @@ import { Check, CloudOff, Loader2, Plus, ShieldAlert, Sunrise, X } from "lucide-
 import { Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
@@ -247,10 +248,13 @@ export function ReviewField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className={cn("h-1.5 w-1.5 rounded-full", tone === "up" ? "bg-up" : tone === "down" ? "bg-down" : "bg-primary")} aria-hidden="true" />
-        {label}
-      </label>
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <label htmlFor={id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className={cn("h-1.5 w-1.5 rounded-full", tone === "up" ? "bg-up" : tone === "down" ? "bg-down" : "bg-primary")} aria-hidden="true" />
+          {label}
+        </label>
+        {editable && <AssistHelp field="eod" value={value} onAccept={onChange} />}
+      </div>
       <Textarea
         id={id}
         readOnly={!editable}

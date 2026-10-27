@@ -57,11 +57,13 @@ import {
   computeMetrics, drawdownSince, liveRisk, nextPeak, num, pctOf, round2,
   type DayRow, type LiveRisk, type LiveSnapshot, type Limits, type Metrics, type Position,
 } from "../lib/riskMetrics";
-import { CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, loadDaily, loadDdResets, loadLimits, loadLiveSnapshots, loadPositions, toLimits } from "../lib/riskData";
+import { CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, loadDaily, loadDdResets, loadEffectiveLimits, loadLimits, loadLiveSnapshots, loadPositions, toLimits } from "../lib/riskData";
 import { loadLivePositions } from "../lib/livePositions";
 import { recordStopAlerts } from "../lib/riskAlertQueue";
 import { buyingPowerProblem } from "../lib/people/stageLimits";
 import { normalizeStageKey, stageOf } from "../lib/people/stage";
+import { logInterventionSafe } from "../lib/interventions/log";
+import { riskStateOf } from "../lib/coreMetrics/risk";
 
 export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
 export type { Alert, DayRow, Horizon, Limits, LiveRisk, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
@@ -130,12 +132,8 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) throw unauthorized();
   const today = clientDate(req.query.date);
-  const [limitsMap, days, positions, resets, snaps] = await Promise.all([
-    loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
-  ]);
-  const limits = limitsMap.get(me) ?? null;
-  const live = liveOf(snaps, me, today);
-  const m = computeMetrics(me, days, positions, limits, today, langOf(req), drawdownSince(resets.get(me), today), live);
+  // One loader with the mentor (lib/coreMetrics/risk): the hero and the mentor read the same stop and drawdown.
+  const { limits, live, metrics: m } = await riskStateOf(me, today, langOf(req));
   void recordStopAlerts(m, limits, today);
   const book = live && live.openPositions > 0 ? await loadLivePositions(me, today) : null;
   res.json({
@@ -155,7 +153,7 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.read.team"))) return;
   const today = clientDate(req.query.date);
   const [limitsMap, days, positions, usersRes, resets, snaps] = await Promise.all([
-    loadLimits(null),
+    loadEffectiveLimits(null, today),
     loadDaily(null, today),
     loadPositions(null, today),
     // ward = the viewer is the trader's curator / mentor / risk manager («Мои подопечные» on the desk).
@@ -355,10 +353,11 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
       delete copy.updatedAt;
       return copy;
     };
-    await pool.query(
-      `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5)`,
+    const ev = await pool.query(
+      `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [trader, before ? JSON.stringify(strip(before)) : null, JSON.stringify(strip(after)), b.reason ?? null, req.authUser!.name],
     );
+    await logInterventionSafe({ trader, kind: "limit_change", author: req.authUser!.name, params: { variant: "manual" }, sourceTable: "trader_risk_limit_events", sourceId: ev.rows[0].id });
   } catch { /* ignore */ }
   const actor = req.authUser!.name;
   if (actor !== trader) {
@@ -600,7 +599,7 @@ export type DeskSnapshotRow = {
 /** `only` = rows for just these traders (the curator's roster) — the same rows the full snapshot has for them. */
 export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru", only?: readonly string[]): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
   const [limitsMap, days, positions, usersRes, resets, snaps] = await Promise.all([
-    loadLimits(trader),
+    loadEffectiveLimits(trader, today),
     loadDaily(trader, today, only),
     loadPositions(trader, today),
     pool.query(`SELECT name, role, COALESCE(banned, false) AS banned FROM users WHERE active = true AND ($1::text IS NULL OR name = $1)`, [trader]),
@@ -706,10 +705,11 @@ router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void
     const logHead = `${tl("template.logReason", { tier: applied.tier.name })}${applied.resync ? tl("template.logResync") : ""}`;
     const logReason = reason ? tl("template.logWithReason", { text: logHead, reason }) : logHead;
     try {
-      await pool.query(
-        `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5)`,
+      const ev = await pool.query(
+        `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [it.trader, before ? JSON.stringify(stripMeta(before)) : null, JSON.stringify(stripMeta(after)), logReason, actor],
       );
+      await logInterventionSafe({ trader: it.trader, kind: "limit_change", author: actor, params: { variant: "template", tier: applied.tier.key }, sourceTable: "trader_risk_limit_events", sourceId: ev.rows[0].id });
     } catch { /* change log is best-effort */ }
     await logAudit({
       actor, action: "risk.limits.template", targetType: "trader_risk_limits", targetId: it.trader,

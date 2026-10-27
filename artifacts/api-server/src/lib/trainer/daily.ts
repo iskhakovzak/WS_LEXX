@@ -11,6 +11,9 @@
  *   open               new games only inside the ranked window; a game started inside it can be finished later (its
  *                      reveal waits until it is finished).
  *   reveal / ranking   after the viewer finished, or for everyone once the window closed (not while mid-game).
+ *   day rule           only ticker-days that opened ≥ trainer.minGapPct from the previous close with a catalyst
+ *                      (lib/sim/catalyst.ts); when every such day was a challenge inside the no-repeat window, the
+ *                      recency relaxes (an older day comes back, never yesterday's) — the day rule never does;
  *   eligibility        a ticker-day with any desk fill at 15:50–16:00 NY is never picked (lib/trainer/eligibility);
  *                      existing picks stay as they are.
  *   game               an ordinary sim game (mode 'intraday', 1-minute bars, trainer.dailyPlayMinutes from the open)
@@ -34,6 +37,8 @@ import * as ds from "./dailyStore";
 import { withoutBlockedDays } from "./eligibility";
 import { blockedTickerDays } from "./eligibilityStore";
 import type { DailyChallengeState } from "./types";
+import { isGapDay } from "../sim/catalyst";
+import { catalystKeys } from "../sim/catalystStore";
 
 /** The regular close; an early-close day (13:00) opens its challenge at its own close (lib/marketDays sessionFor). */
 export const CLOSE_MIN = 16 * 60;
@@ -83,6 +88,7 @@ const rules = (): PickRules => ({
   minVolume: setting("trainer.dailyMinVolume"),
   minRangePct: setting("trainer.dailyMinRangePct"),
   maxRangePct: setting("trainer.dailyMaxRangePct"),
+  minGapPct: setting("trainer.minGapPct"),
 });
 
 const spec = (): IntradaySpec => ({ mode: "intraday", tf: "1m", playMinutes: setting("trainer.dailyPlayMinutes"), filter: () => true, rank: () => 0 });
@@ -93,7 +99,7 @@ type BuiltDay = { built: BuiltScenario; dayBars: simStore.ArchivedBars["bars"] }
 export async function buildDay(ticker: string, day: string): Promise<BuiltDay | null> {
   const data = await simStore.loadDayBars(ticker, day);
   if (!data || data.tf !== "1m") return null;
-  const prev = await simStore.loadPrevDay(ticker, day, 60);
+  const prev = await simStore.loadPrevDay(ticker, day, 60, data.prevClose);
   const built = buildIntraday({ day, dayBars: data.bars, prevBars: prev?.bars ?? [], prevLevels: prev?.levels ?? null, spec: spec() });
   if (!built) return null;
   if (built.levels.pdc == null && data.prevClose != null) built.levels.pdc = data.prevClose;
@@ -114,8 +120,20 @@ async function pickNow(date: string): Promise<ds.ChallengeRow | null> {
   const used = new Set(recent.filter((r) => r.date >= addDays(date, -noRepeat)).map((r) => `${r.ticker}:${r.barsDay}`));
   const recentTickers = new Set(recent.slice(0, 5).map((r) => r.ticker));
   // Trainer eligibility: no ticker-day the desk traded in the closing auction (15:50–16:00 NY) — lib/trainer/eligibility.
-  const [cands, blocked] = await Promise.all([ds.dailyCandidates(date), blockedTickerDays()]);
-  const order = pickOrder(date, withoutBlockedDays(cands, (c) => c, blocked), rules(), used, recentTickers);
+  const [all, blocked] = await Promise.all([ds.dailyCandidates(date), blockedTickerDays()]);
+  // Day rule (lib/sim/catalyst.ts): gapped ≥ trainer.minGapPct with a catalyst — the catalyst read only for gap days.
+  const r = rules();
+  const gapped = withoutBlockedDays(all, (c) => c, blocked).filter((c) => isGapDay(c.gapPct, r.minGapPct));
+  const withCat = await catalystKeys(gapped);
+  const cands = gapped.map((c) => ({ ...c, catalyst: withCat.has(`${c.ticker}:${c.day}`) }));
+  let order = pickOrder(date, cands, r, used, recentTickers);
+  if (!order.length && used.size) {
+    // Every eligible day was a challenge inside the no-repeat window: relax the recency (never the day rule) — a
+    // repeat is better than no challenge; only the previous challenge stays out (no two days in a row).
+    const last = new Set(recent.slice(0, 1).map((x) => `${x.ticker}:${x.barsDay}`));
+    order = pickOrder(date, cands, r, last, recentTickers);
+    if (order.length) logger.info({ date, eligible: order.length }, "trainer: daily pick repeats an older challenge day");
+  }
   for (const c of order.slice(0, 8)) {
     if (!(await buildDay(c.ticker, c.day))) continue;
     const row = await ds.savePick({

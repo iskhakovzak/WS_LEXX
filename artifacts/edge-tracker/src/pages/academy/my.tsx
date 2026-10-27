@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, Loader2, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
+import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, Loader2, MessagesSquare, School, Target, UserCheck, Users } from "lucide-react";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personName } from "@/i18n";
 import { AskCuratorButton } from "@/components/shared/ask-curator";
+import { StageMedal } from "@/components/shared/medals";
 
 /**
  * /academy/my — «Моё обучение»: когорта и ступень, ближайшие занятия с самоотметкой (удалённо: окно −10…+15 мин,
@@ -44,7 +45,7 @@ export default function AcademyMyPage() {
   return (
     <Page>
       <PageHeader
-        icon={GraduationCap}
+        icon={School}
         title={shellI18n.t("nav.academyMy")}
         description={d?.viewingOther ? t("myPage.viewing", { name: personName(d.user) }) : t("myPage.description")}
         actions={isCurator ? (
@@ -56,7 +57,7 @@ export default function AcademyMyPage() {
       />
       {q.isLoading && <><StatGridSkeleton count={4} /><PanelSkeleton height={220} /></>}
       {q.isError && <ErrorState error={q.error} onRetry={() => q.refetch()} title={t("myPage.loadFailed")} />}
-      {d && !d.user && <EmptyState icon={GraduationCap} title={t("myPage.signIn")} description={t("myPage.guest")} />}
+      {d && !d.user && <EmptyState art="laurel" icon={GraduationCap} title={t("myPage.signIn")} description={t("myPage.guest")} action={<EmptyLink href="/academy/learn">{shellI18n.t("nav.academyLearn")}</EmptyLink>} />}
       {/* Not in a cohort yet: the next lesson first, no dead end (wave 1, item 1.6). */}
       {d && d.user && d.enrollments.length === 0 && (
         <NotEnrolledPanel user={d.user} viewingOther={!!d.viewingOther}>{!d.viewingOther && <AskCuratorButton kind="group" className="mt-3" />}</NotEnrolledPanel>
@@ -86,7 +87,7 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
 
   return (
     <>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {d.enrollments.map((e) => {
           const format = formatLabel(e.cohort.format);
           const date = fmtYmd(e.joinedOn, true);
@@ -124,15 +125,15 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
           hint={overdue ? t("myPage.kpi.overdue", { n: overdue }) : t("myPage.kpi.open")} />
       </StatGrid>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <Upcoming d={d} now={now} readOnly={readOnly} />
         <Goals goals={d.goals} readOnly={readOnly} user={d.user!} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Actions items={d.actionItems} readOnly={readOnly} />
         <AttendancePanel d={d} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Meetings d={d} />
         <History d={d} />
       </div>
@@ -148,6 +149,7 @@ function Ladder({ stage }: { stage: (typeof STAGES)[number] }) {
     <ol className="flex items-center gap-1" aria-label={t("myPage.ladderAria", { stage: stageLabel(stage), n: idx + 1, total: STAGES.length })}>
       {STAGES.map((s, i) => (
         <li key={s} className="flex min-w-0 flex-1 flex-col items-center gap-1" aria-current={i === idx ? "step" : undefined}>
+          <StageMedal stage={s} size={i === idx ? 44 : 34} decorative locked={i > idx} className="mb-0.5" />
           <span className={cn("h-1.5 w-full rounded-full", i <= idx ? "bg-primary" : "bg-[var(--glass-border)]")} aria-hidden="true" />
           <span className={cn("max-w-full truncate text-xs", i === idx ? "font-semibold text-foreground" : "text-muted-foreground")} title={stageLabel(s)}>{stageLabel(s)}</span>
         </li>
@@ -192,7 +194,7 @@ function Upcoming({ d, now, readOnly }: { d: MyDashboard; now: number; readOnly:
       <div className="flex flex-col gap-3">
         {groups.slice(0, 7).map(([day, list]) => (
           <section key={day} aria-label={day}>
-            <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{day}</h3>
+            <h3 className="mb-1 text-xs font-medium text-muted-foreground">{day}</h3>
             <ul className="flex flex-col gap-1.5">
               {list.map((o) => {
                 const live = now >= new Date(o.startUtc).getTime() && now <= new Date(o.endUtc).getTime();
@@ -302,7 +304,7 @@ function AttendancePanel({ d }: { d: MyDashboard }) {
   const { t } = academyCohortsI18n.useT();
   return (
     <Panel title={t("myPage.attendance.title")} icon={UserCheck} description={t("myPage.attendance.description")}>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {(d.attendance?.byCohort ?? []).map((c) => (
           <div key={c.cohortId}>
             <AttendanceSummaryView s={c.last30} title={t("myPage.attendance.cohort30", { cohort: c.cohortName })} />
@@ -311,7 +313,7 @@ function AttendancePanel({ d }: { d: MyDashboard }) {
       </div>
       {d.recent.length > 0 && (
         <>
-          <h3 className="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("myPage.attendance.recent")}</h3>
+          <h3 className="mb-1 mt-4 text-xs font-medium text-muted-foreground">{t("myPage.attendance.recent")}</h3>
           <ul className="flex flex-col divide-y divide-border/50">
             {d.recent.slice(0, 8).map((o) => (
               <li key={`${o.sessionId}-${o.date}`} className="flex items-center justify-between gap-2 py-1.5 text-sm">

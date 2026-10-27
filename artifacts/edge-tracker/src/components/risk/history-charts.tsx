@@ -1,26 +1,35 @@
 import * as React from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LineChart as LineIcon } from "lucide-react";
-import { EmptyState, ErrorState, Pill, Segmented } from "@/components/ds";
+import { EmptyState, ErrorState, Pill } from "@/components/ds";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { usePeriodParam } from "@/hooks/use-period-param";
+import { PRESET_DAYS, periodDays, type PeriodPreset } from "@/lib/period-range";
 import { humanizeApiError } from "@/lib/api/errors";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { useRiskHistory } from "./use-risk";
-import { AXIS, CHART_TOOLTIP_STYLE, useStoredState } from "./primitives";
+import {
+  ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, REF_LINE, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
+  pnlPaint, tint, tooltipProps, useChartMotion,
+} from "@/components/shared/charts";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
 
-const PERIODS = ["20", "60", "120", "250"] as const;
-type Period = (typeof PERIODS)[number];
+// /api/risk/history takes CALENDAR days ending `date`, so the vocabulary maps 1:1 (week 7 · month 30 · quarter 90 ·
+// year 365) and «Период…» is `date=to&days=<range length>`. The old «20/60/120/250» choice is read via normalizePeriod.
+const PRESETS = ["week", "month", "quarter", "year"] as const satisfies readonly PeriodPreset[];
 
 const shortDate = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 
 /** Equity, daily P&L and drawdown-from-peak for one trader. Falls back to R when trades have no $ P&L. */
 export function HistoryCharts({ trader, compact = false }: { trader: string; compact?: boolean }) {
   const gid = "eq" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
-  const [period, setPeriod] = useStoredState<Period>("risk.history.period", "60", PERIODS);
-  const q = useRiskHistory(trader, Number(period));
+  const motion = useChartMotion();
+  const pp = usePeriodParam({ fallback: "quarter", presets: PRESETS, storageKey: "risk.history.period" });
+  const custom = pp.period === "custom" ? pp.custom : null;
+  const q = useRiskHistory(trader, periodDays(pp.period, pp.custom) ?? PRESET_DAYS.quarter, custom?.to);
   const h = q.data;
   const { t } = riskI18n.useT();
   const c = commonI18n.t;
@@ -37,6 +46,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
       })),
     [h, usd],
   );
+  const paint = React.useMemo(() => pnlPaint(gid, data.map((d) => d.equity)), [data, gid]);
   const ddLimit = usd && h?.limits?.maxDrawdown ? -h.limits.maxDrawdown : null;
   // Every point / bar is a trading day: click (or focus + ←/→ + Enter) opens its «Разбор дня».
   const nav = usePeriodNav({
@@ -48,17 +58,24 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
   });
   const dayLabel = (l: unknown) => <>{typeof l === "string" ? fmtDate(l.slice(0, 10), "short") : String(l)}<PeriodHint kind="day" /></>;
   const chartH = compact ? 150 : 200;
+  const smallH = compact ? 100 : 120;
+  // Heights as variables, so the container queries below can re-size the charts without JS.
+  const heights = { "--eq-h": `${chartH}px`, "--sm-h": `${smallH}px` } as React.CSSProperties;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container flex flex-col gap-4" style={heights}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Segmented
+          <PeriodPicker
             ariaLabel={t("history.periodAria")}
             size="sm"
-            value={period}
-            onChange={setPeriod}
-            options={PERIODS.map((p) => ({ value: p, label: c("time.daysShort", { count: Number(p) }) }))}
+            compact={compact}
+            presets={PRESETS}
+            value={pp.period}
+            custom={pp.custom}
+            onPreset={pp.setPreset}
+            onCustom={pp.setCustom}
+            today={pp.today}
           />
           {h && !usd && <Pill tone="warn">{t("history.inR")}</Pill>}
         </div>
@@ -82,46 +99,47 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
         <EmptyState icon={LineIcon} title={t("history.emptyTitle")} description={t("history.emptyDesc")} className="py-8" />
       ) : (
         <div {...nav.wrapperProps} className={`flex flex-col gap-4 ${nav.wrapperProps.className}`}>
-          <div>
-            <div className="mb-1 flex items-baseline justify-between">
-              <span className="micro-label">{t("history.equity")}</span>
-              <span className="text-sm font-semibold tabular-nums">{fmt(data[data.length - 1].equity)}</span>
+          {/* Narrow: equity, then day result + drawdown in two columns. ≥ 56rem: equity big on the left, the two small
+              charts stacked on the right. ≥ 72rem: three equal columns. */}
+          <div className="grid grid-cols-1 gap-4 @lg:grid-cols-2 @4xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] @6xl:grid-cols-3">
+            <div className="@lg:col-span-2 @4xl:col-span-1 @4xl:row-span-2 @6xl:row-span-1">
+              <div className="flex min-h-5 items-baseline justify-between gap-2">
+                <span className="micro-label">{t("history.equity")}</span>
+                <span className="text-sm font-semibold tabular-nums">{fmt(data[data.length - 1].equity)}</span>
+              </div>
+              <div className="mt-1 h-[var(--eq-h)] @4xl:h-[calc(var(--sm-h)*2_+_2.5rem)] @6xl:h-[var(--eq-h)]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
+                    {paint.defs}
+                    <CartesianGrid {...GRID} />
+                    <XAxis dataKey="date" tickFormatter={shortDate} {...X_AXIS} minTickGap={24} />
+                    <YAxis {...Y_AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
+                    <Tooltip
+                      {...tooltipProps("line")}
+                      content={<GlassTooltip tone="pnl" delta={(r) => r.day as number | null} deltaFormat={fmt} deltaLabel={t("history.dayTip")} />}
+                      labelFormatter={dayLabel}
+                      formatter={(v: number) => [fmt(v), t("history.equityTip")]}
+                    />
+                    <ReferenceLine {...ZERO_LINE} />
+                    <Area type="monotone" dataKey="equity" stroke={paint.stroke} strokeWidth={STROKE} fill={paint.fill} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-            <div style={{ height: chartH }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
-                  <defs>
-                    <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="date" tickFormatter={shortDate} {...AXIS} minTickGap={24} />
-                  <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), t("history.equityTip")]} />
-                  <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} />
-                  <Area type="monotone" dataKey="equity" stroke="hsl(var(--chart-1))" strokeWidth={2} fill={`url(#${gid})`} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <span className="micro-label">{t("history.dayResult")}</span>
-              <div className="mt-1" style={{ height: compact ? 100 : 120 }}>
+              <div className="flex min-h-5 items-baseline"><span className="micro-label">{t("history.dayResult")}</span></div>
+              <div className="mt-1 h-[var(--sm-h)] @6xl:h-[var(--eq-h)]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                     <XAxis dataKey="date" hide />
-                    <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }} labelFormatter={dayLabel} formatter={(v: number) => [v == null ? t("history.noUsd") : fmt(v), t("history.dayTip")]} />
-                    <ReferenceLine y={0} stroke="hsl(var(--border))" />
-                    <Bar dataKey="day" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                    <YAxis {...Y_AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
+                    <Tooltip {...tooltipProps("bar")} content={<GlassTooltip tone="pnl" />} labelFormatter={dayLabel} formatter={(v: number) => [v == null ? t("history.noUsd") : fmt(v), t("history.dayTip")]} />
+                    <ReferenceLine {...ZERO_LINE} />
+                    <Bar dataKey="day" radius={BAR_RADIUS} {...motion}>
                       {data.map((d, i) => (
                         <Cell
                           key={d.date}
-                          fill={(d.day ?? 0) >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"}
+                          fill={(d.day ?? 0) >= 0 ? CHART.up : CHART.down}
                           fillOpacity={nav.active < 0 || nav.active === i ? 1 : 0.35}
                         />
                       ))}
@@ -131,18 +149,18 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
               </div>
             </div>
             <div>
-              <div className="flex items-baseline justify-between">
+              <div className="flex min-h-5 items-baseline justify-between gap-2">
                 <span className="micro-label">{t("history.ddTitle")}</span>
                 {ddLimit != null && <span className="text-2xs text-muted-foreground">{t("history.ddLimit", { amount: fmtUsd(-ddLimit, { decimals: 0 }) })}</span>}
               </div>
-              <div className="mt-1" style={{ height: compact ? 100 : 120 }}>
+              <div className="mt-1 h-[var(--sm-h)] @6xl:h-[var(--eq-h)]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                     <XAxis dataKey="date" hide />
-                    <YAxis {...AXIS} width={56} domain={[ddLimit != null ? Math.min(ddLimit * 1.1, 0) : "auto", 0]} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), c("trading.drawdown")]} />
-                    {ddLimit != null && <ReferenceLine y={ddLimit} stroke="hsl(var(--down))" strokeDasharray="4 3" />}
-                    <Area type="stepAfter" dataKey="dd" stroke="hsl(var(--down))" fill="hsl(var(--down) / 0.18)" strokeWidth={1.5} isAnimationActive={false} />
+                    <YAxis {...Y_AXIS} width={56} domain={[ddLimit != null ? Math.min(ddLimit * 1.1, 0) : "auto", 0]} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
+                    <Tooltip {...tooltipProps("line")} content={<GlassTooltip tone="pnl" />} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), c("trading.drawdown")]} />
+                    {ddLimit != null && <ReferenceLine y={ddLimit} {...REF_LINE} stroke={CHART.down} />}
+                    <Area type="stepAfter" dataKey="dd" stroke={tint("down", 0.85)} fill={tint("down", 0.14)} strokeWidth={STROKE_THIN} activeDot={{ ...ACTIVE_DOT, fill: CHART.down }} {...motion} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -152,7 +170,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
           {nav.caption}
 
           {h && (
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm @md:grid-cols-4 @4xl:max-w-4xl">
               <div><dt className="text-xs text-muted-foreground">{t("history.best")}</dt><dd className="font-medium tabular-nums text-up">{h.stats.bestDay != null ? fmt(h.stats.bestDay) : "—"}</dd></div>
               <div><dt className="text-xs text-muted-foreground">{t("history.worst")}</dt><dd className="font-medium tabular-nums text-down">{h.stats.worstDay != null ? fmt(h.stats.worstDay) : "—"}</dd></div>
               <div><dt className="text-xs text-muted-foreground">{c("trading.maxDrawdown")}</dt><dd className="font-medium tabular-nums">{fmt(h.stats.maxDrawdown)}</dd></div>

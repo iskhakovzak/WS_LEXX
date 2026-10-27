@@ -216,7 +216,12 @@ export type SetupAggregate = {
   expectancyCI?: { low: number; high: number } | null;
   /** n < 20 — выводы ненадёжны. */
   small?: boolean;
+  /** Exactly the trades counted in the row (drill-down), newest first; absent on an older API. */
+  trades?: SetupTradeRef[];
 };
+
+/** A trade of a setup row: the compact line of the drill-down list (id opens the trade card). */
+export type SetupTradeRef = { id: number; date: string; ticker: string; side: "long" | "short" | null; net: number | null; result: "win" | "loss" | "be" | "open" | null };
 
 export type MatrixCell = { setup: string; bucket: string; n: number; net: number; avg: number | null; winRate: number | null };
 export type SetupMatrix = { buckets: string[]; cells: MatrixCell[] };
@@ -248,25 +253,28 @@ function qs(params: Record<string, string | number | null | undefined>): string 
 
 /* ─── Ключи и хуки ────────────────────────────────────────────────────────── */
 
-export type Range = { from: string | null; to: string | null };
+/** The page window; `facets` = the «Разрезы» selection as x* params (components/shared/trade-facets), "" / absent = none. */
+export type Range = { from: string | null; to: string | null; facets?: string };
+/** x* params of the window's «Разрезы» for qs(). */
+const fx = (r: Range): Record<string, string> => Object.fromEntries(new URLSearchParams(r.facets ?? ""));
 
 export const behaviorKeys = {
   all: ["behavior"] as const,
-  report: (trader: string | null, r: Range) => ["behavior", "report", trader ?? "", r.from ?? "", r.to ?? ""] as const,
-  day: (trader: string | null, date: string, r: Range) => ["behavior", "day", trader ?? "", date, r.from ?? "", r.to ?? ""] as const,
-  triggers: (trader: string | null, r: Range) => ["behavior", "triggers", trader ?? "", r.from ?? "", r.to ?? ""] as const,
+  report: (trader: string | null, r: Range) => ["behavior", "report", trader ?? "", r.from ?? "", r.to ?? "", r.facets ?? ""] as const,
+  day: (trader: string | null, date: string, r: Range) => ["behavior", "day", trader ?? "", date, r.from ?? "", r.to ?? "", r.facets ?? ""] as const,
+  triggers: (trader: string | null, r: Range) => ["behavior", "triggers", trader ?? "", r.from ?? "", r.to ?? "", r.facets ?? ""] as const,
 };
 
 export const setupsAutoKeys = {
   all: ["setups-auto"] as const,
-  list: (trader: string | null, r: Range, withSetup: boolean) => ["setups-auto", "list", trader ?? "", r.from ?? "", r.to ?? "", withSetup ? 1 : 0] as const,
-  aggregates: (trader: string | null, r: Range, withSetup: boolean) => ["setups-auto", "aggregates", trader ?? "", r.from ?? "", r.to ?? "", withSetup ? 1 : 0] as const,
+  list: (trader: string | null, r: Range, withSetup: boolean) => ["setups-auto", "list", trader ?? "", r.from ?? "", r.to ?? "", r.facets ?? "", withSetup ? 1 : 0] as const,
+  aggregates: (trader: string | null, r: Range, withSetup: boolean) => ["setups-auto", "aggregates", trader ?? "", r.from ?? "", r.to ?? "", r.facets ?? "", withSetup ? 1 : 0] as const,
 };
 
 export function useBehavior(trader: string | null, range: Range, enabled = true) {
   return useQuery({
     queryKey: behaviorKeys.report(trader, range),
-    queryFn: ({ signal }) => http.get<BehaviorReport>(`/api/behavior${qs({ trader, from: range.from, to: range.to })}`, { signal }),
+    queryFn: ({ signal }) => http.get<BehaviorReport>(`/api/behavior${qs({ trader, from: range.from, to: range.to, ...fx(range) })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -278,7 +286,7 @@ export function useSetupsAuto(trader: string | null, range: Range, opts: { withS
   return useQuery({
     queryKey: setupsAutoKeys.list(trader, range, opts.withSetup),
     queryFn: () =>
-      http.get<SetupsAutoResponse>(`/api/setups-auto${qs({ trader, from: range.from, to: range.to, budget: opts.budget, withSetup: opts.withSetup ? 1 : 0, limit: 1000 })}`),
+      http.get<SetupsAutoResponse>(`/api/setups-auto${qs({ trader, from: range.from, to: range.to, ...fx(range), budget: opts.budget, withSetup: opts.withSetup ? 1 : 0, limit: 1000 })}`),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -288,7 +296,7 @@ export function useSetupsAuto(trader: string | null, range: Range, opts: { withS
 export function useSetupAggregates(trader: string | null, range: Range, withSetup: boolean, enabled = true) {
   return useQuery({
     queryKey: setupsAutoKeys.aggregates(trader, range, withSetup),
-    queryFn: ({ signal }) => http.get<SetupAggregatesResponse>(`/api/setups-auto/aggregates${qs({ trader, from: range.from, to: range.to, withSetup: withSetup ? 1 : 0 })}`, { signal }),
+    queryFn: ({ signal }) => http.get<SetupAggregatesResponse>(`/api/setups-auto/aggregates${qs({ trader, from: range.from, to: range.to, ...fx(range), withSetup: withSetup ? 1 : 0 })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -369,16 +377,17 @@ export function useComputeAll(trader: string | null, range: Range, withSetup: bo
   const qc = useQueryClient();
   const [state, setState] = React.useState<ComputeAllState>(IDLE);
   const ctrl = React.useRef<AbortController | null>(null);
+  const { from, to, facets } = range;
 
   React.useEffect(() => () => ctrl.current?.abort(), []);
   // Смена трейдера/периода/выборки — прерываем текущий цикл.
-  React.useEffect(() => { ctrl.current?.abort(); setState(IDLE); }, [trader, range.from, range.to, withSetup]);
+  React.useEffect(() => { ctrl.current?.abort(); setState(IDLE); }, [trader, from, to, facets, withSetup]);
 
   const run = React.useCallback(async () => {
     ctrl.current?.abort();
     const ac = new AbortController();
     ctrl.current = ac;
-    const url = (budget: number) => `/api/setups-auto${qs({ trader, from: range.from, to: range.to, budget, withSetup: withSetup ? 1 : 0, limit: 1 })}`;
+    const url = (budget: number) => `/api/setups-auto${qs({ trader, from, to, ...fx({ from, to, facets }), budget, withSetup: withSetup ? 1 : 0, limit: 1 })}`;
     const sleep = (ms: number) => new Promise<void>((resolve) => {
       const t = setTimeout(resolve, ms);
       ac.signal.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
@@ -414,7 +423,7 @@ export function useComputeAll(trader: string | null, range: Range, withSetup: bo
         ]);
       }
     }
-  }, [qc, trader, range.from, range.to, withSetup]);
+  }, [qc, trader, from, to, facets, withSetup]);
 
   const cancel = React.useCallback(() => { ctrl.current?.abort(); }, []);
   const reset = React.useCallback(() => setState(IDLE), []);
@@ -426,7 +435,7 @@ export function useComputeAll(trader: string | null, range: Range, withSetup: bo
 export function useBehaviorDay(trader: string | null, date: string | null, range: Range, enabled = true) {
   return useQuery({
     queryKey: behaviorKeys.day(trader, date ?? "", range),
-    queryFn: ({ signal }) => http.get<DayTimeline>(`/api/behavior/day${qs({ trader, date, from: range.from, to: range.to })}`, { signal }),
+    queryFn: ({ signal }) => http.get<DayTimeline>(`/api/behavior/day${qs({ trader, date, from: range.from, to: range.to, ...fx(range) })}`, { signal }),
     enabled: enabled && !!date,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -438,7 +447,7 @@ export function useBehaviorDay(trader: string | null, date: string | null, range
 export function useTriggers(trader: string | null, range: Range, enabled = true) {
   return useQuery({
     queryKey: behaviorKeys.triggers(trader, range),
-    queryFn: ({ signal }) => http.get<TriggersResponse>(`/api/behavior/triggers${qs({ trader, from: range.from, to: range.to })}`, { signal }),
+    queryFn: ({ signal }) => http.get<TriggersResponse>(`/api/behavior/triggers${qs({ trader, from: range.from, to: range.to, ...fx(range) })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,

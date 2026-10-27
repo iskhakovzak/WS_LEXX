@@ -13,6 +13,8 @@ import type { EquityAgg, EquityDerived } from "./model";
 import { axisLabel, yDomain, type Domain } from "./scale";
 import { computeLayout, indexAt, navCenter, navDrag, navHit, navSlotAt, regionAt, slotAt, xOf, type Layout, type NavPart } from "./geometry";
 import { drawBase, drawOverlay, type Frame, type Pointer } from "./render";
+import { motionAllowed } from "@/components/shared/charts/env";
+import { Pulse, type PulsePoint } from "./pulse";
 import { clampView, easeOutCubic, fullView, lerpView, pan, sameView, visibleRange, zoomAt, type View } from "./viewport";
 
 export type ViewMode = "candles" | "line";
@@ -104,12 +106,13 @@ export class EquityEngine {
   private lastHoverSig = "";
   private viewNotified: View | null = null;
   private viewUser = false;
+  private pulse: Pulse;
 
   constructor(host: HTMLElement, theme: ChartTheme, cb: EngineCallbacks) {
     this.host = host;
     this.th = theme;
     this.cb = cb;
-    this.reduce = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    this.reduce = !motionAllowed();
     this.base = document.createElement("canvas");
     this.over = document.createElement("canvas");
     for (const c of [this.base, this.over]) {
@@ -123,6 +126,7 @@ export class EquityEngine {
     // Vertical page scroll stays native on touch; horizontal drags pan the chart.
     this.over.style.touchAction = "pan-y";
     this.over.setAttribute("aria-hidden", "true");
+    this.pulse = new Pulse(host, this.over);
     this.base.setAttribute("aria-hidden", "true");
     this.bctx = this.base.getContext("2d")!;
     this.octx = this.over.getContext("2d")!;
@@ -141,18 +145,21 @@ export class EquityEngine {
     this.unbind();
     this.base.remove();
     this.over.remove();
+    this.pulse.destroy();
   }
 
   // ─── Public setters ───
 
   setTheme(th: ChartTheme) {
     this.th = th;
+    this.reduce = !motionAllowed();
     this.invalidate();
   }
 
   setOptions(o: Partial<EngineOptions>) {
     const prev = this.opts;
     this.opts = { ...prev, ...o };
+    this.reduce = !motionAllowed();
     if (this.reduce || this.revealPending) this.mix = this.opts.mode === "line" ? 1 : 0;
     this.invalidate();
   }
@@ -313,12 +320,14 @@ export class EquityEngine {
         drawBase(this.bctx, this.frame);
         this.dirtyBase = false;
         this.dirtyOver = true;
+        this.emitLast(this.frame);
       }
     } else if (this.dirtyBase) {
       this.bctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       this.bctx.clearRect(0, 0, this.w, this.h);
       this.frame = null;
       this.dirtyBase = false;
+      this.emitLast(null);
     }
 
     if (this.dirtyOver) {
@@ -334,7 +343,7 @@ export class EquityEngine {
 
   private makeFrame(d: Data, i0: number, i1: number): Frame {
     // The axis is sized to its widest label (domain edges and the current value pill).
-    this.bctx.font = `600 11px ${this.th.font}`;
+    this.bctx.font = `600 12px ${this.th.font}`;
     const ym = this.yMain!;
     const last = d.bars[d.bars.length - 1].close;
     const widest = Math.max(
@@ -372,6 +381,20 @@ export class EquityEngine {
     if (x < l.plotX - 1 || x > l.plotX + l.plotW + 1) { this.cb.onHover(null); return; }
     const bottom = l.dd ?? l.pnl ?? l.main;
     this.cb.onHover({ index: p.index, x, y: yy, width: this.w, plotTop: l.main.y, plotBottom: bottom.y + bottom.h, selected: p.selected });
+  }
+
+  /** The living end point (line view, fully drawn, inside the plot, view at rest, motion allowed) → the pulse layer. */
+  private emitLast(f: Frame | null) {
+    let p: PulsePoint | null = null;
+    if (f && f.mix >= 0.5 && f.reveal >= 1 && f.bars.length && !this.reduce && !this.anim && !this.drag?.moved) {
+      const l = f.layout;
+      const n = f.bars.length;
+      const x = xOf(n - 0.5, l.plotX, l.plotW, f.view);
+      const v = f.bars[n - 1].close;
+      const y = l.main.y + l.main.h - ((v - f.yMain.min) / (f.yMain.max - f.yMain.min || 1)) * l.main.h;
+      if (x >= l.plotX && x <= l.plotX + l.plotW && y >= l.main.y && y <= l.main.y + l.main.h) p = { x, y, tone: v > 0 ? "up" : v < 0 ? "down" : "flat" };
+    }
+    this.pulse.set(p, this.th);
   }
 
   private notifyView(user: boolean, force = false) {

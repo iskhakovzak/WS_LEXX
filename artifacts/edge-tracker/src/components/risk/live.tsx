@@ -6,6 +6,10 @@ import { cn } from "@/lib/utils";
 import { fmtNum, fmtPrice, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { LiveBadge } from "@/components/shared/live-badge";
+import { LiveNumber } from "@/components/ds";
+import { rich, slots } from "@/i18n/rich";
+
+const signedUsd0 = (n: number) => fmtUsd(n, { signed: true, decimals: 0 });
 import type { DeskLive, LivePosition } from "./use-risk";
 
 /** «Онлайн · обновлено 2 минуты назад · Позиции PropReports: 7 открытых · −$420 · устарело: 1». Nothing without a snapshot. */
@@ -29,7 +33,7 @@ export function LiveOpenNote({ live }: { live: { counted: boolean; openPositions
   if (!live?.counted || live.openPositions <= 0) return null;
   return (
     <div className={cn("text-2xs tabular-nums", live.unrealizedUsd < 0 ? "text-down" : "text-muted-foreground")} title={t("live.hint")}>
-      {t("live.open", { amount: fmtUsd(live.unrealizedUsd, { signed: true, decimals: 0 }) })}
+      {rich(t("live.open", slots("amount")), { amount: <LiveNumber value={live.unrealizedUsd} format={signedUsd0} /> })}
     </div>
   );
 }
@@ -51,9 +55,11 @@ export function LivePositionsList({ positions, className }: { positions: LivePos
             <span className="text-muted-foreground">
               {fmtNum(p.qty)}{p.avg != null ? ` @ ${fmtPrice(p.avg)}` : ""}{p.close != null ? ` → ${fmtPrice(p.close)}` : ""}
             </span>
-            <span className={cn("font-medium", p.unrealized > 0 ? "text-up" : p.unrealized < 0 ? "text-down" : "")}>
-              {fmtUsd(p.unrealized, { signed: true, decimals: 0 })}
-            </span>
+            <LiveNumber
+              value={p.unrealized}
+              format={signedUsd0}
+              className={cn("font-medium", p.unrealized > 0 ? "text-up" : p.unrealized < 0 ? "text-down" : "")}
+            />
           </li>
         ))}
       </ul>

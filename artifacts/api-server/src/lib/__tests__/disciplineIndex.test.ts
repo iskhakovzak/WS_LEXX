@@ -63,17 +63,20 @@ describe("one discipline score (IMPROVEMENT_PLAN 2.7)", () => {
     expect(normalizeDisciplineRule(rule("trades", 5)).value).toBe(5);
   });
 
-  it("evaluateTrader applies a legacy rule (≥ 7) as ≥ 70 on the index; seeds are on the 0–100 scale", () => {
+  it("evaluateTrader applies a stored threshold as saved (migration 0274 converted the legacy rows); seeds are 0–100", () => {
     const seeds = DEFAULT_RULES.filter((r) => r.metric === "discipline").map((r) => r.value);
     expect(seeds).toEqual([70, 40]);
-    const legacy: Rule[] = [{ id: 1, kind: "promote", metric: "discipline", op: ">=", value: 7, unit: "abs", windowDays: 20, tierKey: null, label: "Оценка дисциплины", enabled: true }]; // i18n-ignore (test data)
-    const low = evaluateTrader(scalingInput(days(Array(20).fill(65))), DEFAULT_TIERS, legacy, "en");
+    const rules: Rule[] = [{ id: 1, kind: "promote", metric: "discipline", op: ">=", value: 70, unit: "abs", windowDays: 20, tierKey: null, label: null, enabled: true }];
+    const low = evaluateTrader(scalingInput(days(Array(20).fill(65))), DEFAULT_TIERS, rules, "en");
     expect(low.rules[0]).toMatchObject({ threshold: 70, actual: 65, status: "fail", label: "Discipline index (0–100)" });
     expect(low.rules[0].text).toBe("Discipline index (0–100): 65/100 (need >= 70/100)");
-    const high = evaluateTrader(scalingInput(days(Array(20).fill(75))), DEFAULT_TIERS, legacy);
+    const high = evaluateTrader(scalingInput(days(Array(20).fill(75))), DEFAULT_TIERS, rules);
     expect(high.rules[0].status).toBe("pass");
-    expect(rulesNeedDiscipline(legacy)).toBe(true);
-    expect(rulesNeedDiscipline([{ ...legacy[0], enabled: false }])).toBe(false);
+    // A small threshold typed on purpose stays what the curator typed (it used to be read ×10 on every load).
+    const typed = evaluateTrader(scalingInput(days(Array(20).fill(9))), DEFAULT_TIERS, [{ ...rules[0], value: 8 }], "en");
+    expect(typed.rules[0]).toMatchObject({ threshold: 8, actual: 9, status: "pass" });
+    expect(rulesNeedDiscipline(rules)).toBe(true);
+    expect(rulesNeedDiscipline([{ ...rules[0], enabled: false }])).toBe(false);
   });
 
   it("the curators' 1–10 grade stays available as its own number (path criterion rating_discipline)", () => {

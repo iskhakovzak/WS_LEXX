@@ -1,7 +1,8 @@
 import { memo, type ReactNode } from "react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { CalendarPlus, Check, ExternalLink, Lightbulb, Star } from "lucide-react";
-import { DataTable, SortableTh, TermTooltip, type SortDir } from "@/components/ds";
+import { DataTable, RowActions, SortableTh, TermTooltip, type SortDir } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { links } from "@/lib/links";
 import { safeHttpUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
@@ -74,28 +75,36 @@ export type RowActionsProps = {
   planPending: boolean;
 };
 
-/** Quick actions: watchlist / plan / idea / SEC. Hover-reveal on pointer devices, always visible on touch. */
-export function RowActions({ o, watched, pending, onAddWatch, onAddPlan, planPending }: RowActionsProps) {
+/**
+ * Quick actions (ds RowActions, wave 3): «В план» is the primary button, watchlist / idea / SEC sit in «…». Hover-reveal on
+ * pointer devices, always visible on touch; the keyboard-selected row (J/K) keeps them visible. «В вотчлисте» is also
+ * shown by the row's ExposureBadge, so the state is seen outside the menu.
+ */
+function OfferingRowActions({ o, watched, pending, onAddWatch, onAddPlan, planPending, visible }: RowActionsProps & { visible?: boolean }) {
   const { t } = offeringsI18n.useT();
+  const [, navigate] = useLocation();
   const sec = safeHttpUrl(o.filingUrl ?? null);
-  const btn = "inline-flex h-7 w-7 pointer-coarse:h-10 pointer-coarse:w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
   return (
-    <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-      <button type="button" className={cn(btn, watched && "text-primary")} disabled={watched || pending} onClick={() => onAddWatch(o)}
-        aria-label={watched ? t("list.inWatchAria", { ticker: o.ticker }) : t("list.addWatchAria", { ticker: o.ticker })} title={watched ? t("list.inWatchTitle") : t("list.addWatchTitle")}>
-        {watched ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Star className="h-3.5 w-3.5" aria-hidden="true" />}
-      </button>
-      <button type="button" className={btn} disabled={planPending} onClick={() => onAddPlan(o)} aria-label={t("list.addPlanAria", { ticker: o.ticker })} title={t("list.addPlanTitle")}>
-        <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
-      </button>
-      <Link href={links.newIdea(o.ticker)} className={btn} aria-label={t("list.ideaAria", { ticker: o.ticker })} title={t("list.ideaTitle")}>
-        <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
-      </Link>
-      {sec && (
-        <a href={sec} target="_blank" rel="noreferrer noopener" className={btn} aria-label={t("list.secAria", { ticker: o.ticker })} title={t("list.secTitle")}>
-          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-        </a>
-      )}
+    // Stop the row's own click (it opens the sheet); the menu is portaled but React events still bubble through here.
+    <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <RowActions
+        className={cn(visible && "!opacity-100")}
+        menuLabel={t("list.moreAria", { ticker: o.ticker })}
+        more={[
+          {
+            label: watched ? t("list.inWatchTitle") : t("list.addWatchTitle"),
+            icon: watched ? Check : Star,
+            disabled: watched || pending,
+            onSelect: () => onAddWatch(o),
+          },
+          { label: t("list.ideaTitle"), icon: Lightbulb, onSelect: () => navigate(links.newIdea(o.ticker)) },
+          sec ? { label: t("list.secTitle"), icon: ExternalLink, onSelect: () => { window.open(sec, "_blank", "noopener,noreferrer"); } } : null,
+        ]}
+      >
+        <Button type="button" variant="ghost" size="icon-sm" disabled={planPending} onClick={() => onAddPlan(o)} aria-label={t("list.addPlanAria", { ticker: o.ticker })} title={t("list.addPlanTitle")}>
+          <CalendarPlus aria-hidden="true" />
+        </Button>
+      </RowActions>
     </div>
   );
 }
@@ -122,9 +131,11 @@ type ListProps = {
 const numCell = "text-right tabular-nums";
 
 const Row = memo(function Row({
-  o, i, active, variant, day, e, query, onOpen, onHover, actions,
+  o, i, active, variant, day, e, query, onOpen, onHover, actions, showGap,
 }: {
   o: Offering; i: number; active: boolean; variant: ListVariant; day?: string; e: Exposure | undefined; query: string;
+  /** The «Реакция» column is shown only when at least one listed deal has a reaction (an all-«—» column is noise). */
+  showGap: boolean;
   onOpen: (o: Offering) => void; onHover: (i: number) => void; actions: ListProps["actions"];
 }) {
   const { t } = offeringsI18n.useT();
@@ -203,7 +214,7 @@ const Row = memo(function Row({
           {o.offerPrice == null && o.priceRange && <div className="text-2xs text-muted-foreground">${o.priceRange}</div>}
         </div>
       </td>
-      {variant === "deals" && (
+      {showGap && (
         <td className={cn(numCell, "hidden md:table-cell")}>
           {o.reaction ? (
             <div className="leading-tight" title={`${t("list.reactionTitle", { gap: o.reaction.gapPct, o2c: o.reaction.o2cPct, low: o.reaction.lowFromOpenPct })}${o.reaction.live ? t("list.reactionLive") : ""}`}>
@@ -214,13 +225,8 @@ const Row = memo(function Row({
         </td>
       )}
       <td><ScoreBadge o={o} s={s} /></td>
-      <td className="w-[7.5rem] !px-1">
-        <div className={cn(
-          "transition-opacity duration-[var(--dur-1)] motion-reduce:transition-none",
-          !active && "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100",
-        )}>
-          <RowActions o={o} watched={!!e?.watched} pending={actions.pendingTicker === o.ticker} onAddWatch={actions.onAddWatch} onAddPlan={actions.onAddPlan} planPending={actions.planPending} />
-        </div>
+      <td className="w-[5rem] !px-1">
+        <OfferingRowActions visible={active} o={o} watched={!!e?.watched} pending={actions.pendingTicker === o.ticker} onAddWatch={actions.onAddWatch} onAddPlan={actions.onAddPlan} planPending={actions.planPending} />
       </td>
     </tr>
   );
@@ -234,6 +240,7 @@ export function OfferingsList({
   items, variant = "deals", day, exposure, activeIndex, indexBase = 0, query, sort, sortDir, onSort, onOpen, onHover, actions,
 }: ListProps) {
   const { t } = offeringsI18n.useT();
+  const showGap = variant === "deals" && items.some((o) => o.reaction);
   const th = (k: SortKey, label: string, cls?: string) => (
     <SortableTh active={sort === k} dir={sortDir} onSort={() => onSort(k)} align="right" className={cls}>{label}</SortableTh>
   );
@@ -251,7 +258,7 @@ export function OfferingsList({
               {variant === "deals" && th("adv", t("list.sort.adv"), "hidden xl:table-cell")}
               {variant === "deals" && th("discount", t("list.sort.discount"))}
               {th("price", t("list.sort.price"))}
-              {variant === "deals" && th("gap", t("list.sort.gap"), "hidden md:table-cell")}
+              {showGap && th("gap", t("list.sort.gap"), "hidden md:table-cell")}
               <SortableTh active={sort === "score"} dir={sortDir} onSort={() => onSort("score")}>{t("list.sort.score")}</SortableTh>
               <th scope="col"><span className="sr-only">{t("list.actions")}</span></th>
             </tr>
@@ -261,7 +268,7 @@ export function OfferingsList({
               <Row
                 key={`${o.ticker}|${o.form ?? o.type}|${o.date}|${o.status}`}
                 o={o} i={indexBase + i} active={indexBase + i === activeIndex} variant={variant} day={day}
-                e={exposure.get(o.ticker.toUpperCase())} query={query} onOpen={onOpen} onHover={onHover} actions={actions}
+                e={exposure.get(o.ticker.toUpperCase())} query={query} onOpen={onOpen} onHover={onHover} actions={actions} showGap={showGap}
               />
             ))}
           </tbody>
@@ -291,7 +298,7 @@ export function OfferingsList({
                 </div>
               </button>
               <div className="mt-2 flex justify-end">
-                <RowActions o={o} watched={!!e?.watched} pending={actions.pendingTicker === o.ticker} onAddWatch={actions.onAddWatch} onAddPlan={actions.onAddPlan} planPending={actions.planPending} />
+                <OfferingRowActions o={o} watched={!!e?.watched} pending={actions.pendingTicker === o.ticker} onAddWatch={actions.onAddWatch} onAddPlan={actions.onAddPlan} planPending={actions.planPending} />
               </div>
             </li>
           );

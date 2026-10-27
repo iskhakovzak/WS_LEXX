@@ -1,3 +1,4 @@
+import { TradeChip } from "@/components/ds/trade-chip";
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { CheckCircle2, Keyboard, ListChecks, Lock, Moon, X } from "lucide-react";
@@ -305,7 +306,7 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         <span className="text-sm font-semibold">{t.ticker}</span>
         {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
-        {t.horizonEff !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>}
+        {t.horizonEff !== "intraday" && <TradeChip group="horizon" value={t.horizonEff}>{HORIZON_LABEL[t.horizonEff]}</TradeChip>}
         {t.onPlan && <Pill tone="accent">{te("flow.inPlan")}</Pill>}
         {!t.enteredToday && <Pill>{te("flow.since", { date: fmtDate(t.date, "dayMonth") })}</Pill>}
         {complete ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />{te("flow.tagged")}</Pill> : flagged ? <Pill tone="warn">{te("flow.needsSetup")}</Pill> : null}
@@ -417,7 +418,7 @@ function PositionsStep({ positions, date, values, onChange }: { positions: EodTr
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <span className="text-sm font-semibold">{t.ticker}</span>
                 {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
-                <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>
+                <TradeChip group="horizon" value={t.horizonEff}>{HORIZON_LABEL[t.horizonEff]}</TradeChip>
                 {t.date !== date && <Pill>{te("flow.since", { date: fmtDate(t.date, "dayMonth") })}</Pill>}
                 <span className="ml-auto tabular-nums text-muted-foreground">
                   {t.qty != null ? te("flow.positionMetaQty", { entry: t.entry ?? "—", stop: t.stop ?? "—", qty: t.qty }) : te("flow.positionMeta", { entry: t.entry ?? "—", stop: t.stop ?? "—" })}

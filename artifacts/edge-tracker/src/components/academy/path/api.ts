@@ -15,7 +15,7 @@ export type Op = ">=" | ">" | "<=" | "<" | "=";
 export const OPS: readonly Op[] = [">=", ">", "<=", "<", "="];
 export const OP_LABEL: Record<Op, string> = { ">=": "≥", ">": ">", "<=": "≤", "<": "<", "=": "=" };
 
-export type PromoUnit = "usd" | "count" | "pct" | "x" | "score100" | "score10" | "days";
+export type PromoUnit = "usd" | "count" | "pct" | "x" | "score100" | "score10" | "days" | "pp";
 export type MetricSource = "trades" | "rules" | "behavior" | "ratings" | "learning" | "challenges";
 
 export type StageMeta = { key: StageKey; name: string; order: number; description: string; scalingTier: string | null };
@@ -36,7 +36,15 @@ export type ReadinessReport = {
     windowDays: number; net: number | null; tradingDays: number; trades: number | null; winRate: number | null; profitFactor: number | null;
     maxDd: number | null; consistency: number | null; feeShare: number | null; disciplineIndex: number | null;
   };
+  /** Roadmap R1 (absent on older API builds). */
+  bindingConstraint?: BindingConstraint | null; stageDays?: number | null; stageSignal?: StageSignal | null; pace?: Pace | null;
 };
+export type BindingConstraint = {
+  metric: string; label: string; kind: "infeasible_style" | "money" | "process"; display: string; targetDisplay: string;
+  gap: number | null; daysToClose: number | null; neverMetWindows: number | null; advice: string | null;
+};
+export type StageSignal = "info" | "curator" | "admin";
+export type Pace = { target: number; windowDays: number; needPerDay: number; nowPerDay: number; lo80: number | null; hi80: number | null };
 
 export type RequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
 export type PromotionRequest = {
@@ -59,6 +67,8 @@ export type FunnelPerson = {
   user: string; role: string | null; stage: StageKey | null; since: string | null; stageSource: string | null; cohortId: number | null;
   passed: number; total: number; ready: boolean; headline: string; nextStage: StageKey | null; failing: string[];
   summary: ReadinessReport["summary"]; pendingRequestId: number | null;
+  stageDays?: number | null; stageSignal?: StageSignal | null;
+  binding?: { label: string; kind: BindingConstraint["kind"]; neverMetWindows: number | null } | null;
 };
 export type Funnel = {
   today: string; stages: StageMeta[];

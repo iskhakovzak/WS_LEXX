@@ -1,0 +1,81 @@
+import type { Messages } from "../../core";
+import type ru from "../ru/quotes";
+
+export default {
+  title: "Kun iqtibosi",
+  loading: "Iqtibos yuklanmoqda",
+  loadFailed: "Iqtiboslar kutubxonasini yuklab boʻlmadi",
+  next: "Keyingi iqtibos",
+  nextShort: "Keyingisi",
+  copy: "Iqtibosni nusxalash",
+  copied: "Nusxalandi",
+  share: "Iqtibosli rasm",
+  more: "Yana: nusxalash, rasm, turkumlar",
+  favAdd: "Sevimlilarga",
+  favRemove: "Sevimlilardan olib tashlash",
+  langAria: "Iqtibos tili",
+  origShow: "Asl matnni koʻrsatish",
+  origHide: "Asl matnni yashirish",
+  origAria: "Iqtibosning asl matni",
+  library: {
+    one: "Kutubxonada {count} ta iqtibos",
+    other: "Kutubxonada {count} ta iqtibos",
+  },
+  rel: {
+    verified: "Manba",
+    verifiedHint: "Bu satr koʻrsatilgan manbada, aynan shu soʻzlovchida bor",
+    attributed: "Nisbat beriladi",
+    attributedHint: "Anʼanaviy ravishda nisbat beriladi — manbalarda keyinroq yoki boshqalar orqali yetkazilgan",
+  },
+  cat: {
+    olympus: "Olimp",
+    philosophy: "Faylasuflar",
+    discipline: "Intizom",
+    trading: "Treyding",
+    psychology: "Psixologiya",
+  },
+  cats: {
+    label: "Qaysi iqtiboslarni koʻrsatish",
+    hint: "Bloklash ekranida bu tanlovdan qatʼi nazar koʻproq Olimp va faylasuflar chiqadi.",
+    all: "Hammasi",
+    aria: "Iqtibos turkumlari",
+  },
+  mood: {
+    red: "Qizil kundan keyin — sabr haqida",
+    green: "Yashil kunlar seriyasi — kamtarlik haqida",
+  },
+  history: {
+    button: "Tarix va sevimlilar",
+    tabHistory: "Tarix",
+    tabFavs: "Sevimlilar",
+    emptyHistory: "Koʻrsatilgan iqtiboslar shu yerda paydo boʻladi.",
+    emptyFavs: "Iqtiboslarni yulduzcha bilan belgilang — ular shu yerda yigʻiladi.",
+    onLock: "bloklash ekranida",
+    open: "Koʻrsatish",
+  },
+  ai: {
+    button: "AI iqtibos yaratish",
+    title: "Kunning AI iqtibosi",
+    back: "Kutubxonaga qaytish",
+    hint: "Butun jamoa uchun AI yaratgan — tekshirilgan manbasiz.",
+    failed: "AI iqtibos mavjud emas",
+    retry: "Qayta urinish",
+  },
+  shareDialog: {
+    title: "Iqtibosli rasm",
+    description: "«Olimp» foni, iqtibos, muallif va manba — 1080×1350 PNG.",
+    previewAlt: "Iqtibosli rasm: {author}",
+    background: "Fon",
+    drawing: "Chizilmoqda…",
+  },
+  lock: {
+    aria: "Iqtibos",
+  },
+  settings: {
+    title: "Bloklash ekranidagi iqtibos",
+    hint: "Soat ostida kutubxonadan iqtibos, koʻproq Olimp va faylasuflar. Serverga soʻrovsiz ishlaydi.",
+    off: "Koʻrsatmaslik",
+    everyMinute: "Har daqiqada",
+    everyN: "Har {n} daqiqada",
+  },
+} satisfies Messages<typeof ru>;

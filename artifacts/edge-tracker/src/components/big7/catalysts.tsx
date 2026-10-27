@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -121,7 +121,9 @@ function CatalystChip({ c, onClick, onBoard }: { c: MergedCatalyst; onClick?: ()
   const inner = (
     <>
       <span className={cn("absolute inset-y-1.5 left-0 w-0.5 rounded-full", c.impact === "high" ? "bg-down" : c.impact === "low" ? "bg-border" : "bg-[hsl(var(--chart-3))]")} aria-hidden="true" />
-      <span className="flex min-w-0 items-center gap-1.5">
+      {/* Wraps in a narrow day cell (5 columns at 1024 px): the type pill and ✦ drop under the ticker instead of
+          sticking out of the cell. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
         <span className="text-xs font-semibold">{c.ticker}</span>
         <Pill tone={m.tone} className="px-1.5"><Icon className="h-3 w-3" aria-hidden="true" />{m.label}</Pill>
         {c.auto && <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground" aria-label={big7I18n.t("catalyst.fromCalendar")} />}
@@ -149,7 +151,7 @@ export function CatalystWeek({
   onRetry: () => void;
 }) {
   const { t } = big7I18n.useT();
-  const [week, setWeek] = useState<"this" | "next">("this");
+  const [week, setWeek] = usePersistentState<"this" | "next">("big7.catalysts.week", "this");
   const TODAY = useBig7Today();
   // Saturday / Sunday: the week that matters is the one ahead, not the one that just closed.
   const dow = new Date(`${TODAY}T12:00:00Z`).getUTCDay();
@@ -182,7 +184,7 @@ export function CatalystWeek({
           <Button size="sm" variant="ghost" onClick={onRetry}>{commonI18n.t("actions.retry")}</Button>
         </div>
       )}
-      <div className="grid gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
         {days.map((d) => {
           const items = byDay(d);
           const isToday = d === TODAY;
@@ -339,7 +341,7 @@ export function CatalystSheet({
   open, onOpenChange, merged, onAdd, onEdit,
 }: { open: boolean; onOpenChange: (o: boolean) => void; merged: MergedCatalyst[]; onAdd: () => void; onEdit: (c: MergedCatalyst) => void }) {
   const { t } = big7I18n.useT();
-  const [scope, setScope] = useState<"upcoming" | "past">("upcoming");
+  const [scope, setScope] = usePersistentState<"upcoming" | "past">("big7.catalysts.scope", "upcoming");
   const { canEdit } = useAuth();
   const TODAY = useBig7Today();
   const list = scope === "upcoming"

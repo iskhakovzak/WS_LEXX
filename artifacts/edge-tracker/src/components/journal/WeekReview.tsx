@@ -10,6 +10,7 @@ import { type DayStats, addDays, dayValue, fmtUnit, parseDate, pickUnit, weekday
 import { fmtDate, fmtRate } from "@/lib/format";
 import { journalI18n } from "@/i18n/ns/journal";
 import { commonI18n } from "@/i18n/ns/common";
+import { winRateOf } from "@/lib/trade-math";
 
 /**
  * Compact week strip inside the journal: Mon–Fri bars with review marks, the week's net / win rate / green-red days,
@@ -93,7 +94,7 @@ export function WeekReview({
       <div className="space-y-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           <Cell label={t("week.total")} value={agg.total != null ? fmtUnit(agg.total, unit) : "—"} tone={toneText(toneOf(agg.total))} />
-          <Cell label={tc("trading.winRate")} value={decided ? fmtRate(agg.wins / decided) : "—"} hint={agg.trades ? t("calendar.tradesShort", { count: agg.trades }) : undefined} />
+          <Cell label={tc("trading.winRate")} value={decided ? fmtRate((winRateOf(agg.wins, agg.losses) ?? 0)) : "—"} hint={agg.trades ? t("calendar.tradesShort", { count: agg.trades }) : undefined} />
           <Cell
             label={t("week.days")}
             value={agg.traded ? <><span className="text-up">{agg.green}</span> / <span className="text-down">{agg.red}</span></> : "—"}

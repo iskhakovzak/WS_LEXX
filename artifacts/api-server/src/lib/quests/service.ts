@@ -9,15 +9,24 @@
  *   assignQuest / cancelQuest / completeQuest   curator quests (permissions are checked by the route)
  *
  * Notifications (type + params, rendered per reader — lib/notificationRenderers/quests.ts):
- *   quest_done           → the trader; for curator quests also the assigner (variant «staff»)
+ *   quest_done           → the trader IN THE NIGHTLY BATCH (lib/notificationBatch, roadmap R3: one in-app notice a day,
+ *                          not a ping per quest); for curator quests also the assigner (variant «staff», at once). A
+ *                          manual task the curator marks done reaches the trader at once (a person's answer).
  *   quest_failed         → the assigner when a curator quest failed or expired
  *   quest_assigned       → the trader
  *   quest_cancelled      → the trader when the curator cancels an active curator quest (the «assigned» one is marked read)
- *   achievement_earned   → the trader (the highest new tier per line; only tiers earned in the last NOTIFY_DAYS days, so
- *                          the first run after the rollout awards history quietly)
+ *   achievement_earned   → the trader in the nightly batch (the highest new tier per line; only tiers earned in the last
+ *                          NOTIFY_DAYS days, so the first run after the rollout awards history quietly)
+ *   achievement_summary  → the trader once, at once, instead of the per-line notices when one evaluation awards more than
+ *                          BULK_AT fresh tiers (the first run of a new catalog: history counted retroactively, no flood)
+ *
+ * Achievements v2: the new lines read lib/achievements/load (via lib/quests/load), awards carry `detail` for the dynamic
+ * lines (setup / leak / path step), a faded setup edge or a reopened leak is marked lost (lost_on), and big wins wait for
+ * the trader's ceremony (seen_at) — history recounts and small wins are stored seen.
  */
 import { logger } from "../logger";
 import { notifyUser } from "../notifyUtils";
+import { enqueueBatch } from "../notificationBatch";
 import { setting } from "../settings/registry";
 import { addDays, nyDate } from "../tradingDate";
 import { lastFinishedDay, levelThresholds, windowStart, withQuestPoints } from "../daily/discipline";
@@ -36,9 +45,16 @@ import {
   updateQuests, type StoredAchievement,
 } from "./store";
 import type { Achievement, AssignQuestBody, Quest, QuestsMe } from "./types";
+import { comebackOpen, isBigTier, lineDef, type AchievementInput, type LineResult } from "./achievements";
+import { awardExtras, setLostOn, type AwardExtra } from "../achievements/store";
+import type { StoredAward } from "../achievements/dynamic";
+import { nearestWin, pendingCeremonies, v2Part } from "../achievements/view";
+import { logInterventionSafe } from "../interventions/log";
 
 export const CACHE_MS = 5 * 60_000;
 export const NOTIFY_DAYS = 7;
+/** More fresh tiers than this in one evaluation → one summary notice instead of one per line. */
+export const BULK_AT = 3;
 
 export type Evaluation = {
   today: string;
@@ -50,10 +66,13 @@ export type Evaluation = {
   data: QuestData;
   /** First steps are offered / shown (a new trader: tier below Трейдер). */
   onboarding: boolean;
+  /** After a stop: clean days since (null = no comeback open). */
+  comeback?: { since: string; days: number; need: number } | null;
+  /** Big wins not seen yet (the ceremony). */
+  celebrate?: NonNullable<QuestsMe["celebrate"]>;
 };
 
 const questLink = (id: number) => `/ratings?tab=quests&quest=${id}`;
-const achLink = (line: string) => `/ratings?tab=quests&ach=${encodeURIComponent(line)}`;
 const curatorLink = (trader: string) => `/curator?trader=${encodeURIComponent(trader)}`;
 
 // ─── notifications ──────────────────────────────────────────────────────────
@@ -61,7 +80,7 @@ const curatorLink = (trader: string) => `/curator?trader=${encodeURIComponent(tr
 async function notifyFinished(q: StoredQuest): Promise<void> {
   const base = { template: q.template, scope: q.scope, target: q.target, points: q.rewardPoints, questId: q.id, note: q.template === MANUAL_TEMPLATE ? q.note : null };
   if (q.status === "done") {
-    await notifyUser({ userName: q.trader, type: "quest_done", params: base, link: questLink(q.id), entityType: "quest", entityId: String(q.id), source: "quests" });
+    await enqueueBatch(q.trader, "quest_done", base, String(q.id));
   }
   if (q.scope !== "curator" || !q.assignedBy || q.assignedBy === q.trader) return;
   const staff = { ...base, trader: q.trader, variant: "staff", statusCode: q.status };
@@ -71,33 +90,58 @@ async function notifyFinished(q: StoredQuest): Promise<void> {
   });
 }
 
-/** Stores the new tiers once and notifies; false when another process stored one of them first (its row then wins). */
-async function awardAchievements(trader: string, news: readonly NewAward[], asOf: string): Promise<boolean> {
+/** Notification params of a line (dynamic lines carry their subject: setup name, slice, path step). */
+function lineParams(a: Pick<NewAward, "line" | "tier" | "target" | "detail">): Record<string, unknown> {
+  const d = a.detail ?? {};
+  return { line: a.line, tier: a.tier, target: a.target, ...(d.name != null ? { name: d.name } : {}), ...(d.slice != null ? { slice: d.slice } : {}), ...(d.metric != null ? { metric: d.metric, stage: d.stage } : {}) };
+}
+
+/**
+ * Stores the new tiers once and notifies; false when another process stored one of them first (its row then wins).
+ * Big fresh tiers wait for the ceremony; everything else (history, small wins) is stored seen. `bulk` (a recount of
+ * history: more than BULK_AT fresh tiers at once) sends one summary notice instead of a notice per line.
+ */
+async function awardAchievements(trader: string, news: readonly NewAward[], asOf: string, history: (a: NewAward) => boolean = () => false): Promise<{ all: boolean; bulk: boolean; fresh: NewAward[] }> {
   const notifyFrom = addDays(asOf, -NOTIFY_DAYS);
+  const bulk = news.filter((a) => a.date >= notifyFrom && !history(a)).length > BULK_AT;
   const best = new Map<string, NewAward>();
+  const fresh: NewAward[] = [];
   let all = true;
   for (const a of news) {
-    if (!(await insertAchievement(trader, { line: a.line, tier: a.tier, date: a.date, target: a.target }))) {
+    // `history`: dated today but not news (the path steps a trader had already passed when the steps were first observed).
+    const isFresh = a.date >= notifyFrom && !history(a);
+    const big = isFresh && !bulk && isBigTier(lineDef(a.line), a.line, a.tier);
+    const row = { line: a.line, tier: a.tier, date: a.date, target: a.target, ...(a.detail ? { detail: a.detail } : {}), ...(big ? {} : { quiet: true }) };
+    if (!(await insertAchievement(trader, row))) {
       all = false; // a racing process won
       continue;
     }
-    if (a.date < notifyFrom) continue;
+    if (!isFresh) continue;
+    fresh.push(a);
     const prev = best.get(a.line);
     if (!prev || TIERS.indexOf(a.tier) > TIERS.indexOf(prev.tier)) best.set(a.line, a);
   }
-  for (const a of best.values()) {
+  if (bulk && fresh.length) {
+    const top = [...best.values()].sort((x, y) => TIERS.indexOf(y.tier) - TIERS.indexOf(x.tier))[0]!;
     await notifyUser({
-      userName: trader, type: "achievement_earned", params: { line: a.line, tier: a.tier, target: a.target }, link: achLink(a.line),
-      entityType: "achievement", entityId: `${a.line}:${a.tier}`, source: "quests",
-    });
+      userName: trader, type: "achievement_summary", params: { count: fresh.length, ...(lineParams(top) as Record<string, string | number>) }, link: "/ratings?tab=quests", entityType: "achievement", entityId: `summary:${asOf}`, source: "quests",
+    }).catch((err) => logger.warn({ err: (err as Error)?.message, trader }, "quests: summary notify failed"));
+    return { all, bulk, fresh };
   }
-  return all;
+  for (const a of best.values()) {
+    await enqueueBatch(trader, "achievement_earned", lineParams(a), `${a.line}:${a.tier}`);
+  }
+  return { all, bulk, fresh };
 }
 
 /** Stored tiers (+ badges an older process wrote to trader_badges, mapped and stored without a notification). */
-async function awardedMap(trader: string): Promise<Map<string, { date: string; target: number }>> {
+async function awardedMap(trader: string, extras: readonly AwardExtra[] = []): Promise<Map<string, StoredAward>> {
   const stored = await achievementsOf(trader);
-  const map = new Map(stored.map((a) => [awardKey(a.line, a.tier), { date: a.date, target: a.target }]));
+  const extra = new Map(extras.map((x) => [awardKey(x.line, x.tier), x]));
+  const map = new Map<string, StoredAward>(stored.map((a) => {
+    const k = awardKey(a.line, a.tier);
+    return [k, { date: a.date, target: a.target, lostOn: extra.get(k)?.lostOn ?? null, detail: extra.get(k)?.detail ?? null }];
+  }));
   for (const b of await legacyBadges(trader)) {
     const m = badgeAward(b.badge);
     if (!m || map.has(awardKey(m.line, m.tier))) continue;
@@ -125,27 +169,40 @@ async function syncQuests(trader: string, data: QuestData, onboarding: boolean):
 
 /** Recomputes everything for one trader (no cache). */
 export async function evaluateTrader(trader: string, now = new Date()): Promise<Evaluation> {
-  const awarded = await awardedMap(trader);
-  const fullStops = !awarded.has(awardKey("clean_month", "gold"));
-  const inputs = await loadTraderInputs(trader, now, { fullStops });
+  const extras = await awardExtras(trader).catch(() => [] as AwardExtra[]);
+  const awarded = await awardedMap(trader, extras);
+  // The v2 lines (stops respected, clean weeks, comebacks…) need the whole stop history.
+  const inputs = await loadTraderInputs(trader, now, { fullStops: true, v2: setting("achievements.enabled") });
   const onboarding = onboardingFor(inputs.role, inputs.tier);
   const quests = await syncQuests(trader, inputs.quests, onboarding);
   let achievements: Achievement[] = [];
   let news: NewAward[] = [];
+  let recognised: NewAward[] = [];
+  let comeback: Evaluation["comeback"] = null;
+  let celebrate: Evaluation["celebrate"] = [];
   if (setting("achievements.enabled")) {
-    const results = evaluateAchievements({ ...inputs.achievements, onboarding: onboardingState(quests) });
+    const achInput: AchievementInput = { ...inputs.achievements, onboarding: onboardingState(quests), ...v2Part(inputs.v2 ?? null, awarded) };
+    const results = evaluateAchievements(achInput);
     // Stored tiers on a wrong day move to the day their own target was reached (no new notification).
     for (const f of dateFixes(results, awarded)) {
       if (await fixAchievementDate(trader, f).catch(() => false)) awarded.set(awardKey(f.line, f.tier), { date: f.date, target: f.target });
     }
     news = newAwards(results, awarded);
-    if (await awardAchievements(trader, news, inputs.asOf)) {
-      for (const a of news) if (!awarded.has(awardKey(a.line, a.tier))) awarded.set(awardKey(a.line, a.tier), { date: a.date, target: a.target });
+    // The first time the path steps are observed, the ones already passing are history, not news.
+    const firstPath = ![...awarded.keys()].some((k) => k.startsWith("path:"));
+    const done = await awardAchievements(trader, news, inputs.asOf, (a) => firstPath && String(a.line).startsWith("path:"));
+    if (done.all) {
+      for (const a of news) if (!awarded.has(awardKey(a.line, a.tier))) awarded.set(awardKey(a.line, a.tier), { date: a.date, target: a.target, detail: a.detail ?? null });
     } else {
       // Another process stored a tier first (maybe with another day): answer what is stored, never this run's guess.
-      for (const a of await achievementsOf(trader)) awarded.set(awardKey(a.line, a.tier), { date: a.date, target: a.target });
+      for (const a of await achievementsOf(trader)) awarded.set(awardKey(a.line, a.tier), { ...awarded.get(awardKey(a.line, a.tier)), date: a.date, target: a.target });
     }
+    // A recount of history is not news for the desk feed either.
+    recognised = done.bulk ? [] : news;
+    if (inputs.v2) await syncLost(trader, results, awarded).catch((err) => logger.warn({ err: (err as Error)?.message, trader }, "quests: lost sync failed"));
     achievements = achievementStates(results, awarded);
+    comeback = comebackOpen(achInput);
+    celebrate = pendingCeremonies(extras, done.bulk ? [] : done.fresh, inputs.asOf);
   }
   const windowDays = setting("discipline.pointsWindowDays");
   // «Выполнил задание куратора» (2.13): small per-day points, counted like a done quest's bonus.
@@ -153,9 +210,9 @@ export async function evaluateTrader(trader: string, now = new Date()): Promise<
   const discipline = withQuestPoints(inputs.summary, questPoints(scored, windowStart(inputs.asOf, windowDays)), levelThresholds());
   // Season scores and recognition (lib/gamification/hooks; never throws).
   await afterEvaluation(trader, {
-    today: inputs.quests.today, asOf: inputs.asOf, ledger: inputs.ledger, quests: scored, tradedDays: inputs.quests.reviews.map((r) => r.date), awarded: news,
+    today: inputs.quests.today, asOf: inputs.asOf, ledger: inputs.ledger, quests: scored, tradedDays: inputs.quests.reviews.map((r) => r.date), awarded: recognised,
   });
-  return { today: inputs.quests.today, asOf: inputs.asOf, discipline, badges: badgesOf(achievements), achievements, quests, data: inputs.quests, onboarding };
+  return { today: inputs.quests.today, asOf: inputs.asOf, discipline, badges: badgesOf(achievements), achievements, quests, data: inputs.quests, onboarding, comeback, celebrate };
 }
 
 const inflight = new Map<string, { gen: number; p: Promise<Evaluation> }>();
@@ -204,8 +261,39 @@ export async function questsMe(trader: string, now = new Date()): Promise<Quests
       achievementsTotal: tiers.length,
       onboarding: started && ob.doneOn == null ? { done: ob.done, total: ob.total } : null,
     },
+    nearest: nearestWin(e.achievements),
+    comeback: e.comeback ?? null,
+    celebrate: e.celebrate ?? [],
   };
 }
+
+// ─── achievements v2 helpers ────────────────────────────────────────────────
+
+const RANK: Record<string, number> = { bronze: 1, silver: 2, gold: 3, platinum: 4 };
+
+/**
+ * Marks the earned tiers above the held one lost (setup edge faded / a closed leak came back), and clears the mark when
+ * the tier holds again. The tiers stay earned; only the capital signal and the card's «утрачено» read lost_on.
+ */
+async function syncLost(trader: string, results: readonly LineResult[], awarded: Map<string, StoredAward>): Promise<void> {
+  for (const r of results) {
+    const d = r.dyn;
+    if (!d || d.kind === "path") continue;
+    const stored = d.tiers.map((t) => t.tier).filter((t) => awarded.has(awardKey(d.id, t)));
+    if (!stored.length) continue;
+    const heldRank = d.held ? RANK[d.held] ?? 0 : 0;
+    const above = stored.filter((t) => (RANK[t] ?? 0) > heldRank);
+    const within = stored.filter((t) => (RANK[t] ?? 0) <= heldRank && awarded.get(awardKey(d.id, t))?.lostOn);
+    if (above.length && (await setLostOn(trader, d.id, above, d.lostOn ?? nyDate()))) {
+      for (const t of above) awarded.set(awardKey(d.id, t), { ...awarded.get(awardKey(d.id, t))!, lostOn: d.lostOn });
+    }
+    if (within.length && (await setLostOn(trader, d.id, within, null))) {
+      for (const t of within) awarded.set(awardKey(d.id, t), { ...awarded.get(awardKey(d.id, t))!, lostOn: null });
+    }
+  }
+}
+
+
 
 // ─── curator quests ─────────────────────────────────────────────────────────
 
@@ -241,6 +329,10 @@ export async function assignQuest(body: AssignQuestBody, by: string, today = nyD
     rewardPoints: body.rewardPoints ?? setting("quests.curatorDefaultPoints"), note: body.note?.trim() || null,
   });
   forgetQuests(body.trader);
+  await logInterventionSafe({
+    trader: body.trader, kind: "quest", author: by, params: { template: q.template, target: q.target }, targetSlice: `quest:${q.template}`,
+    startedOn: today, endsOn: body.endsOn, sourceTable: "quest_instances", sourceId: q.id,
+  });
   await notifyUser({
     userName: body.trader, type: "quest_assigned", actor: by, link: questLink(q.id), entityType: "quest", entityId: String(q.id), source: "quests",
     params: { template: q.template, target: q.target, points: q.rewardPoints, curator: by, endsDate: body.endsOn, note: q.note, questId: q.id },

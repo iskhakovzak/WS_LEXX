@@ -8,6 +8,8 @@ import { TraderAvatar } from "./trader-avatar";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { teamI18n } from "@/i18n/ns/team";
 import { personName } from "@/i18n";
+import { profileI18n } from "@/i18n/ns/profile";
+import { PersonProfileLink } from "@/components/shared/person-link";
 import { METRIC_LABEL, SCORE_PART_LABEL, metricValue, type Metric, type ScorePart, type TraderRow } from "./leaderboard";
 
 /** Scaling tier keys from the API → the desk ladder names. */
@@ -246,6 +248,7 @@ export function LeaderboardList({
                 )}
                 <ScoreParts r={r} weights={weights} />
                 <nav className="flex flex-wrap gap-1.5" aria-label={t("linksAria", { name: personName(r.trader) })}>
+                  <PersonProfileLink name={r.trader} className="chip min-h-8 px-2.5 text-xs text-foreground">{profileI18n.t("title")}</PersonProfileLink>
                   <Link href={`${links.trades({ from, to })}&trader=${encodeURIComponent(r.trader)}`} className="chip inline-flex min-h-8 items-center px-2.5 text-xs">
                     {t("link.trades")}
                   </Link>

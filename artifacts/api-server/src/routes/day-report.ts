@@ -1,7 +1,7 @@
 /**
  * «Разбор дня» — автоматический детерминированный отчёт по одному торговому дню трейдера.
  *
- *   GET /api/day-report?trader=&date=YYYY-MM-DD[&revengeMin=2]
+ *   GET /api/day-report?trader=&date=YYYY-MM-DD[&revengeMin=10]
  *
  * Только чтение, таблиц не создаёт. Scope через lib/auth.scopeTrader: трейдер видит только себя,
  * staff — выбранного трейдера (без ?trader= — себя). Гость — пустой отчёт.

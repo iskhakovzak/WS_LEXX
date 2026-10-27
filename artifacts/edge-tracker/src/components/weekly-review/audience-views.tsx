@@ -5,10 +5,11 @@
  *                  risk events and the curator's feedback + grade (existing collab flow, E1 notifications).
  */
 import * as React from "react";
-import { CalendarX2 } from "lucide-react";
+import { CalendarX2, History } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { BentoGrid, EmptyState, Panel, Pill } from "@/components/ds";
 import type { Tip } from "@/lib/weeklyInsights";
-import type { WeeklyReview } from "./api";
+import { weekLabel, type WeeklyReview } from "./api";
 import { CuratorReviewPanel, PrevGoalsPanel, SelfReviewPanel } from "./collab";
 import {
   ChecklistPanel, DayStrip, DeskComparePanel, GoalPanel, JournalRiskPanel, PositivesPanel, TipsPanel, WeekKpiStrip, weekHeadline,
@@ -16,6 +17,13 @@ import {
 import { BestWorstPanel, HorizonPanel, MistakesPanel, OpenBookPanel, SetupPanel } from "./sections";
 import { useWeekInsights } from "./use-week-insights";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { BreakevenLine, FeeCoachingCard } from "@/components/shared/coach/fee-coaching";
+import { RegimeReflectionPanel } from "./regime-reflection";
+
+/** Win rate vs breakeven under the KPI strip (rolling window, not just the week). */
+function Breakeven({ doc }: { doc: WeeklyReview }) {
+  return doc.feeCoaching ? <BreakevenLine breakeven={doc.feeCoaching.breakeven} days={doc.feeCoaching.window.days} /> : null;
+}
 
 /** Setup / horizon / weekend-book panels only when they carry information. */
 function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
@@ -28,24 +36,30 @@ function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
     book && <OpenBookPanel key="book" doc={doc} />,
   ].filter(Boolean);
   if (!panels.length) return null;
-  return <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">{panels}</div>;
+  return <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">{panels}</div>;
 }
 
-function NoTradesWeek({ doc }: { doc: WeeklyReview }) {
+/** Opens another week of the report (the page's week state). */
+export type OnWeek = (week: string) => void;
+
+/** An empty week with the one way forward: the trader's last week with trades (prefill, design audit wave 2). */
+function NoTradesWeek({ doc, onWeek }: { doc: WeeklyReview; onWeek?: OnWeek }) {
   const { t } = weeklyI18n.useT();
+  const last = doc.lastTradedWeek;
   return (
     <Panel>
       <EmptyState
         icon={CalendarX2}
         title={t("audience.noTradesTitle")}
         description={doc.week.isCurrent ? t("audience.noTradesCurrent") : t("audience.noTradesPast")}
+        action={last && onWeek ? <Button onClick={() => onWeek(last)}><History aria-hidden="true" />{t("audience.lastTradedWeek", { week: weekLabel(last) })}</Button> : undefined}
       />
     </Panel>
   );
 }
 
 // ── Трейдеру ─────────────────────────────────────────────────────────────────
-export function TraderView({ doc }: { doc: WeeklyReview }) {
+export function TraderView({ doc, onWeek }: { doc: WeeklyReview; onWeek?: OnWeek }) {
   const { t: tr } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const [inject, setInject] = React.useState<{ text: string; n: number } | null>(null);
@@ -55,11 +69,12 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
   if (k.trades === 0) {
     return (
       <div className="flex flex-col gap-[var(--grid-gap)]">
-        <NoTradesWeek doc={doc} />
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <NoTradesWeek doc={doc} onWeek={onWeek} />
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <GoalPanel doc={doc} />
           <PrevGoalsPanel doc={doc} />
         </div>
+        <RegimeReflectionPanel trader={doc.trader} week={doc.week.key} />
       </div>
     );
   }
@@ -68,6 +83,8 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <p className="text-sm text-muted-foreground">{weekHeadline(doc)}</p>
       <WeekKpiStrip doc={doc} ins={ins} />
+      <Breakeven doc={doc} />
+      <FeeCoachingCard data={doc.feeCoaching} />
       <BentoGrid>
         <TipsPanel tips={ins.tips} loading={ins.tipsLoading} onMakeGoal={makeGoal} className="lg:col-span-7" />
         <div className="flex min-w-0 flex-col gap-[var(--grid-gap)] lg:col-span-5">
@@ -79,18 +96,19 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
       <BestWorstPanel doc={doc} />
       <OptionalBreakdowns doc={doc} />
       <section aria-label={tr("audience.withCurator")} className="flex flex-col gap-[var(--grid-gap)]">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <CuratorReviewPanel doc={doc} readOnly />
           <PrevGoalsPanel doc={doc} />
         </div>
         <SelfReviewPanel doc={doc} hideFocus />
+        <RegimeReflectionPanel trader={doc.trader} week={doc.week.key} />
       </section>
     </div>
   );
 }
 
 // ── Куратору ─────────────────────────────────────────────────────────────────
-export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: string; open: () => void } | null }) {
+export function CuratorView({ doc, next, onWeek }: { doc: WeeklyReview; next?: { name: string; open: () => void } | null; onWeek?: OnWeek }) {
   const { t } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const k = doc.kpis.current;
@@ -106,7 +124,9 @@ export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: s
         {warns > 0 && <Pill tone="warn" dot>{t("audience.warns", { count: warns })}</Pill>}
         {fails === 0 && warns === 0 && <Pill tone="up" dot>{t("audience.clean")}</Pill>}
       </div>
-      {k.trades > 0 ? <WeekKpiStrip doc={doc} ins={ins} /> : <NoTradesWeek doc={doc} />}
+      {k.trades > 0 ? <WeekKpiStrip doc={doc} ins={ins} /> : <NoTradesWeek doc={doc} onWeek={onWeek} />}
+      <Breakeven doc={doc} />
+      <FeeCoachingCard data={doc.feeCoaching} trader={doc.trader} />
       <BentoGrid>
         <ChecklistPanel items={ins.checklist} className="lg:col-span-7" />
         <DeskComparePanel bench={ins.bench} row={ins.benchRow} trend={ins.trend} loading={ins.benchLoading} className="lg:col-span-5" />
@@ -124,11 +144,12 @@ export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: s
       {k.trades > 0 && <DayStrip doc={doc} ins={ins} />}
       {hasMistakes && <MistakesPanel doc={doc} />}
       <section aria-label={t("audience.oneOnOne")} className="flex flex-col gap-[var(--grid-gap)]">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <SelfReviewPanel doc={doc} />
           <CuratorReviewPanel doc={doc} next={next} />
         </div>
         <PrevGoalsPanel doc={doc} />
+        <RegimeReflectionPanel trader={doc.trader} week={doc.week.key} readOnly />
       </section>
     </div>
   );

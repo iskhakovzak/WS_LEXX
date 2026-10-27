@@ -19,6 +19,7 @@ import type { AchievementInput } from "./achievements";
 import type { QuestData } from "./catalog";
 import { tagDays } from "../playbookToday/untagged";
 import { viewerTier } from "../playbookToday/tier";
+import { loadV2Inputs, type V2Inputs } from "../achievements/load";
 
 const none = <T>() => ({ rows: [] as T[] });
 const loadTradesOf = (trader: string) => async (from: string, to: string) => (await loadBehaviorRows(trader, from, to)).map(rowToBehaviorTrade);
@@ -36,22 +37,24 @@ const TRADED_DAYS = `SELECT DISTINCT substring(date, 1, 10) AS d FROM trades WHE
  */
 export async function reviewDays(trader: string, asOf: string): Promise<ReviewDay[]> {
   const ny = (col: string) => `to_char(${col} AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')`;
+  // full_on: the full EOD review (eod_days.full_review_at, migration 0247) — what the review rewards count (R3).
   const withJournal = `
-    SELECT t.d, ${ny("LEAST(r.reviewed_at, e.closed_at)")} AS reviewed_on
+    SELECT t.d, ${ny("LEAST(r.reviewed_at, e.closed_at)")} AS reviewed_on, ${ny("e.full_at")} AS full_on
       FROM (${TRADED_DAYS}) t
       LEFT JOIN daily_reviews r ON r.trader = $1 AND r.date = t.d
-      LEFT JOIN (SELECT date, MIN(closed_at) AS closed_at FROM eod_days WHERE trader = $1 AND closed_at IS NOT NULL GROUP BY date) e ON e.date = t.d
+      LEFT JOIN (SELECT date, MIN(closed_at) AS closed_at, MIN(full_review_at) AS full_at FROM eod_days WHERE trader = $1 AND closed_at IS NOT NULL GROUP BY date) e ON e.date = t.d
      ORDER BY t.d`;
   const reviewsOnly = `
     SELECT t.d, ${ny("r.reviewed_at")} AS reviewed_on FROM (${TRADED_DAYS}) t
       LEFT JOIN daily_reviews r ON r.trader = $1 AND r.date = t.d ORDER BY t.d`;
   const { rows } = await pool
-    .query<{ d: string; reviewed_on: string | null }>(withJournal, [trader, asOf])
+    .query<{ d: string; reviewed_on: string | null; full_on?: string | null }>(withJournal, [trader, asOf])
     .catch((err) => {
-      if ((err as { code?: string })?.code !== "42P01") throw err; // eod_days missing → reviews only
-      return pool.query<{ d: string; reviewed_on: string | null }>(reviewsOnly, [trader, asOf]);
+      const code = (err as { code?: string })?.code;
+      if (code !== "42P01" && code !== "42703") throw err; // eod_days (or its full_review_at) missing → reviews only
+      return pool.query<{ d: string; reviewed_on: string | null; full_on?: string | null }>(reviewsOnly, [trader, asOf]);
     });
-  return rows.map((r) => ({ date: String(r.d), reviewedOn: r.reviewed_on }));
+  return rows.map((r) => ({ date: String(r.d), reviewedOn: r.reviewed_on, fullOn: r.full_on ?? null }));
 }
 
 export async function focusDays(trader: string, asOf: string): Promise<FocusDay[]> {
@@ -259,17 +262,20 @@ export type TraderInputs = {
   ledger: LedgerDay[];
   achievements: Omit<AchievementInput, "onboarding">;
   quests: QuestData;
+  /** Achievements v2 sources (lib/achievements/load); null when achievements are off or the load failed. */
+  v2?: V2Inputs | null;
 };
 
 /**
  * One load for both engines. `fullStops`: the clean-month line still has tiers to earn — load the whole stop history
  * (otherwise only this month, for the monthly quest).
  */
-export async function loadTraderInputs(trader: string, now: Date, o: { fullStops: boolean }): Promise<TraderInputs> {
+export async function loadTraderInputs(trader: string, now: Date, o: { fullStops: boolean; v2?: boolean }): Promise<TraderInputs> {
   const asOf = lastFinishedDay(now);
   const today = nyDate(now);
   const monthStart = `${today.slice(0, 7)}-01`;
   const stopsFrom = o.fullStops ? "2000-01-01" : (monthStart < asOf ? monthStart : asOf);
+  const v2 = o.v2 ? loadV2Inputs(trader, asOf, today).catch(() => null) : Promise.resolve(null);
   const [{ summary, ledger }, reviews, focus, stops, games, plans, user, promo, acad, gp, opens, prefill, holiday, tags, tier, drills, dailyTasks] = await Promise.all([
     disciplineSummary(trader, { loadTrades: loadTradesOf(trader), now }),
     reviewDays(trader, today).catch(() => [] as ReviewDay[]),
@@ -291,7 +297,7 @@ export async function loadTraderInputs(trader: string, now: Date, o: { fullStops
   ]);
   const plansBeforeOpen = [...plans].filter(([d, p]) => p.beforeOpen && d <= today).map(([d]) => d);
   return {
-    asOf, role: user.role, tier, summary, ledger,
+    asOf, role: user.role, tier, summary, ledger, v2: await v2,
     achievements: {
       asOf, ledger, reviews: reviews.filter((r) => r.date <= asOf), focus, stops: stops.days, cleanMonthMinDays: setting("rewards.cleanMonthMinDays"),
       games, plansBeforeOpen, promotions: promo, lessons: acad.lessons, exams: acad.exams, academy: acad.academy,

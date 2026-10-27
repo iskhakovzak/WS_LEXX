@@ -1,5 +1,6 @@
 /**
- * The game chart with what floats over it: the daily mini panel (top left), the status chip (event a jump stopped at /
+ * The game chart with what floats over it: the long daily chart (view «Дневка» — over the intraday chart, which stays
+ * mounted so its state survives), the daily mini panel (top left), the status chip (event a jump stopped at /
  * «paused: stop filled»), the «stop here / target here» menu (long-press / right-click) and the brief card at the
  * start. `isolate` keeps the overlays' stacking inside the panel.
  */
@@ -15,14 +16,23 @@ import { SimChart, type ChartToggles } from "./sim-chart";
 import type { DragLine, OverlayData } from "./sim-overlay";
 import { DailyMini } from "./daily-panel";
 import { BriefCard } from "./brief-card";
+import { DailyChart } from "./daily-chart";
+import type { ChartView } from "./chart-toolbar";
+import type { TrainerDayContext } from "@/lib/trainer/types";
 import type { GameView } from "./use-sim-game";
 
 export type PlaceMenu = { price: number; x: number; y: number };
 
 export function ChartStage({
   game, overlay, toggles, levels, baseMin, dispMin, onDragLine, dragLabel, onPlace, menu, setMenu,
-  daily, today, showDaily, chip, chipWarn, brief, onCloseBrief,
+  daily, today, showDaily, chip, chipWarn, brief, onCloseBrief, view = "intraday", dailyLevels, gapPct = null, day = null,
 }: {
+  view?: ChartView;
+  /** Levels of the long daily chart (previous close, 52-week high / low). */
+  dailyLevels?: { pdc: number | null; hi52?: number | null; lo52?: number | null };
+  gapPct?: number | null;
+  /** «Контекст дня» for the brief card. */
+  day?: TrainerDayContext | null;
   game: GameView;
   overlay: OverlayData;
   toggles: ChartToggles;
@@ -56,7 +66,12 @@ export function ChartStage({
         baseMin={baseMin} dispMin={dispMin}
         onPlace={done ? undefined : onPlace} onMenu={done ? undefined : (price, x, y) => setMenu({ price, x, y })}
       />
-      {showDaily && (
+      {view === "daily" && (
+        <div className="absolute inset-0 z-sticky bg-background p-2 sm:p-3">
+          <DailyChart daily={daily} today={today} levels={dailyLevels ?? { pdc: levels.pdc }} gapPct={gapPct} revealed={done} />
+        </div>
+      )}
+      {showDaily && view === "intraday" && (
         <div className="pointer-events-none absolute left-2 top-2 z-sticky w-40 rounded-lg border border-[var(--glass-border)] bg-background/80 p-1.5 backdrop-blur-sm sm:w-48" data-testid="sim-daily">
           <p className="flex items-baseline justify-between px-0.5 text-2xs text-muted-foreground"><span className="font-medium">{t("daily.title")}</span>{today && <span>{t("daily.today")}</span>}</p>
           <div className="h-16 sm:h-20"><DailyMini daily={daily} today={today} levels={levels} label={t("tf.dailyHint")} /></div>
@@ -68,7 +83,7 @@ export function ChartStage({
         </div>
       )}
       {menu && <PlaceMenuView menu={menu} onClose={() => setMenu(null)} onChoose={choose} />}
-      {brief && <BriefCard levels={brief} daily={daily} today={today} onClose={onCloseBrief} />}
+      {brief && <BriefCard levels={brief} daily={daily} today={today} day={day} onClose={onCloseBrief} />}
     </div>
   );
 }

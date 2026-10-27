@@ -1,7 +1,8 @@
 /**
  * Brief card at the start of an intraday game: what a trader checks before the open — the gap vs the previous close,
  * PDH / PDL / PMH / PML, ATR — and the daily picture (60 days + today). Over the chart for ~5 s or until any key / tap
- * (the game screen swallows that first key). Numbers only, no ticker (still hidden).
+ * (the game screen swallows that first key). Numbers only, no ticker (still hidden); the catalyst (masked) and the
+ * market cap from «Контекст дня».
  */
 import * as React from "react";
 import { X } from "lucide-react";
@@ -12,10 +13,12 @@ import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
 import type { GameContext } from "./api";
 import { DailyMini } from "./daily-panel";
+import { capLine, catalystLine } from "./day-context";
+import type { TrainerDayContext } from "@/lib/trainer/types";
 
 export const BRIEF_MS = 5000;
 
-export function BriefCard({ levels, daily, today, onClose }: { levels: GameContext["levels"]; daily: readonly Candle[]; today: Candle | null; onClose: () => void }) {
+export function BriefCard({ levels, daily, today, day, onClose }: { levels: GameContext["levels"]; daily: readonly Candle[]; today: Candle | null; day?: TrainerDayContext | null; onClose: () => void }) {
   const { t } = simI18n.useT();
   const close = React.useRef(onClose);
   close.current = onClose;
@@ -49,6 +52,14 @@ export function BriefCard({ levels, daily, today, onClose }: { levels: GameConte
           ))}
           <div className="min-w-0"><dt className="text-2xs text-muted-foreground">{t("brief.atr")}</dt><dd className="truncate tabular-nums">{levels.atr14 != null ? fmtPrice(levels.atr14) : "—"}</dd></div>
         </dl>
+        {day && day.catalysts[0] && (
+          <p className="mt-3 line-clamp-2 text-xs" data-testid="sim-brief-catalyst">
+            <span className="font-medium">{t(`day.kind.${day.catalysts[0].kind}`)}</span>
+            {day.catalysts[0].timing && <span className="text-muted-foreground"> · {t(`day.timing.${day.catalysts[0].timing}`)}</span>}
+            {" — "}{catalystLine(day.catalysts[0], t)}
+          </p>
+        )}
+        {day?.cap && <p className="mt-1 text-xs text-muted-foreground">{t("day.cap")}: <span className="tabular-nums text-foreground">{capLine(day.cap, t)}</span></p>}
         {daily.length > 0 && (
           <div className="mt-3 h-24 rounded-lg bg-[var(--glass-bg)] p-1">
             <DailyMini daily={daily} today={today} levels={levels} label={simI18n.t("daily.title")} />

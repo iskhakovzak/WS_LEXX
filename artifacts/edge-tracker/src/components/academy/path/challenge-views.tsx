@@ -113,7 +113,7 @@ export function ChallengeDetailView({ id, onArchived, pathHref }: { id: number; 
       </StatGrid>
 
       <Panel title={t("challenge.rulesTitle")} icon={ListChecks} description={t("challenge.rulesDescription")}>
-        <ul className="grid gap-4 md:grid-cols-2">{r.progress.map((p) => <RuleBar key={p.key} p={p} mode={mode} />)}</ul>
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">{r.progress.map((p) => <RuleBar key={p.key} p={p} mode={mode} />)}</ul>
         {(r.stats.tradesWithoutPnl > 0 || r.stats.tradesWithoutTime > 0) && (
           <p className="mt-3 text-xs text-muted-foreground">
             {[

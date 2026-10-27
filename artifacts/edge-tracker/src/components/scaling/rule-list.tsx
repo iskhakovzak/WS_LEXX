@@ -1,5 +1,6 @@
 import * as React from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Check, Minus, X } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";

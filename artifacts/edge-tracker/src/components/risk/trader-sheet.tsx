@@ -4,7 +4,7 @@ import { AlertTriangle, History, Moon, OctagonX } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ErrorState, Pill, Segmented } from "@/components/ds";
+import { ErrorState, LiveNumber, Pill, Segmented } from "@/components/ds";
 import { links } from "@/lib/links";
 import type { DeskRow, LimitEvent, RiskPosition } from "./use-risk";
 import { useLimitsHistory, useTraderDay } from "./use-risk";
@@ -36,7 +36,7 @@ function TradesTab({ trader }: { trader: string }) {
   if (q.isLoading) return <DaySkeleton height={160} />;
   if (!day?.date || !day.trades.length) return <p className="text-sm text-muted-foreground">{t("day.noTrades")}</p>;
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex max-w-5xl flex-col gap-3">
       <p className="text-xs text-muted-foreground tabular-nums">
         {day.isToday ? commonI18n.t("time.today") : t("sheet.lastDay", { date: fmtDate(day.date, "dayMonthNumeric") })}
         {" · "}{commonI18n.t("units.tradesShort", { count: day.trades.length })}
@@ -143,10 +143,11 @@ export function TraderSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent side="right" size="xl" className="overflow-y-auto">
         {row && (
           <div className="flex flex-col gap-5">
-            <SheetHeader className="pr-10 text-left">
+            {/* Sticky: name, today / week and the tabs stay while the body scrolls. */}
+            <SheetHeader className="gap-3 pr-10 text-left">
               <div className="flex flex-wrap items-center gap-3">
                 <SheetTitle className="text-xl">{personName(row.trader)}</SheetTitle>
                 <LevelBadge level={level} />
@@ -157,7 +158,7 @@ export function TraderSheet({
                   {rich(t("sheet.today", slots("value")), {
                     value: (
                       <span className={cn("font-medium", pnlTone(pnl ?? row.today.r))}>
-                        {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : row.today.trades ? fmtR(row.today.r) : t("sheet.noTrades")}
+                        {pnl != null ? <LiveNumber value={pnl} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} resetKey={row.trader} /> : row.today.trades ? fmtR(row.today.r) : t("sheet.noTrades")}
                       </span>
                     ),
                   })}
@@ -179,34 +180,34 @@ export function TraderSheet({
                 )}
               </SheetDescription>
               <LiveBadge live={row.live} className="flex" />
-              {row.stop.state !== "no_limits" && (row.halted || row.stop.state === "warn") && (
-                <p
-                  role="status"
-                  className={cn(
-                    "flex items-start gap-2 rounded-xl px-3 py-2 text-sm font-medium tabular-nums ring-1 ring-inset",
-                    row.halted ? "bg-down/10 text-down ring-down/30" : "bg-warn/10 text-warn ring-warn/30",
-                  )}
-                >
-                  {row.halted ? <OctagonX className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
-                  <span className="min-w-0">{stopMessage(row, row.limits)}</span>
-                </p>
-              )}
+              <Segmented
+                className="self-start"
+                ariaLabel={t("sheet.tabsAria")}
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: "overview", label: c("fields.overview") },
+                  { value: "trades", label: c("trading.trades") },
+                  { value: "breaches", label: t("sheet.breaches"), count: breachCount || undefined },
+                  { value: "limits", label: row.limits ? t("sheet.limits") : t("desk.setLimits") },
+                ]}
+              />
             </SheetHeader>
-
-            <Segmented
-              ariaLabel={t("sheet.tabsAria")}
-              value={tab}
-              onChange={setTab}
-              options={[
-                { value: "overview", label: c("fields.overview") },
-                { value: "trades", label: c("trading.trades") },
-                { value: "breaches", label: t("sheet.breaches"), count: breachCount || undefined },
-                { value: "limits", label: row.limits ? t("sheet.limits") : t("desk.setLimits") },
-              ]}
-            />
+            {row.stop.state !== "no_limits" && (row.halted || row.stop.state === "warn") && (
+              <p
+                role="status"
+                className={cn(
+                  "flex items-start gap-2 rounded-xl px-3 py-2 text-sm font-medium tabular-nums ring-1 ring-inset",
+                  row.halted ? "bg-down/10 text-down ring-down/30" : "bg-warn/10 text-warn ring-warn/30",
+                )}
+              >
+                {row.halted ? <OctagonX className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+                <span className="min-w-0">{stopMessage(row, row.limits)}</span>
+              </p>
+            )}
 
             {tab === "overview" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-section">
                 {row.alerts.length > 0 && <AlertList alerts={row.alerts} />}
                 {row.limits ? (
                   <section aria-label={t("sheet.remaining")}>
@@ -221,7 +222,7 @@ export function TraderSheet({
                 )}
                 <section aria-label={c("trading.tradingDay")}>
                   <h3 className="micro-label mb-2">{t("sheet.dayTitle")}</h3>
-                  <TraderDayBlock trader={row.trader} dailyLimit={row.limits?.dailyLossLimit} />
+                  <TraderDayBlock trader={row.trader} dailyLimit={row.limits?.dailyLossLimit} tradesBeside />
                 </section>
                 {mine.length > 0 && (
                   <section aria-label={t("sheet.openPositions")}>
@@ -238,10 +239,11 @@ export function TraderSheet({
 
             {tab === "trades" && <TradesTab trader={row.trader} />}
 
-            {tab === "breaches" && <BreachHistory trader={row.trader} limits={row.limits} />}
+            {tab === "breaches" && <div className="max-w-4xl"><BreachHistory trader={row.trader} limits={row.limits} /></div>}
 
             {tab === "limits" && (
-              <div className="flex flex-col gap-6">
+              // Wide sheet: the form and its change history side by side.
+              <div className="grid grid-cols-1 gap-section @5xl/sheet:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @5xl/sheet:items-start">
                 <LimitsForm trader={row.trader} limits={row.limits} />
                 <section aria-label={t("sheet.limitsHistory")}>
                   <h3 className="micro-label mb-2 flex items-center gap-1"><History className="h-3 w-3" aria-hidden="true" />{t("sheet.limitsHistoryTitle")}</h3>

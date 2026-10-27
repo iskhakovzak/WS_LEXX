@@ -14,6 +14,8 @@ import { AppError, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import { violationMessage } from "../lib/rulesI18n";
+import { feeCoachingFor } from "../lib/feeModelStore";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * «Отчёт недели 1:1» — the weekly trader ↔ curator review document.
@@ -167,7 +169,7 @@ export function kpiOf(w: WeekRow, days: DayRow[], scale = 1): Kpi {
   const sc = (x: number) => (scale === 1 ? x : r2(x / scale));
   return {
     trades: sc(w.trades), closed: sc(w.wins + w.losses + w.be), wins: sc(w.wins), losses: sc(w.losses), be: sc(w.be), open: sc(w.open),
-    winRate: decided ? r3(w.wins / decided) : null,
+    winRate: decided ? r3((winRateOf(w.wins, w.losses) ?? 0)) : null,
     totalR: sc(r2(n(w.r_sum))), rCount: sc(w.r_count),
     expectancyR: w.r_count ? r3(n(w.r_sum) / w.r_count) : null,
     profitFactorR: negR < 0 ? r2(posR / Math.abs(negR)) : null,
@@ -519,9 +521,21 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     };
   });
 
+  // Fee model + breakeven line of the rolling window ending with the week (roadmap R2); never breaks the report.
+  const feeCoaching = await feeCoachingFor(trader, week.end).catch(() => null);
   const reviewRows = reviews.rows as any[];
   const review = presentReview(reviewRows.find((r) => r.week === week.key));
   const prevReview = presentReview(reviewRows.find((r) => r.week === week.prevKey));
+  // An empty week names the trader's last week with closed trades before it (the client's «Последняя неделя со
+  // сделками» button, design audit wave 2). null — none earlier.
+  let lastTradedWeek: string | null = null;
+  if (current.trades === 0) {
+    const { rows } = await pool.query<{ d: string | null }>(
+      `SELECT MAX(${CDATE}) AS d FROM trades t WHERE t.trader = $1 AND t.deleted_at IS NULL AND ${DATE_OK} AND ${CDATE} < $2`,
+      [trader, week.start],
+    ).catch(() => ({ rows: [] as { d: string | null }[] }));
+    lastTradedWeek = rows[0]?.d ? weekKeyOf(rows[0].d) : null;
+  }
 
   res.json({
     trader,
@@ -545,6 +559,8 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     review,
     prevReview,
     prevGoals: prevReview?.goals ?? [],
+    feeCoaching,
+    lastTradedWeek,
   });
 }));
 

@@ -1,8 +1,8 @@
 /** «Мой разбор» (pages/my-review.tsx, components/my-review/*) — Волна 2 п. 2.9. */
 export default {
   title: "Мой разбор",
-  description: "Ваши сделки за {days} дней: где вы зарабатываете, где теряете и одно правило на завтра.",
-  period: { aria: "Период разбора", d30: "30 дней", d90: "90 дней" },
+  description: "Ваши сделки за {days}: где вы зарабатываете, где теряете и одно правило на завтра.",
+  period: { aria: "Период разбора" },
   totals: "{trades} · {net} · {winRate} побед",
   totalsR: "{trades} · {net} · {r} · {winRate} побед",
   more: "Подробно",
@@ -22,7 +22,7 @@ export default {
   openTrades: "Открыть сделки: {label}",
   openBehavior: "Открыть поведение",
   empty: {
-    title: "За {days} дней сделок нет",
+    title: "За {days} сделок нет",
     description: "Разбор появится после первых сделок из PropReports.",
   },
   loadFailed: "Не удалось загрузить разбор",

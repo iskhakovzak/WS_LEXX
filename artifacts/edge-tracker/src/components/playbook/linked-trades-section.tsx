@@ -13,7 +13,7 @@ import { IconAction } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { byCloseDate, horizonOf, isDecided, netPnl, resultOf, signedR, type Horizon } from "@/lib/trade-math";
+import { byCloseDate, horizonOf, isDecided, netPnl, resultOf, signedR, winRateOf, type Horizon } from "@/lib/trade-math";
 import { invalidateTradeLinks, useTradePicker } from "./api";
 import { http } from "@/lib/api/http";
 import { DocSection, InlineError, redactedHint, RedactedHint } from "./setup-bits";
@@ -95,7 +95,7 @@ function HorizonSplit({ trades }: { trades: LinkedTrade[] }) {
     return {
       key, label: HORIZON_LABEL[key] ?? key,
       n: list.length,
-      wr: decided.length ? wins / decided.length : null,
+      wr: winRateOf(wins, decided.length - wins),
       avgR: rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null,
     };
   }).filter((r) => r.n > 0);

@@ -157,7 +157,7 @@ export default {
     download: "Toʻplamni yuklab olish (.md)",
   },
   md: {
-    title: "# Mening indikatorlar toʻplamim — WS_LEXX",
+    title: "# Mening indikatorlar toʻplamim — WS_Desk",
     exported: "Eksport: {date} · {count} dona",
     horizon: "Gorizont: {value}",
     timeframe: "Taymfreym: {value}",

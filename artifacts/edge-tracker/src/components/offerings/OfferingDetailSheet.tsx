@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
-import { isDecided, netPnl, resultOf } from "@/lib/trade-math";
+import { isDecided, netPnl, resultOf, winRateOf } from "@/lib/trade-math";
 import { safeHttpUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { DealTypePill, ExposureBadge, OfferGauge, ScoreBreakdown, SignedPct, pctTone } from "./bits";
@@ -217,7 +217,7 @@ export function OfferingDetailSheet({
       if (isDecided(t)) { decided++; if (resultOf(t) === "win") wins++; }
       if (offeringDays.has(t.date)) { onDays++; if (n != null) onNet += n; }
     }
-    return { rows, net, wr: decided ? Math.round((wins / decided) * 100) : null, onDays, onNet };
+    return { rows, net, wr: decided ? Math.round((winRateOf(wins, decided - wins) ?? 0) * 100) : null, onDays, onNet };
   }, [myTrades.data, offeringDays]);
 
   if (!o || !merged) return null;
@@ -230,7 +230,7 @@ export function OfferingDetailSheet({
 
   return (
     <Sheet open={!!o} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl lg:max-w-3xl">
+      <SheetContent side="right" size="lg" className="flex flex-col gap-0 overflow-hidden p-0">
         <SheetHeader className="space-y-3 border-b border-border px-5 pb-4 pt-5 text-left">
           <div className="flex flex-wrap items-center gap-2 pr-8">
             <SheetTitle className="text-2xl font-semibold tracking-tight">{o.ticker}</SheetTitle>
@@ -278,7 +278,7 @@ export function OfferingDetailSheet({
           </div>
         </SheetHeader>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        <div className="flex-1 space-y-section overflow-y-auto px-5 py-5">
           {exposure && exposure.held.length > 0 && (
             <div role="alert" className="flex gap-3 rounded-xl bg-down/10 p-3 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />
@@ -318,7 +318,7 @@ export function OfferingDetailSheet({
                 <Num label={t("sheet.gap")} value={<SignedPct value={o.reaction.gapPct} />} />
                 <Num label={t("sheet.openToClose")} value={<SignedPct value={o.reaction.o2cPct} />} />
                 <Num label={t("sheet.lowFromOpen")} value={<SignedPct value={o.reaction.lowFromOpenPct} />} />
-                <Num label="RelVol" value={o.reaction.relVol != null ? `${o.reaction.relVol.toFixed(1)}×` : "—"} />
+                <Num label="RelVol" value={o.reaction.relVol != null && o.reaction.relVol >= 0.05 ? `${o.reaction.relVol.toFixed(1)}×` : "—"} />
               </div>
             </Section>
           )}
@@ -329,7 +329,7 @@ export function OfferingDetailSheet({
           {s && (
             <Section title={t("sheet.scoreParts")} icon={AlertTriangle} aside={<span className={toneText(SCORE_LEVEL_TONE[s.level])}>{s.score}/100</span>}>
               <p className="text-xs text-muted-foreground">{DEAL_TYPE_HINT[type]}</p>
-              <ScoreBreakdown s={s} className="rounded-xl bg-[var(--glass-bg)] p-3" />
+              <ScoreBreakdown s={s} className="rounded-xl bg-[var(--glass-bg)] p-3 @4xl/sheet:grid @4xl/sheet:grid-cols-2 @4xl/sheet:gap-x-8 @4xl/sheet:gap-y-2 @4xl/sheet:space-y-0" />
             </Section>
           )}
 

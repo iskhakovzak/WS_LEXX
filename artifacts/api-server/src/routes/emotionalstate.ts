@@ -7,6 +7,7 @@ import { readinessScore, isValidYmd, addDaysYmd } from "../lib/weeklyPsychologyR
 import { netPnl, normResult, signedR } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
 import { AppError } from "../lib/http";
+import { roundShare, winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -66,11 +67,11 @@ router.get("/emotional-state/today", asyncHandler(async (req, res): Promise<void
 // Audit P0-6: R = signed R, P&L = net, win rate = W/(W+L) (break-even/open excluded) — all from lib/tradeMath.
 type Agg = { days: number; trades: number; wins: number; losses: number; rSum: number; rCount: number };
 const emptyAgg = (): Agg => ({ days: 0, trades: 0, wins: 0, losses: 0, rSum: 0, rCount: 0 });
-const winRateOf = (wins: number, losses: number) => (wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) / 100 : null);
+const winRate2 = (wins: number, losses: number) => roundShare(winRateOf(wins, losses), 2);
 const finish = (a: Agg) => ({
   days: a.days,
   trades: a.trades,
-  winRate: winRateOf(a.wins, a.losses),
+  winRate: winRate2(a.wins, a.losses),
   avgR: a.rCount > 0 ? Math.round((a.rSum / a.rCount) * 100) / 100 : null,
 });
 
@@ -147,7 +148,7 @@ router.get("/emotional-state/insights", asyncHandler(async (req, res): Promise<v
         revenge: s.revenge,
         hasNote: !!s.freeText,
         trades: t?.trades ?? 0,
-        winRate: t ? winRateOf(t.wins, t.losses) : null,
+        winRate: t ? winRate2(t.wins, t.losses) : null,
         avgR: t && t.rCount > 0 ? Math.round((t.rSum / t.rCount) * 100) / 100 : null,
         pnl: t && t.pnlCount > 0 ? Math.round(t.pnl * 100) / 100 : null,
       };
@@ -229,26 +230,17 @@ router.post("/emotional-state", asyncHandler(async (req, res): Promise<void> => 
   const revenge = bool(body.revenge);
   if (body.freeText != null && typeof body.freeText !== "string") throw new AppError("INVALID_FIELD", undefined, { field: "freeText" });
   const freeText = typeof body.freeText === "string" && body.freeText.trim() ? body.freeText.slice(0, 2000) : null;
-
-  const existing = await db
-    .select({ id: emotionalStateLogTable.id })
-    .from(emotionalStateLogTable)
-    .where(and(eq(emotionalStateLogTable.userId, userId), eq(emotionalStateLogTable.date, date)))
-    .limit(1);
-
-  let row;
-  if (existing.length > 0) {
-    [row] = await db
-      .update(emotionalStateLogTable)
-      .set({ sleepWell, stressed, tilted, focused, anxious, revenge, freeText })
-      .where(eq(emotionalStateLogTable.id, existing[0].id))
-      .returning();
-  } else {
-    [row] = await db
-      .insert(emotionalStateLogTable)
-      .values({ userId, date, sleepWell, stressed, tilted, focused, anxious, revenge, freeText })
-      .returning();
-  }
+  // One row per person and day (unique index, migration 0274): two quick saves update the same row. A save that does
+  // not send freeText (a flags-only edit) keeps the text already written that morning.
+  const flags = { sleepWell, stressed, tilted, focused, anxious, revenge };
+  const [row] = await db
+    .insert(emotionalStateLogTable)
+    .values({ userId, date, ...flags, freeText })
+    .onConflictDoUpdate({
+      target: [emotionalStateLogTable.userId, emotionalStateLogTable.date],
+      set: body.freeText === undefined ? flags : { ...flags, freeText },
+    })
+    .returning();
 
   res.status(201).json(present(row));
 }));

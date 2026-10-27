@@ -13,6 +13,7 @@ import { EmptyState, ListSkeleton, Panel, Pill, StatCard, StatGrid, Tile, toneOf
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { TIP_SOURCE_LABEL, pfOf, type CheckItem, type CheckStatus, type Positive, type Tip } from "@/lib/weeklyInsights";
@@ -212,12 +213,14 @@ export function GoalPanel({ doc, inject, className }: { doc: WeeklyReview; injec
     setDirty(true);
   }, [inject]);
 
+  // The typed goal survives a reload / a week switch (local draft until saved).
+  const draft = useTextDraft(editable ? `weekly-goal:${doc.trader}:${doc.week.key}` : null, focus, (v) => { setFocus(v); setDirty(true); }, { base: s.focus ?? "" });
   const curatorGoals = doc.review?.goals ?? [];
   const onSave = () => {
     save.mutate(
       { week: doc.week.key, well: s.well ?? "", badly: s.badly ?? "", lessons: s.lessons ?? "", focus, mood: s.mood ?? null, submit: false },
       {
-        onSuccess: () => { setDirty(false); toast({ title: t("panels.goalSaved"), description: t("panels.goalSavedDesc") }); },
+        onSuccess: () => { setDirty(false); draft.clear(); toast({ title: t("panels.goalSaved"), description: t("panels.goalSavedDesc") }); },
         onError: (e) => toast({ title: t("panels.goalFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
       },
     );

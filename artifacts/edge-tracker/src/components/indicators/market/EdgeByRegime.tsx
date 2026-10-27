@@ -3,15 +3,18 @@ import { Info, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { MIN_DAYS, type BucketStats, type Dimension, type IndicatorDef } from "./engine";
+import { MIN_DAYS, type BucketStats, type Dimension, type IndicatorDef } from "@/components/shared/market/engine";
 import { toneOfMoney, usd } from "./format";
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
+import { marketRegimeI18n } from "@/i18n/ns/marketRegime";
+import { RegimeEdgeBlock } from "@/components/shared/regime/regime-edge";
 
 export type DimResult = { dim: Pick<Dimension, "id" | "label" | "explain" | "when">; buckets: BucketStats[]; today: string | null; todayNote?: string };
 
-type View = "indicator" | "pre" | "day";
+/** pre / day / indicator = the engine's market conditions; desk = the regime the desk set for the day (server stats). */
+type View = "indicator" | "pre" | "day" | "desk";
 
 export function reliability(b: BucketStats): { label: string; tone: "up" | "neutral" | "warn" } | null {
   if (b.days < MIN_DAYS) return { label: indicatorsI18n.t("edge.unreliable"), tone: "warn" };
@@ -40,7 +43,7 @@ function DimHeader({ r }: { r: DimResult }) {
       <h3 className="truncate text-sm font-medium text-foreground">{r.dim.label}</h3>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" aria-label={t("edge.howCounted", { label: r.dim.label })} className="-m-1.5 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+          <button type="button" aria-label={t("edge.howCounted", { label: r.dim.label })} className="-my-1 [display:inline-grid] h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>
@@ -77,8 +80,9 @@ function DimTable({ r, max }: { r: DimResult; max: number }) {
                 isToday ? "bg-primary/10" : "hover:bg-[var(--tile-hover-bg)]",
               )}
             >
-              <span role="cell" className="flex min-w-0 items-center gap-1.5">
-                <span className={cn("truncate", small && "text-muted-foreground")}>{b.label}</span>
+              {/* The «today» / reliability pills wrap under the condition instead of cutting it to «Тренд…» (uz / ru). */}
+              <span role="cell" className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                <span className={cn("min-w-0 break-words", small && "text-muted-foreground")}>{b.label}</span>
                 {isToday && <Pill tone="accent" className="shrink-0" title={r.todayNote}>{t("edge.today")}</Pill>}
                 {rel && <Pill tone={rel.tone} className="shrink-0">{rel.tone === "up" && <ShieldCheck className="h-3 w-3" aria-hidden="true" />}{rel.label}</Pill>}
               </span>
@@ -133,7 +137,7 @@ function FindingRow({ f, kind }: { f: Finding; kind: "good" | "bad" }) {
 }
 
 export function EdgeByRegime({
-  focusDef, focusResult, pre, day, base, totalDays, totalTrades,
+  focusDef, focusResult, pre, day, base, totalDays, totalTrades, trader = null, self = false,
 }: {
   focusDef: IndicatorDef;
   focusResult: DimResult | null;
@@ -142,10 +146,14 @@ export function EdgeByRegime({
   base: BucketStats;
   totalDays: number;
   totalTrades: number;
+  /** The trader whose book is shown (the «Режим деска» view asks the server for this person's stats). */
+  trader?: string | null;
+  self?: boolean;
 }) {
   const { t } = indicatorsI18n.useT();
+  const { t: tr } = marketRegimeI18n.useT();
   const [view, setView] = usePersistentState<View>("indicators.edge.view", "pre");
-  const shown: DimResult[] = view === "indicator" ? (focusResult ? [focusResult] : []) : view === "pre" ? pre : day;
+  const shown: DimResult[] = view === "indicator" ? (focusResult ? [focusResult] : []) : view === "pre" ? pre : view === "day" ? day : [];
   const max = useMemo(() => Math.max(1, ...shown.flatMap((r) => r.buckets.filter((b) => b.days).map((b) => Math.abs(b.netPerDay)))), [shown]);
   const { good, bad } = useMemo(() => findings([...pre, ...day, ...(focusResult ? [focusResult] : [])], base.netPerDay), [pre, day, focusResult, base.netPerDay]);
 
@@ -166,12 +174,20 @@ export function EdgeByRegime({
           options={[
             { value: "pre", label: t("edge.viewPre") },
             { value: "day", label: t("edge.viewDay") },
+            { value: "desk", label: tr("edge.viewTab") },
             { value: "indicator", label: focusDef.label },
           ]}
         />
       }
       fill
     >
+      {view === "desk" ? (
+        <>
+          <p className="mb-3 text-xs text-muted-foreground">{tr("edge.hint")}</p>
+          <RegimeEdgeBlock trader={trader} self={self} />
+        </>
+      ) : (
+      <>
       {(good.length > 0 || bad.length > 0) && (
         <div className="mb-4 grid gap-[var(--grid-gap)] md:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-2">
@@ -197,6 +213,8 @@ export function EdgeByRegime({
         <div className="flex flex-col gap-5">
           {shown.map((r) => <DimTable key={r.dim.id} r={r} max={max} />)}
         </div>
+      )}
+      </>
       )}
     </Panel>
   );

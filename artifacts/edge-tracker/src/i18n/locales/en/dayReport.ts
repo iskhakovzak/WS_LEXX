@@ -4,9 +4,9 @@ import type ru from "../ru/dayReport";
 export default {
   hold: { s: "{n} s", m: "{n} min", hm: "{h} h {m} min", h: "{h} h" },
   leakShort: {
-    fee_over_gross: "fees > gross",
+    fee_over_gross: "fees ate the gross",
     after_peak: "after peak",
-    revenge: "revenge",
+    revenge: "quick re-entry",
     size_up: "size ↑",
     after_limit: "after limit",
   },

@@ -13,7 +13,7 @@ import { isMarketClosed } from "./marketDays";
 import { nyDate } from "./tradingDate";
 import { enqueueOutbox, kickOutbox } from "./propreports/tick/outbox";
 import { RISK_ALERT_KIND, logStopAlert, riskAlertHandler, stopAlertOf, type RiskAlertPayload } from "./riskAlerts";
-import { loadDaily, loadDdResets, loadLimits, loadLiveSnapshots } from "./riskData";
+import { loadDaily, loadDdResets, loadEffectiveLimits, loadLiveSnapshots } from "./riskData";
 import { computeMetrics, drawdownSince, liveRisk, type DayRow, type Limits, type Metrics } from "./riskMetrics";
 
 /** In-process memo of claimed (trader|date|threshold) keys: a poll every minute should not hit the DB each time. */
@@ -94,7 +94,7 @@ export async function scanLiveAlerts(date: string, now: Date): Promise<{ checked
   const live = await loadLiveSnapshots(date);
   const names = [...live.keys()];
   if (!names.length) return { checked: 0, queued: 0 };
-  const [limitsMap, days, resets] = await Promise.all([loadLimits(null), loadDaily(null, date, names), loadDdResets(null, names)]);
+  const [limitsMap, days, resets] = await Promise.all([loadEffectiveLimits(null, date), loadDaily(null, date, names), loadDdResets(null, names)]);
   const daysBy = new Map<string, DayRow[]>();
   for (const d of days) {
     const list = daysBy.get(d.trader);

@@ -2,6 +2,11 @@ import type { Messages } from "../../core";
 import type ru from "../ru/auth";
 
 export default {
+  greeting: {
+    first: "Xush kelibsiz",
+    back: "Qaytganingiz bilan",
+    backName: "Qaytganingiz bilan, {name}",
+  },
   tagline: "Prop-treyding desk jurnali",
   steps: {
     aria: "Kirish bosqichlari",
@@ -65,6 +70,7 @@ export default {
     failedPin: "PIN kodni saqlab boʻlmadi",
   },
   clock: {
+    ny: "Nyu-York {time} · {phase}",
     weekend: "Dam olish kunlari",
     premarket: "Premarket",
     regular: "Asosiy sessiya",

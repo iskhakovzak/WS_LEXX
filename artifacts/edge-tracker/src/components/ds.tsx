@@ -5,21 +5,30 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { fmtCount, fmtDate, fmtRate } from "@/lib/format";
 import { ScrollContainerContext } from "@/components/ds/scroll-context";
-import { useScrollActiveIntoView } from "@/components/ds/scroll-active";
+import { ClampedText } from "@/components/ds/clamped-text";
+import { StatStripContext, isZeroValue } from "@/components/ds/stat-strip";
 import { useEdgeFade } from "@/components/ds/edge-fade";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
+import { PageAskSlot } from "@/components/ds/page-ask-slot";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtRelative } from "@/i18n/format";
 
 /* Foundation modules (usage notes in each file's header). */
 export { GLOSSARY, glossary, TermTooltip, TermContent, TermLabel, termForLabel, type TermKey, type GlossaryEntry } from "@/components/ds/term-tooltip";
-export { ErrorState, QueryState, SkeletonBlock, StatGridSkeleton, ListSkeleton, TableSkeleton, PanelSkeleton } from "@/components/ds/states";
+export { EmptyLink, EmptyState, emptyActions, type EmptyArt, type EmptyChoice } from "@/components/ds/empty-state";
+export { EngravedArt, EMPTY_ART } from "@/components/ds/empty-art";
+export { ErrorState, QueryState, SkeletonBlock, StatGridSkeleton, ListSkeleton, TableSkeleton, PanelSkeleton, ChartSkeleton, SplitSkeleton } from "@/components/ds/states";
 export { AnimatedNumber, Reveal, MOTION, DURATION, EASE, EASE_IN_OUT, fadeRise } from "@/components/ds/motion";
+export { LiveNumber, useFlashOnChange, type FlashOnChange } from "@/components/ds/live-number";
 export { ScrollContainerContext } from "@/components/ds/scroll-context";
+export { Segmented, type SegmentOption } from "@/components/ds/segmented";
+export { RowActions, type RowAction } from "@/components/ds/row-actions";
+export { isZeroValue } from "@/components/ds/stat-strip";
 
 export type Tone = "up" | "down" | "accent" | "warn" | "purple" | "neutral";
 
@@ -73,12 +82,25 @@ export function toneBg(tone: Tone) {
   return TONE_BG[tone];
 }
 
-/** `title` for truncated text: only when the content is plain text. */
 /** Plain text of a node for a native tooltip (strings, numbers and simple element trees); undefined when empty. */
 function textTitle(node: React.ReactNode): string | undefined {
   if (typeof node === "string" || typeof node === "number") return String(node);
   const t = nodeText(node).trim();
   return t || undefined;
+}
+
+/** A signed amount («−$35.20», «+$1.2K»): the browser may break a line between the sign and «$». */
+const AMOUNT_RE = /([+−-]?\$\d[\d,]*(?:\.\d+)?[KMB]?)/;
+
+/**
+ * Keeps each signed dollar amount of a plain-text line on one line («avg +$60.72 / −» + «$35.20» on the next line
+ * was the bug). Non-string nodes pass through untouched.
+ */
+function keepAmountsWhole(node: React.ReactNode): React.ReactNode {
+  if (typeof node !== "string" || !/\s/.test(node) || !AMOUNT_RE.test(node)) return node;
+  return node.split(AMOUNT_RE).map((part, i) =>
+    i % 2 === 1 ? <span key={i} className="whitespace-nowrap">{part}</span> : part,
+  );
 }
 
 /**
@@ -111,48 +133,62 @@ export function Truncate({
 }
 
 /**
- * Page title row: icon, title, description, optional meta line (UpdatedAgo, counters) and right-aligned
- * actions. `children` render below as a full-width row (filters, SectionTabs). Same gaps on every page.
+ * Page title row: title, description, optional meta line (UpdatedAgo, counters) and right-aligned actions.
+ * `children` render below as a full-width row: filters go there (a Toolbar / Segmented / SectionTabs), never into
+ * `actions`, so the h1 is never squeezed — it wraps instead of truncating, and real actions drop under it when the row
+ * is narrow. `size="compact"` for work boards (themes, watchlist): an 18px title and a one-line description.
+ * No icon tile (design audit: decoration that cost a third of a phone's first screen); `icon` stays in the signature
+ * for the page registry and is not drawn. The entrance is a 180 ms fade (the route itself already fades in).
  */
 export function PageHeader({
   title,
   description,
-  icon: Icon,
   actions,
   children,
   className,
   meta,
+  size = "default",
+  ask = true,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
+  /** Not drawn (kept so a page names its nav icon next to its title). */
   icon?: LucideIcon;
   actions?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
   /** Small line under the description: «обновлено …», counters, status pills. */
   meta?: React.ReactNode;
+  size?: "default" | "compact";
+  /** The assistant's one desktop entry (this screen's question, Ctrl+J) at the end of the actions; false = none. */
+  ask?: boolean;
 }) {
+  const compact = size === "compact";
   return (
-    <header className={cn("flex flex-col gap-4", className)}>
-      {/* items-start + a 40px title row (icon, h1 line-height, actions min-h): actions stay on the title line
-          even when the description wraps to 2–3 lines, instead of floating in the middle of the block. */}
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        {/* min width: on narrow screens the actions wrap below instead of squeezing the title to a sliver */}
-        <div className="flex min-w-[min(100%,15rem)] flex-1 items-start gap-3">
-          {Icon && (
-            <span className="glass-panel grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary">
-              <Icon className="h-5 w-5" aria-hidden="true" />
-            </span>
-          )}
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold leading-10 tracking-tight text-foreground sm:text-2xl" title={textTitle(title)}>
-              {title}
-            </h1>
-            {description && <p className="line-clamp-3 max-w-3xl text-sm text-muted-foreground sm:line-clamp-2" title={textTitle(description)}>{description}</p>}
-            {meta && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
-          </div>
+    <header className={cn("flex flex-col", compact ? "gap-3" : "gap-4", className)}>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        {/* The title block keeps at least 20rem (or the full width): actions wrap below it rather than squeezing it. On
+            phones 14rem, so one small action (help «?») sits beside the title instead of taking a row of its own. */}
+        <div className="fade-in-quick min-w-[min(100%,14rem)] flex-1 sm:min-w-[min(100%,20rem)]">
+          <h1
+            className={cn(
+              "text-balance break-words text-foreground",
+              compact ? "text-lg font-semibold leading-snug tracking-tight" : "type-display",
+            )}
+          >
+            {title}
+          </h1>
+          {description && (compact
+            ? <p className="mt-0.5 truncate text-sm text-muted-foreground" title={textTitle(description)}>{description}</p>
+            : <ClampedText className="mt-1">{description}</ClampedText>)}
+          {meta && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
         </div>
-        {actions && <div className="flex min-h-10 max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
+        {(actions || ask) && (
+          <div className={cn("flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2 empty:hidden", compact ? "min-h-8" : "min-h-9")}>
+            {actions}
+            {ask && <PageAskSlot />}
+          </div>
+        )}
       </div>
       {children}
     </header>
@@ -195,7 +231,7 @@ export function Panel({
   return (
     <As className={cn("glass-panel min-w-0 rounded-2xl", fill && "flex h-full flex-col", className)} {...rest}>
       {hasHeader && (
-        <div className="flex min-h-[calc(var(--panel-p)+2rem)] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-[var(--panel-p)] pt-[var(--panel-p)]">
+        <div className="flex min-h-[calc(var(--panel-p)+2rem)] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-panel pt-panel">
           <div className="flex min-w-[min(100%,12rem)] flex-1 items-center gap-2">
             {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
             <div className="min-w-0">
@@ -209,8 +245,8 @@ export function Panel({
       <div
         className={cn(
           "min-w-0",
-          padded && "p-[var(--panel-p)]",
-          hasHeader && padded && "pt-3",
+          padded && "p-panel",
+          hasHeader && padded && "pt-head",
           fill && "flex min-h-0 flex-1 flex-col",
           bodyClassName,
         )}
@@ -218,7 +254,7 @@ export function Panel({
         {children}
       </div>
       {footer && (
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--glass-border)] px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-inline border-t border-[var(--glass-border)] px-panel py-2.5 text-xs text-muted-foreground">
           {footer}
         </div>
       )}
@@ -226,7 +262,11 @@ export function Panel({
   );
 }
 
-/** KPI tile: small label, big tabular value, optional delta/hint. */
+/**
+ * KPI: small label, the tabular value under it, optional delta/hint. A tile of its own outside a StatGrid; a cell of
+ * the one strip panel inside it. Colour only says good / bad (`up` / `down` / `warn`): `accent` / `purple` value tones
+ * read as ink, and a plain zero is muted. No corner icon (the label already names it) unless `showIcon`.
+ */
 export function StatCard({
   label,
   value,
@@ -235,6 +275,7 @@ export function StatCard({
   delta,
   deltaTone,
   icon: Icon,
+  showIcon = false,
   className,
   onClick,
   spark,
@@ -245,14 +286,18 @@ export function StatCard({
 }: {
   label: React.ReactNode;
   value: React.ReactNode;
+  /** false: a measure (P&L, exposure), not a problem counter — never folded into a StatGrid's «Всё чисто». */
+  fold?: boolean;
   tone?: Tone;
   hint?: React.ReactNode;
   delta?: React.ReactNode;
   deltaTone?: Tone;
   icon?: LucideIcon;
+  /** Draw `icon` in the corner (off by default: KPIs are type, not tiles). */
+  showIcon?: boolean;
   className?: string;
   onClick?: () => void;
-  /** Optional inline trend (e.g. last 20 sessions of net P&L) drawn under the value. */
+  /** Optional inline trend (e.g. last 20 sessions of net P&L) drawn under the value; coloured like `tone`. */
   spark?: ReadonlyArray<number | null | undefined>;
   sparkTone?: Tone | "auto";
   /** Glossary term: adds an (i) with the explanation next to the label (see TermTooltip). */
@@ -262,9 +307,12 @@ export function StatCard({
   /** Native tooltip for the value (e.g. the exact number when the shown one is rounded). */
   valueTitle?: string;
 }) {
+  const strip = React.useContext(StatStripContext);
   // A clickable card with a glossary (i) can't be a <button> (nested buttons) — use a keyboard-operable div.
   const asButton = !!onClick && !term;
   const Comp = asButton ? "button" : "div";
+  const zero = !loading && isZeroValue(value);
+  const valueTone: Tone = zero || tone === "accent" || tone === "purple" ? "neutral" : tone;
   return (
     <Comp
       type={asButton ? "button" : undefined}
@@ -281,9 +329,16 @@ export function StatCard({
           }
         : {})}
       aria-busy={loading || undefined}
+      data-stat-cell={strip ? "" : undefined}
       className={cn(
-        "glass-panel flex h-full min-h-[104px] min-w-0 flex-col gap-1 rounded-2xl p-4 text-left",
-        onClick && "lift cursor-pointer",
+        "flex min-w-0 flex-col gap-1 text-left",
+        // Strip cell: hairlines drawn just outside its left and top edges; the panel clips the outer ones.
+        strip
+          ? "px-4 py-3 shadow-[-1px_0_0_var(--glass-border),0_-1px_0_var(--glass-border)]"
+          : "glass-panel h-full rounded-2xl p-4",
+        onClick && (strip
+          ? "cursor-pointer transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          : "lift cursor-pointer"),
         className,
       )}
     >
@@ -292,29 +347,37 @@ export function StatCard({
           <span className="truncate" title={textTitle(label)}>{label}</span>
           {term && <TermTooltip term={term} icon />}
         </span>
-        {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        {Icon && showIcon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
       </div>
       {loading ? (
         <span aria-hidden="true" className="skeleton my-1 block h-7 w-24" />
       ) : (
         <div
-          className={cn("truncate text-2xl font-semibold leading-tight tabular-nums tracking-tight", TONE_TEXT[tone])}
+          className={cn(
+            // A worded / paired value («better than 75%», «+$42.93 / −$60.94») wraps to a second line in a narrow
+            // card (phones: 2 per row) instead of ellipsizing; a single number still truncates.
+            typeof value === "string" && value.includes(" ") ? "line-clamp-2" : "truncate",
+            "text-2xl font-semibold leading-tight tabular-nums tracking-tight",
+            zero ? "text-muted-foreground" : TONE_TEXT[valueTone],
+          )}
           title={valueTitle ?? textTitle(value)}
         >
-          {value}
+          {keepAmountsWhole(value)}
         </div>
       )}
       {(delta || hint) && (
         <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-xs">
           {delta && <Pill tone={deltaTone ?? "neutral"}>{delta}</Pill>}
           {/* Two lines before clipping: UZ / EN hints are longer; the full text stays in the tooltip. */}
-          {hint && <span className="line-clamp-2 min-w-0 break-words text-muted-foreground" title={textTitle(hint)}>{hint}</span>}
+          {hint && <span className="line-clamp-2 min-w-0 break-words text-muted-foreground" title={textTitle(hint)}>{keepAmountsWhole(hint)}</span>}
         </div>
       )}
       {spark && spark.length > 1 && (
         <Sparkline
           data={spark}
-          tone={sparkTone ?? "auto"}
+          // Colour says good / bad (design audit): the card's own verdict (the sign of its total), never the window's
+          // direction — a curve that ends +$7,107 is not red because its last week dipped. No verdict = neutral.
+          tone={sparkTone ?? (tone === "up" || tone === "down" ? tone : "neutral")}
           width={160}
           height={28}
           className={cn("w-full pt-1", !(delta || hint) && "mt-auto")}
@@ -325,8 +388,10 @@ export function StatCard({
 }
 
 /**
- * Auto-fit grid for StatCards: as many equal columns as fit at `min` width (default 11rem ≈ 176 px),
- * equal heights per row — no 4+2 orphans, no breakage between 1280 and 1920 px.
+ * KPI row. Default `variant="strip"`: ONE panel split by hairlines into equal auto-fit columns (as many as fit at
+ * `min`, default 11rem ≈ 176 px), each StatCard a flat cell with the label above the number. `variant="tiles"` keeps a
+ * panel per card. `allClear` folds the StatCards whose value is a plain zero into one quiet line «Всё чисто: a, b, c»
+ * (for problem counters — breaches, overdue reviews — where zero means nothing to do).
  * Pages may still force columns via className (e.g. "xl:grid-cols-4") or `cols`.
  */
 export function StatGrid({
@@ -334,6 +399,8 @@ export function StatGrid({
   className,
   min = "11rem",
   cols,
+  variant = "strip",
+  allClear = false,
 }: {
   children: React.ReactNode;
   className?: string;
@@ -341,6 +408,8 @@ export function StatGrid({
   min?: string;
   /** Fixed column count from `md` up (overrides auto-fit). */
   cols?: 2 | 3 | 4 | 5 | 6;
+  variant?: "strip" | "tiles";
+  allClear?: boolean;
 }) {
   const fixed = cols
     ? {
@@ -351,14 +420,46 @@ export function StatGrid({
         6: "md:grid-cols-3 xl:grid-cols-6",
       }[cols]
     : undefined;
-  return (
+  let items = React.Children.toArray(children);
+  const cleared: React.ReactNode[] = [];
+  if (allClear) {
+    // Cards passed inside a fragment (`loading ? skeletons : <>…</>`) are folded too.
+    type Child = ReturnType<typeof React.Children.toArray>[number];
+    const flat = (nodes: Child[]): Child[] => nodes.flatMap((c) =>
+      React.isValidElement(c) && c.type === React.Fragment ? flat(React.Children.toArray((c.props as { children?: React.ReactNode }).children)) : [c]);
+    items = flat(items);
+    items = items.filter((c) => {
+      if (!React.isValidElement(c) || c.type !== StatCard) return true;
+      const p = c.props as React.ComponentProps<typeof StatCard>;
+      if (p.loading || p.fold === false || !isZeroValue(p.value)) return true;
+      cleared.push(p.label);
+      return false;
+    });
+  }
+  const strip = variant === "strip";
+  const grid = (
     <div
-      className={cn("grid grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),1fr))] gap-[var(--grid-gap)]", fixed, className)}
+      className={cn(
+        "grid grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),1fr))]",
+        strip ? "glass-panel overflow-hidden rounded-2xl" : "stagger-in gap-grid",
+        // Folded cards leave fewer cells than `cols`: the strip shrinks to the cards that are left (one or two numbers
+        // never stretch across the page) and no fixed column count leaves empty cells.
+        cleared.length ? "w-fit max-w-full grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),max-content))]" : fixed,
+        className,
+      )}
       style={{ "--stat-min": min } as React.CSSProperties}
     >
-      {children}
+      <StatStripContext.Provider value={strip}>{items}</StatStripContext.Provider>
     </div>
   );
+  if (cleared.length === 0) return grid;
+  const line = (
+    <p className="px-1 text-xs text-muted-foreground">
+      {commonI18n.t("ds.allClear", { items: "" })}
+      {cleared.map((l, i) => <React.Fragment key={i}>{i > 0 && ", "}{l}</React.Fragment>)}
+    </p>
+  );
+  return items.length ? <div className="flex flex-col gap-2">{grid}{line}</div> : line;
 }
 
 /** Label-left / value-right row for detail lists. */
@@ -411,67 +512,6 @@ export function Pill({
   );
 }
 
-export type SegmentOption<T extends string> = { value: T; label: React.ReactNode; count?: number; disabled?: boolean; /** Native tooltip (e.g. why the option is disabled). */ title?: string };
-
-/**
- * Segmented control: pill track, active segment solid accent. Single-select.
- *
- * `T` is inferred from `value` only (options/onChange are `NoInfer`), so
- * `<Segmented value={tab} onChange={setTab} options={...} />` works with a
- * `useState<"a" | "b">` setter even when the options array is typed loosely.
- */
-export function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-  ariaLabel,
-  size = "md",
-  className,
-}: {
-  options: ReadonlyArray<SegmentOption<NoInfer<T>>> | ReadonlyArray<SegmentOption<string>>;
-  value: T;
-  onChange: (v: NoInfer<T>) => void;
-  ariaLabel: string;
-  size?: "sm" | "md";
-  className?: string;
-}) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  useScrollActiveIntoView(ref, value); // a phone-width bar scrolls sideways: keep the active option visible
-  useEdgeFade(ref); // …and fade the edge that hides more options
-  return (
-    <div
-      ref={ref}
-      role="group"
-      aria-label={ariaLabel}
-      className={cn("glass-field edge-fade scrollbar-none relative inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
-    >
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={active}
-            disabled={o.disabled}
-            title={o.title}
-            onClick={() => onChange(o.value as T)}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-smooth disabled:opacity-50",
-              size === "sm" ? "h-6.5 px-2.5 text-xs [&_svg]:size-3.5" : "h-7 px-3 text-sm [&_svg]:size-4",
-              active
-                ? "bg-primary-solid text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]"
-                : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
-            )}
-          >
-            {o.label}
-            {o.count != null && <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-80")}>{fmtCount(o.count)}</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Toggle chip for multi-select filters. */
 export function FilterChip({
   active,
@@ -515,70 +555,7 @@ export function FilterChip({
 
 /** Filter/action bar above lists. */
 export function Toolbar({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("glass-panel flex flex-wrap items-center gap-2 rounded-2xl p-2", className)}>{children}</div>;
-}
-
-/**
- * Empty state: icon, what's missing, how to fix it, and the action that fixes it.
- * `compact` for small panels/tiles (one row, less padding). `secondaryAction` = a quieter link/button.
- */
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className,
-  secondaryAction,
-  compact = false,
-}: {
-  icon?: LucideIcon;
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  action?: React.ReactNode;
-  className?: string;
-  secondaryAction?: React.ReactNode;
-  compact?: boolean;
-}) {
-  if (compact) {
-    return (
-      <div className={cn("flex flex-wrap items-center gap-3 px-1 py-4 text-left", className)}>
-        {Icon && (
-          <span className="tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-muted-foreground">
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </span>
-        )}
-        <div className="min-w-[12rem] flex-1">
-          <p className="text-sm font-medium text-foreground">{title}</p>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
-        </div>
-        {(action || secondaryAction) && (
-          <div className="flex shrink-0 items-center gap-2">
-            {secondaryAction}
-            {action}
-          </div>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 px-6 py-12 text-center", className)}>
-      {Icon && (
-        <span className="tile grid h-12 w-12 place-items-center rounded-2xl text-muted-foreground">
-          <Icon className="h-5 w-5" aria-hidden="true" />
-        </span>
-      )}
-      <div className="max-w-sm">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
-      </div>
-      {(action || secondaryAction) && (
-        <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
-          {action}
-          {secondaryAction}
-        </div>
-      )}
-    </div>
-  );
+  return <div className={cn("glass-panel flex flex-wrap items-center gap-inline rounded-2xl p-2", className)}>{children}</div>;
 }
 
 /** Horizontal scroll wrapper for wide tables on mobile. */
@@ -587,7 +564,7 @@ export function TableScroll({ children, className }: { children: React.ReactNode
 }
 
 /**
- * Page container: centred, max 1600 px (`--page-max`), 20 px between sections (`--page-gap`).
+ * Page container: centred, max 1600 px (`--page-max`), `gap-section` between sections (16 px phones, 20 px from sm).
  * Side gutters come from the app shell. `width="narrow"` (960 px) for forms/settings/reading pages,
  * `"full"` for wide editors.
  */
@@ -604,7 +581,7 @@ export function Page({
   return (
     <div
       className={cn(
-        "mx-auto flex w-full min-w-0 flex-col gap-4 sm:gap-[var(--page-gap)]",
+        "mx-auto flex w-full min-w-0 flex-col gap-section",
         width === "default" && "max-w-[var(--page-max)]",
         width === "narrow" && "max-w-[960px]",
         className,
@@ -615,9 +592,12 @@ export function Page({
   );
 }
 
-/** Bento grid for panels: 1 column, 12 columns from lg, equal-height rows. Children set `lg:col-span-*`. */
+/**
+ * Bento grid for panels: 1 column, 12 columns from lg. Children set `lg:col-span-*`. A panel keeps its own content
+ * height (no empty glass stretched to a taller neighbour); a Panel with `fill` still takes the row height.
+ */
 export function BentoGrid({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-1 items-stretch gap-[var(--grid-gap)] lg:grid-cols-12", className)}>{children}</div>;
+  return <div className={cn("grid grid-cols-1 items-start gap-grid lg:grid-cols-12", className)}>{children}</div>;
 }
 
 /** Inner tile inside a Panel (second elevation step). Clickable when `onClick` is given. */
@@ -634,13 +614,13 @@ export function Tile({
 }) {
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} title={title} className={cn("tile tile-interactive press min-w-0 p-3 text-left", className)}>
+      <button type="button" onClick={onClick} title={title} className={cn("tile tile-interactive press min-w-0 p-tile text-left", className)}>
         {children}
       </button>
     );
   }
   return (
-    <div title={title} className={cn("tile min-w-0 p-3", className)}>
+    <div title={title} className={cn("tile min-w-0 p-tile", className)}>
       {children}
     </div>
   );
@@ -723,6 +703,7 @@ export function Sparkline({
   className?: string;
   ariaLabel?: string;
 }) {
+  const gid = `spk${React.useId().replace(/:/g, "")}`;
   const pts = data.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   const resolved: Tone = tone === "auto" ? (pts.length > 1 ? toneOf(pts[pts.length - 1] - pts[0]) : "neutral") : tone;
   const colour = resolved === "neutral" ? "text-muted-foreground" : TONE_TEXT[resolved];
@@ -740,6 +721,7 @@ export function Sparkline({
   const span = max - min || 1;
   const x = (i: number) => (i / (pts.length - 1)) * width;
   const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
+  // Straight segments between the real points (a curve would draw values that never happened) + a soft area.
   const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(" ");
   const area = `${line} L${width},${height} L0,${height} Z`;
   return (
@@ -755,7 +737,17 @@ export function Sparkline({
       {baseline != null && (
         <line x1={0} x2={width} y1={y(baseline)} y2={y(baseline)} stroke="hsl(var(--border))" strokeWidth={1} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
       )}
-      {fill && <path d={area} fill="currentColor" opacity={0.12} />}
+      {fill && (
+        <>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="currentColor" stopOpacity={0.24} />
+              <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <path d={area} fill={`url(#${gid})`} />
+        </>
+      )}
       <path d={line} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );
@@ -794,7 +786,7 @@ export function ProgressRing({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={Math.round(v * 100) / 100}
-      className={cn("relative inline-grid shrink-0 place-items-center", className)}
+      className={cn("relative [display:inline-grid] shrink-0 place-items-center", className)}
       style={{ width: size, height: size }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={cn("-rotate-90", tone === "neutral" ? "text-muted-foreground" : TONE_TEXT[tone])} aria-hidden="true">
@@ -938,7 +930,7 @@ export function SectionTabs<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn("edge-fade scrollbar-none flex max-w-full items-center gap-1 overflow-x-auto border-b border-[var(--glass-border)]", className)}
+      className={cn("edge-fade scrollbar-none flex max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-[var(--glass-border)]", className)}
     >
       {list.map((t) => {
         const active = t.value === value;
@@ -954,7 +946,7 @@ export function SectionTabs<T extends string>({
             disabled={t.disabled}
             onClick={() => onChange(t.value as T)}
             className={cn(
-              "relative inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition-colors disabled:opacity-50",
+              "relative inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition-colors disabled:opacity-50 pointer-coarse:min-h-11",
               active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >

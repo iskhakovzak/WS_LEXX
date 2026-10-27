@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
-import { bucketHref, bucketLabel, bucketValue, isPeriod, nextPlanDate, reviewState, sectionsOf, totalsLine, winText } from "../model";
+import { bucketHref, bucketLabel, bucketValue, nextPlanDate, reviewDays, reviewRange, reviewState, sectionsOf, totalsLine, winText } from "../model";
 import type { MyReview } from "../api";
 
 afterEach(async () => {
@@ -52,7 +52,8 @@ describe("«Мой разбор» view model (2.9)", () => {
   });
 
   it("periods and tomorrow's plan date (weekends skipped)", () => {
-    expect([isPeriod(30), isPeriod(90), isPeriod(14), isPeriod("30")]).toEqual([true, true, false, false]);
+    expect([reviewDays("week", null), reviewDays("month", null), reviewDays("quarter", null)]).toEqual([7, 30, 90]);
+    expect(reviewRange({ from: "2026-01-01", to: "2026-10-01" }, "2026-10-27")).toEqual({ from: "2026-07-30", to: "2026-10-27" });
     expect(nextPlanDate("2026-10-16")).toBe("2026-10-19");
     expect(nextPlanDate("2026-10-20")).toBe("2026-10-21");
   });

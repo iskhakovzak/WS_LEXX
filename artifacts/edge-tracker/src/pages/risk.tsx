@@ -7,10 +7,11 @@ import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { Moon, RefreshCw, ShieldAlert } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, Panel, SectionTabs } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { DeskView } from "@/components/risk/desk-view";
 import { MyRiskView } from "@/components/risk/my-risk-view";
 import { OvernightView } from "@/components/risk/overnight-view";
@@ -19,6 +20,10 @@ import { useAgo, useStoredState } from "@/components/risk/primitives";
 import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { RegimeDayView } from "@/components/shared/regime/regime-day";
+import { GuardDeskPanel } from "@/components/leak-guard/guard-desk";
+import { GuardImpactPanel } from "@/components/leak-guard/guard-impact";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
@@ -31,9 +36,13 @@ export default function RiskPage() {
   // «Мой риск» only for someone with a trading account (staff without their own limits get the desk only).
   const account = useHasRiskAccount();
   const me = signedIn && account.has ? user!.traderName : null;
-  const [stored, setView] = useStoredState<View>("risk.view", "desk", VIEWS);
+  const [storedView, setStoredView] = useStoredState<View>("risk.view", "desk", VIEWS);
   const search = useSearch();
   const params = React.useMemo(() => new URLSearchParams(search), [search]);
+  // ?view= (shareable, survives a reload) over the remembered view.
+  const urlView = params.get("view") as View | null;
+  const stored: View = urlView && VIEWS.includes(urlView) ? urlView : storedView;
+  const setView = React.useCallback((v: View) => { setStoredView(v); replaceSearchParams({ view: v }); }, [setStoredView]);
   const focusTrader = params.get("trader");
   const focusTab = params.get("tab") === "limits" ? "limits" : "overview";
   // ?tab=breaches&alert=<id> (the breach review notification) opens the person's own breach row.
@@ -42,6 +51,11 @@ export default function RiskPage() {
   const view: View = focusAlert != null && me ? "me"
     : isCurator ? (stored === "me" && !me ? "desk" : stored)
     : stored === "overnight" ? "overnight" : "me";
+  const viewTabs: { value: View; label: string }[] = [
+    ...(isCurator ? [{ value: "desk" as const, label: commonI18n.t("trading.desk") }] : []),
+    { value: "overnight", label: t("page.title.overnight") },
+    ...(me ? [{ value: "me" as const, label: t("page.title.me") }] : []),
+  ];
   const qc = useQueryClient();
   // The slow catalyst lookups (offerings watch, earnings calendar) fill chips in the background; they must not keep
   // the refresh button spinning for seconds after the book itself is in.
@@ -73,34 +87,38 @@ export default function RiskPage() {
               <Button variant="outline" size="icon" onClick={refresh} aria-label={t("page.refreshAria")} disabled={fetching}>
                 <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
               </Button>
-              <Segmented
-                ariaLabel={t("page.viewAria")}
-                value={view}
-                onChange={setView}
-                options={[
-                  ...(isCurator ? [{ value: "desk", label: commonI18n.t("trading.desk") }] : []),
-                  { value: "overnight", label: t("page.title.overnight") },
-                  ...(me ? [{ value: "me", label: t("page.title.me") }] : []),
-                ]}
-              />
+              <HelpButton id={view === "desk" ? "riskDesk" : "risk"} />
             </>
           ) : undefined
         }
-      />
+      >
+        {/* The views are the page's tabs: under the title, not squeezed into its row (design audit wave 2). */}
+        {signedIn && viewTabs.length > 1 && <SectionTabs ariaLabel={t("page.viewAria")} value={view} onChange={setView} tabs={viewTabs} />}
+      </PageHeader>
+      {signedIn && <PageHint key={view === "desk" ? "riskDesk" : "risk"} id={view === "desk" ? "riskDesk" : "risk"} />}
+      {/* Today's desk regime next to the limits it scales: name, playbook hint, multiplier, the suggested day limit. */}
+      {signedIn && <RegimeDayView variant="strip" />}
 
       {!signedIn ? (
         <Panel>
-          <EmptyState icon={ShieldAlert} title={t("page.signInTitle")} description={t("page.signInDesc")} />
+          <EmptyState art="scales" icon={ShieldAlert} title={t("page.signInTitle")} description={t("page.signInDesc")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
         </Panel>
       ) : view === "desk" && isCurator ? (
-        <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
+        <>
+          {/* Live leak guard: who is on pause now (firm / hard), levels, saved / lost (components/leak-guard). */}
+          <GuardDeskPanel canEdit={isCurator} />
+          <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
+        </>
       ) : view === "overnight" ? (
         <OvernightView trader={me} isCurator={isCurator} onUpdatedAt={setUpdatedAt} />
       ) : me ? (
-        <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
+        <>
+          <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
+          <GuardImpactPanel trader={me} />
+        </>
       ) : (
         <Panel>
-          <EmptyState icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} />
+          <EmptyState art="scales" icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
         </Panel>
       )}
     </Page>

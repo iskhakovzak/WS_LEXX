@@ -97,8 +97,6 @@ export default {
     net: "нетто",
     noTrades: "За этот период сделок нет",
     periodAria: "Период",
-    days90: "90 дней",
-    allTime: "Всё время",
     tableAria: "Мои результаты по тикерам",
     ticker: "Тикер",
     trades: "Сделок",

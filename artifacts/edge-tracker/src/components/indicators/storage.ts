@@ -11,6 +11,8 @@ const FAV_KEY = "indicator-favorites";
 const NOTES_KEY = "indicator-notes";
 const PREFS_KEY = "indicators-prefs-v2";
 const MIGRATED_KEY = "indicator-notes-migrated-v1:";
+/** Keys changed here whose save the server has not confirmed yet (failed write): pushed on the next sync. */
+const PENDING_KEY = "indicator-pending-v1";
 const API = "/api/indicator-notes";
 /** Rows of the same table that hold market-indicator alert thresholds (market/alerts.ts) — not library notes. */
 const ALERT_PREFIX = "mkt-alert.";
@@ -43,6 +45,42 @@ export function saveNotes(notes: Record<string, string>): boolean {
 }
 
 export type IndicatorState = { favorites: string[]; notes: Record<string, string> };
+
+function loadPending(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function markPending(keys: string[], pending: boolean) {
+  if (!keys.length) return;
+  const cur = new Set(loadPending());
+  for (const k of keys) if (pending) cur.add(k); else cur.delete(k);
+  try {
+    if (cur.size) localStorage.setItem(PENDING_KEY, JSON.stringify([...cur]));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch { /* storage unavailable */ }
+}
+
+/** The server state with this browser's unconfirmed edits (pending keys) on top: they are never overwritten. */
+export function overlayPending(server: IndicatorState, local: IndicatorState, pending: readonly string[]): IndicatorState {
+  if (!pending.length) return server;
+  const p = new Set(pending);
+  const notes = { ...server.notes };
+  for (const k of p) {
+    if (local.notes[k]) notes[k] = local.notes[k];
+    else delete notes[k];
+  }
+  const favorites = [...server.favorites.filter((k) => !p.has(k) || local.favorites.includes(k))];
+  for (const k of local.favorites) if (p.has(k) && !favorites.includes(k)) favorites.push(k);
+  return { favorites, notes };
+}
+
+function pendingItems(local: IndicatorState, pending: readonly string[]) {
+  return pending.map((key) => ({ key, note: (local.notes[key] ?? "").slice(0, 4000), favorite: local.favorites.includes(key) }));
+}
 type ServerItem = { key: string; note: string; favorite: boolean; updatedAt: string };
 type ServerList = { user: string | null; items: ServerItem[] };
 
@@ -112,7 +150,13 @@ export async function syncIndicatorState(): Promise<IndicatorState | null> {
       }
     }
   }
-  const server = fromServer(list);
+  // Edits whose save failed earlier are written up now; until that succeeds they stay on top of the server copy.
+  const pending = loadPending();
+  if (pending.length) {
+    const pushed = await putBulk(pendingItems(local, pending), false);
+    if (pushed) { list = pushed; markPending(pending, false); }
+  }
+  const server = overlayPending(fromServer(list), local, loadPending());
   const state: IndicatorState = { favorites: orderLike(local.favorites, server.favorites), notes: server.notes };
   saveFavorites(state.favorites);
   saveNotes(state.notes);
@@ -123,8 +167,10 @@ export async function syncIndicatorState(): Promise<IndicatorState | null> {
 export async function pushIndicator(key: string, patch: { note?: string; favorite?: boolean }): Promise<boolean> {
   try {
     await http.put(`${API}/${encodeURIComponent(key)}`, patch);
+    markPending([key], false);
     return true;
   } catch {
+    markPending([key], true);
     return false;
   }
 }
@@ -135,6 +181,7 @@ export async function pushFavoritesDiff(prev: string[], next: string[]): Promise
   const removed = prev.filter((k) => !next.includes(k));
   if (!added.length && !removed.length) return true;
   const res = await putBulk([...added.map((key) => ({ key, favorite: true })), ...removed.map((key) => ({ key, favorite: false }))], false);
+  markPending([...added, ...removed], res == null);
   return res != null;
 }
 

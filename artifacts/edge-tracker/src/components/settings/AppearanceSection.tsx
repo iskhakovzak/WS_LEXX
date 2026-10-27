@@ -1,53 +1,20 @@
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
-import { Check, CloudMoon, Moon, Palette, Sun } from "lucide-react";
+import { useMemo } from "react";
+import { Check, CloudMoon, Gem, Moon, Palette, SlidersHorizontal, Sun } from "lucide-react";
 import { Panel } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { useTheme, type Theme } from "@/contexts/theme-context";
+import { useAppearance } from "@/contexts/appearance-context";
+import { THEME_SELECTORS, readThemeTokens } from "@/components/shared/theme-tokens";
 import { cn } from "@/lib/utils";
 import { Callout } from "./shared";
 import { visibleSections } from "./SettingsNav";
 import { useAuth } from "@/contexts/auth-context";
 import { settingsI18n } from "@/i18n/ns/settings";
-import { commonI18n } from "@/i18n/ns/common";
+import { appearanceI18n } from "@/i18n/ns/appearance";
 
-const THEMES: { id: Theme; icon: React.ElementType; selectors: string[] }[] = [
-  { id: "dark", icon: Moon, selectors: [":root", ".dark"] },
-  { id: "dim", icon: CloudMoon, selectors: [":root", ".dark", ".dim"] },
-  { id: "light", icon: Sun, selectors: [":root"] },
-];
-
-/**
- * Collects the CSS custom properties (design tokens) declared for the given selectors, in order,
- * straight from the app stylesheet. Used to render each theme's preview with its real tokens,
- * independent of the theme currently applied to <html>.
- */
-function readThemeTokens(selectors: string[]): React.CSSProperties {
-  const out: Record<string, string> = {};
-  for (const sel of selectors) {
-    for (const sheet of Array.from(document.styleSheets)) {
-      let rules: CSSRuleList;
-      try { rules = sheet.cssRules; } catch { continue; } // cross-origin sheet
-      const walk = (list: CSSRuleList) => {
-        for (const rule of Array.from(list)) {
-          if (rule instanceof CSSStyleRule) {
-            const parts = rule.selectorText.split(",").map((s) => s.trim());
-            if (!parts.includes(sel)) continue;
-            for (let i = 0; i < rule.style.length; i++) {
-              const prop = rule.style[i];
-              if (prop.startsWith("--")) out[prop] = rule.style.getPropertyValue(prop).trim();
-            }
-          } else if ("cssRules" in rule && !(rule instanceof CSSMediaRule)) {
-            // @layer / @supports blocks
-            try { walk((rule as CSSGroupingRule).cssRules); } catch { /* ignore */ }
-          }
-        }
-      };
-      walk(rules);
-    }
-  }
-  return out as React.CSSProperties;
-}
+const THEME_ICONS: Record<Theme, React.ElementType> = { dark: Moon, dim: CloudMoon, platinum: Gem, light: Sun };
 
 /** Miniature app screen rendered with a theme's own tokens. */
 function ThemePreview({ tokens }: { tokens: React.CSSProperties }) {
@@ -100,56 +67,61 @@ function ThemePreview({ tokens }: { tokens: React.CSSProperties }) {
 
 export function AppearanceSection() {
   const { t: ts } = settingsI18n.useT();
-  const { t: tc } = commonI18n.useT();
-  const { theme, cycleTheme } = useTheme();
+  const { t: ta } = appearanceI18n.useT();
+  const { theme, setTheme, themes, themeLabels } = useTheme();
+  const { openAppearance } = useAppearance();
   const { can } = useAuth();
   const sectionCount = Math.min(9, visibleSections(can).length);
-  // ThemeContext only exposes cycleTheme; step through the cycle until the chosen theme is applied.
-  const [target, setTarget] = useState<Theme | null>(null);
-  useEffect(() => {
-    if (!target) return;
-    if (theme === target) { setTarget(null); return; }
-    cycleTheme();
-  }, [target, theme, cycleTheme]);
 
-  const tokens = useMemo(() => Object.fromEntries(THEMES.map((t) => [t.id, readThemeTokens(t.selectors)])) as Record<Theme, React.CSSProperties>, []);
+  const tokens = useMemo(() => Object.fromEntries(themes.map((id) => [id, readThemeTokens(THEME_SELECTORS[id])])) as Record<Theme, React.CSSProperties>, [themes]);
 
   function onKey(e: React.KeyboardEvent, idx: number) {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
     const dir = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
-    const next = THEMES[(idx + dir + THEMES.length) % THEMES.length];
-    setTarget(next.id);
-    (e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=radio]")[THEMES.indexOf(next)])?.focus();
+    const next = themes[(idx + dir + themes.length) % themes.length];
+    setTheme(next);
+    (e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=radio]")[themes.indexOf(next)])?.focus();
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <Panel title={ts("appearance.title")} description={ts("appearance.description")} icon={Palette}>
-        <div role="radiogroup" aria-label={ts("appearance.title")} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {THEMES.map((t, idx) => {
-            const active = (target ?? theme) === t.id;
+      <Panel
+        title={ts("appearance.title")}
+        description={ts("appearance.description")}
+        icon={Palette}
+        actions={
+          <Button type="button" size="sm" variant="secondary" onClick={() => openAppearance("colors")} aria-haspopup="dialog">
+            <SlidersHorizontal aria-hidden="true" />
+            {ts("appearance.openLook")}
+          </Button>
+        }
+      >
+        <div role="radiogroup" aria-label={ts("appearance.title")} className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {themes.map((id, idx) => {
+            const active = theme === id;
+            const Icon = THEME_ICONS[id];
             return (
               <button
-                key={t.id}
+                key={id}
                 type="button"
                 role="radio"
                 aria-checked={active}
                 tabIndex={active ? 0 : -1}
-                onClick={() => setTarget(t.id)}
+                onClick={() => setTheme(id)}
                 onKeyDown={(e) => onKey(e, idx)}
                 className={cn(
                   "lift flex flex-col gap-3 rounded-2xl border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active ? "border-primary bg-primary/10" : "border-border hover:bg-[var(--glass-hover-bg)]",
                 )}
               >
-                <ThemePreview tokens={tokens[t.id]} />
+                <ThemePreview tokens={tokens[id]} />
                 <div className="flex items-start justify-between gap-2 px-1 pb-1">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                      <t.icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {tc(`theme.${t.id}`)}
+                      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {themeLabels[id]}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{ts(`appearance.${t.id}Hint`)}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{ta(`themes.${id}Hint`)}</p>
                   </div>
                   <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full border", active ? "border-transparent bg-primary-solid text-primary-foreground" : "border-border")}>
                     {active && <Check className="h-3 w-3" aria-hidden="true" />}
@@ -159,6 +131,7 @@ export function AppearanceSection() {
             );
           })}
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">{ts("appearance.openLookHint")}</p>
       </Panel>
 
       <Panel title={ts("appearance.hotkeys")} description={ts("appearance.hotkeysDesc")}>

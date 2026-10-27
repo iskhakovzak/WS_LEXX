@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Circle, Clock, Eye, Layers, Loader2, PencilRuler } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, Panel, Pill, SplitSkeleton } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  kindLabel, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
-  type ItemKind, type Nav,
+  kindLabel, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, usePrograms, useQuiz,
+  type CatalogProgram, type ItemKind, type Nav,
 } from "@/components/academy/content/api";
 import { ApiError } from "@/lib/api/http";
 import { Markdown } from "@/components/academy/content/markdown";
@@ -58,17 +57,8 @@ export default function AcademyLesson() {
   const staff = isCurator || !!meta.data?.staff;
   const viewUser = staff ? params.get("user") ?? undefined : undefined;
   const submission = Number(params.get("submission")) || null;
-  const { t } = academyI18n.useT();
 
-  if (!target) {
-    return (
-      <Page>
-        <Panel>
-          <EmptyState icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
-        </Panel>
-      </Page>
-    );
-  }
+  if (!target) return <NextItem />;
   return (
     <Page>
       {target.kind === "lesson" && <LessonView id={target.id} user={viewUser} staff={staff} />}
@@ -78,24 +68,50 @@ export default function AcademyLesson() {
   );
 }
 
+/** The program to continue: one already started and not finished, else the first with something left. */
+function programToContinue(programs: readonly CatalogProgram[]): CatalogProgram | null {
+  const open = programs.filter((p) => p.progress.next);
+  return open.find((p) => p.progress.done > 0) ?? open[0] ?? null;
+}
+
+/**
+ * /academy/lesson without an item (design audit wave 2, prefill): open the viewer's next unfinished lesson / test /
+ * assignment instead of «Материал не выбран» (replace: Back does not return to the empty address). Nothing left → the
+ * old state with the way to the courses.
+ */
+function NextItem() {
+  const { t } = academyI18n.useT();
+  const [, navigate] = useLocation();
+  const programs = usePrograms();
+  const next = programs.data ? programToContinue(programs.data.programs)?.progress.next ?? null : null;
+  useEffect(() => {
+    if (next) navigate(academyLinks.item(next.kind, next.id), { replace: true });
+  }, [next, navigate]);
+  if (programs.isLoading || next) return <Page><SplitSkeleton side="260px" /></Page>;
+  return (
+    <Page>
+      <Panel>
+        <EmptyState art="scroll" icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
+      </Panel>
+    </Page>
+  );
+}
+
 /* ─── shared chrome ─────────────────────────────────────────────────────── */
 
 function LoadState({ error, onRetry }: { error: unknown; onRetry: () => unknown }) {
   const { t } = academyI18n.useT();
-  if (!error) return <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"><Skeleton className="h-80 rounded-2xl" /><Skeleton className="h-[28rem] rounded-2xl" /></div>;
+  if (!error) return <SplitSkeleton side="260px" rows={6} detailHeight={448} />;
   const status = error instanceof ApiError ? error.status : 0;
   return (
     <Panel>
       <EmptyState
+        art="scroll"
         icon={BookOpen}
         title={status === 404 ? t("lesson.notFound") : t("lesson.loadFailed")}
         description={status === 404 ? t("lesson.notFoundDesc") : (error as Error).message}
-        action={
-          <div className="flex flex-wrap justify-center gap-2">
-            {status !== 404 && <Button variant="outline" onClick={() => void onRetry()}>{commonI18n.t("actions.retry")}</Button>}
-            <Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>
-          </div>
-        }
+        action={status !== 404 ? <Button onClick={() => void onRetry()}>{commonI18n.t("actions.retry")}</Button> : <EmptyLink href={academyLinks.learn()}>{t("lesson.toCourses")}</EmptyLink>}
+        secondaryAction={status !== 404 ? <Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link> : undefined}
       />
     </Panel>
   );
@@ -111,7 +127,7 @@ function OutlineNav({ nav, current, user }: { nav: Nav; current: { kind: ItemKin
       <ol className="flex flex-col gap-3">
         {nav.outline.map((m, mi) => (
           <li key={m.id}>
-            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{mi + 1}. {m.title}</p>
+            <p className="px-1 text-2xs font-semibold text-muted-foreground">{mi + 1}. {m.title}</p>
             <ol className="mt-1 flex flex-col">
               {m.items.map((i) => {
                 const active = i.kind === current.kind && i.id === current.id;
@@ -157,7 +173,7 @@ function PrevNext({ nav, user }: { nav: Nav; user?: string }) {
   const { t } = academyI18n.useT();
   if (!nav.prev && !nav.next) return null;
   return (
-    <nav aria-label={t("lesson.adjacentAria")} className="grid gap-3 sm:grid-cols-2">
+    <nav aria-label={t("lesson.adjacentAria")} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {nav.prev ? (
         <Link href={academyLinks.item(nav.prev.kind, nav.prev.id, { user })} className="glass-panel group flex items-center gap-3 rounded-2xl p-4 hover:bg-[var(--glass-hover-bg)]">
           <ArrowLeft className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
@@ -180,7 +196,7 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
 }) {
   const { t } = academyI18n.useT();
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       <OutlineNav nav={nav} current={current} user={user} />
       <div className="flex min-w-0 flex-col gap-4">
         <PageHeader
@@ -271,7 +287,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
     >
       {lesson.summary && <p className="text-sm text-muted-foreground">{lesson.summary}</p>}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
         <div className="flex min-w-0 flex-col gap-4">
           {lesson.video && <VideoPlayer video={lesson.video} title={lesson.title} />}
           <Panel>
@@ -305,7 +321,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
         </div>
         {toc.length > 1 && (
           <nav aria-label={t("lesson.tocAria")} className="glass-panel sticky top-[var(--sticky-top)] hidden rounded-2xl p-3 xl:block">
-            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("lesson.inLesson")}</p>
+            <p className="px-1 text-2xs font-semibold text-muted-foreground">{t("lesson.inLesson")}</p>
             <ol className="mt-1 flex flex-col">
               {toc.map((h) => (
                 <li key={h.id}>

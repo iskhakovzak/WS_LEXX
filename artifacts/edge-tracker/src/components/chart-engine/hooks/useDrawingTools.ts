@@ -8,21 +8,23 @@ import * as React from "react";
 import type { IChartApi, ISeriesApi, Logical, MouseEventParams, Time } from "lightweight-charts";
 import type { Bar, Drawing, DrawingPoint, DrawingRole, DrawingType } from "../types";
 import { logicalToTime } from "../lib/time";
-import { DRAWING_POINTS, makeDrawing, moveDrawing, movePoint } from "../lib/drawings";
+import { DRAWING_POINTS, MAX_NOTE, makeDrawing, moveDrawing, movePoint } from "../lib/drawings";
 import type { DrawingsPrimitive } from "../primitives/DrawingsPrimitive";
 import type { DrawingsStore } from "./useDrawings";
 
 type Bound = { chart: IChartApi; series: ISeriesApi<"Candlestick">; prim: DrawingsPrimitive; el: HTMLElement };
 type Drag = { id: string; handle: number | null; from: DrawingPoint; orig: Drawing; moved: boolean; pointerId: number };
 
-export function useDrawingTools(store: DrawingsStore, scale: { bars: readonly Bar[]; barSec: number }) {
+/** `meta.tradeId`: new drawings belong to this trade (their notes are the trade's notes in /chart-lab). */
+export function useDrawingTools(store: DrawingsStore, scale: { bars: readonly Bar[]; barSec: number }, meta: { tradeId?: number | null } = {}) {
   const [tool, setTool] = React.useState<DrawingType | null>(null);
   const [role, setRole] = React.useState<DrawingRole>("accent");
   const [selected, setSelected] = React.useState<string | null>(null);
   const [pendingCount, setPendingCount] = React.useState(0);
   const pending = React.useRef<DrawingPoint[]>([]);
-  const live = React.useRef({ tool, role, selected, store, scale });
-  live.current = { tool, role, selected, store, scale };
+  const tradeId = meta.tradeId ?? null;
+  const live = React.useRef({ tool, role, selected, store, scale, tradeId });
+  live.current = { tool, role, selected, store, scale, tradeId };
   const bound = React.useRef<Bound | null>(null);
 
   const pointAt = React.useCallback((x: number, y: number): DrawingPoint | null => {
@@ -52,6 +54,11 @@ export function useDrawingTools(store: DrawingsStore, scale: { bars: readonly Ba
     live.current.store.update((d) => d.map((x) => (x.id === id ? { ...x, role: r } : x)));
   }, []);
   const clearAll = React.useCallback(() => { live.current.store.update(() => []); setSelected(null); }, []);
+  /** The note on a drawing (≤ MAX_NOTE characters; empty = none). */
+  const setDrawingLabel = React.useCallback((id: string, label: string) => {
+    const v = label.slice(0, MAX_NOTE);
+    live.current.store.update((d) => d.map((x) => (x.id === id ? { ...x, label: v.trim() ? v : null } : x)));
+  }, []);
 
   const bind = React.useCallback((chart: IChartApi, series: ISeriesApi<"Candlestick">, prim: DrawingsPrimitive, el: HTMLElement) => {
     bound.current = { chart, series, prim, el };
@@ -83,7 +90,7 @@ export function useDrawingTools(store: DrawingsStore, scale: { bars: readonly Ba
       if (!p) return;
       const pts = [...pending.current, p];
       if (pts.length >= DRAWING_POINTS[st.tool]) {
-        const d = makeDrawing(st.tool, pts, st.role);
+        const d = makeDrawing(st.tool, pts, st.role, st.tradeId);
         pending.current = []; setPendingCount(0);
         prim.setPreview(null); hasPreview = false;
         st.store.update((list) => [...list, d]);
@@ -146,5 +153,5 @@ export function useDrawingTools(store: DrawingsStore, scale: { bars: readonly Ba
     };
   }, [pointAt]);
 
-  return { tool, setTool, role, setRole, selected, setSelected, pendingCount, cancel, remove, setDrawingRole, clearAll, bind };
+  return { tool, setTool, role, setRole, selected, setSelected, pendingCount, cancel, remove, setDrawingRole, setDrawingLabel, clearAll, bind };
 }

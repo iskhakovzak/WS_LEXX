@@ -1,7 +1,10 @@
 /**
  * Per-browser navigation preferences (localStorage, fail-safe):
- * - pinned pages: second-level pages (Статистика, Поведение, Симулятор…) kept visible under their sidebar row;
- * - the desktop sidebar width: full or an icon rail.
+ * - pinned pages: second-level pages (Статистика, Поведение, Тренажёр…) listed in «Закреплённые» at the top of the
+ *   sidebar and of the phone sheet;
+ * - the desktop sidebar width: full or an icon rail;
+ * - the «G + буква» footer hint: shown until the first quick jump (or a click on it), then folded away — the full
+ *   list of letters lives in «Помощь».
  */
 import { useCallback, useEffect, useState } from "react";
 import { ALL_NAV_ITEMS, parentOf } from "./nav";
@@ -128,6 +131,26 @@ export function useMoreOpen(user: string | null | undefined): [boolean, (open: b
     [key],
   );
   return [open, write];
+}
+
+const GO_HINT_KEY = "ws_lexx_nav_gohint";
+
+/** The footer «G + буква» hint: [still shown, fold it away for good]. Remembered per browser (default: shown). */
+export function useGoHint(): [boolean, () => void] {
+  const [shown, setShown] = useState(() => {
+    try {
+      return localStorage.getItem(GO_HINT_KEY) !== "1";
+    } catch {
+      return true;
+    }
+  });
+  const done = useCallback(() => {
+    try {
+      localStorage.setItem(GO_HINT_KEY, "1");
+    } catch {}
+    setShown(false);
+  }, []);
+  return [shown, done];
 }
 
 /** Last menu mode seen for this user (simple / full), so a reload does not flash the other menu before the API answers. */

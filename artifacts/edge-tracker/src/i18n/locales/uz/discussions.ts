@@ -222,7 +222,6 @@ export default {
     audienceAria: "Mavzu kim uchun",
     allThreads: "Barcha mavzular",
     forMe: "Men uchun",
-    typeTickerAria: "Tur va tiker boʻyicha filtr",
     typeAria: "Mavzu turi",
     allTypes: "Barcha turlar",
     found: "Topildi: {count}",

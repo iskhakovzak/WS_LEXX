@@ -78,13 +78,16 @@ export type AdminResponse = Base & { role: "admin"; settings: AdminSetting[]; us
 export type MemberResponse = Base & { role: "member"; settings: { year: number; goalPct: number; hasCapital: boolean }[]; pct: OfficeView };
 export type OfficeStatsResponse = AdminResponse | MemberResponse;
 
-export type OfficeParams = { years: number[]; from: string | null; to: string | null };
+/** `facets`: the partners' «Разрезы» as x* params (applied for admins only, server-side). */
+export type OfficeParams = { years: number[]; from: string | null; to: string | null; facets?: string };
 
 export function useOfficeStats(p: OfficeParams, enabled = true) {
   return useQuery({
-    queryKey: ["office-stats", p.years.join(","), p.from, p.to],
+    queryKey: ["office-stats", p.years.join(","), p.from, p.to, p.facets ?? ""],
     queryFn: ({ signal }) =>
-      http.get<OfficeStatsResponse>("/api/office-stats", { query: { years: p.years.join(","), from: p.from, to: p.to }, signal }),
+      http.get<OfficeStatsResponse>("/api/office-stats", {
+        query: { years: p.years.join(","), from: p.from, to: p.to, ...Object.fromEntries(new URLSearchParams(p.facets ?? "")) }, signal,
+      }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: STALE.short,

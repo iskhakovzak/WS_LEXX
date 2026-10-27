@@ -20,6 +20,7 @@ import {
 } from "./event-meta";
 import { eventsI18n } from "@/i18n/ns/events";
 import { commonI18n } from "@/i18n/ns/common";
+import { useTextDraft } from "@/hooks/use-text-draft";
 
 export type EventFormData = {
   ticker: string; date: string; eventType: string; session: Session | ""; headline: string; reaction: string;
@@ -117,6 +118,13 @@ export function EventFormDialog({
   const [form, setForm] = React.useState<EventFormData>(initial);
   React.useEffect(() => { if (open) setForm(initial); }, [open, initial]);
   const set = <K extends keyof EventFormData>(k: K, v: EventFormData[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // The texts survive a closed dialog / reload; dropped once the dialog closes after a submit (the save succeeded).
+  const draft = useTextDraft(open ? `event:${editing?.id ?? "new"}` : null, { headline: form.headline, reaction: form.reaction, summary: form.summary },
+    (d) => setForm((f) => ({ ...f, ...d })), { base: { headline: initial.headline, reaction: initial.reaction, summary: initial.summary } });
+  const sent = React.useRef(false);
+  const clearDraft = React.useRef(draft.clear);
+  if (open) clearDraft.current = draft.clear;
+  React.useEffect(() => { if (!open && sent.current) { sent.current = false; clearDraft.current(); } }, [open]);
 
   function handleFundamentalsLoaded(f: TickerFundamentals) {
     setForm((prev) => {
@@ -141,11 +149,11 @@ export function EventFormDialog({
   // Legacy notes may carry a list («XOM, CVX, …») — editing keeps it valid while the ticker is untouched.
   const tickerOk = TICKER_RE.test(form.ticker.trim()) || (!!editing && form.ticker === editing.ticker);
   const valid = tickerOk && form.headline.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(form.date);
-  const submit = () => { if (valid && !saving) onSubmit(formToBody(form)); };
+  const submit = () => { if (valid && !saving) { sent.current = true; onSubmit(formToBody(form)); } };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full max-w-3xl overflow-y-auto">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>{editing ? t("form.titleEdit", { ticker: editing.ticker }) : t("form.titleNew")}</DialogTitle>
           <DialogDescription>{t("form.description")}</DialogDescription>

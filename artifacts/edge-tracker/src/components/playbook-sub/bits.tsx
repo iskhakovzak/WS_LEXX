@@ -45,7 +45,7 @@ export function Ring({
   const v = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
   return (
     <div
-      className={cn("relative inline-grid shrink-0 place-items-center", className)}
+      className={cn("relative [display:inline-grid] shrink-0 place-items-center", className)}
       style={{ width: size, height: size }}
       role={label ? "img" : undefined}
       aria-label={label}
@@ -94,7 +94,7 @@ export const IconAction = React.forwardRef<
       ref={ref}
       type={type ?? "button"}
       className={cn(
-        "inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors",
+        "[display:inline-grid] h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors",
         "hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-4 [&_svg]:w-4",
         active && "text-primary",

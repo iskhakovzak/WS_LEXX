@@ -3,7 +3,6 @@
  * Sections are stored inside `raw_text` as `## Heading` blocks, so the DB schema and the
  * AI-improve endpoint stay unchanged and old free-form notes keep working.
  */
-import type { CSSProperties } from "react";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { fmtRelative } from "@/lib/format";
@@ -245,22 +244,36 @@ const builtin = (id: BuiltinId): NoteTemplate => ({
 });
 export const BUILTIN_TEMPLATES: NoteTemplate[] = [builtin("standard"), builtin("red"), builtin("earnings"), builtin("friday")];
 
-const CUSTOM_TPL_KEY = "ws_author_notes_templates";
+/** The old browser-only key of the custom templates (now on the account: users.settings.prefs["notes.authorTemplates"]). */
+export const LEGACY_TPL_KEY = "ws_author_notes_templates";
 
-export function loadCustomTemplates(): NoteTemplate[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_TPL_KEY);
-    const arr = raw ? (JSON.parse(raw) as NoteTemplate[]) : [];
-    return Array.isArray(arr) ? arr.filter((t) => t && typeof t.name === "string").map((t) => ({ ...t, custom: true })) : [];
-  } catch {
-    return [];
-  }
+/** Custom templates from the account / the old browser copy: shape-checked, at most 12. */
+export function parseCustomTemplates(v: unknown): NoteTemplate[] | null {
+  if (!Array.isArray(v)) return null;
+  return v
+    .filter((t): t is NoteTemplate => !!t && typeof t === "object" && typeof (t as NoteTemplate).name === "string" && !!(t as NoteTemplate).sections && typeof (t as NoteTemplate).sections === "object")
+    .map((t) => ({ id: String(t.id ?? t.name), name: t.name, description: typeof t.description === "string" ? t.description : "", sections: t.sections, custom: true }))
+    .slice(0, 12);
 }
 
-export function saveCustomTemplates(list: NoteTemplate[]) {
+/* A note whose save the server has not confirmed (failed save, reload, API restart): kept here until it is saved. */
+type UnsavedNote = { raw: string; mood: string };
+const unsavedKey = (trader: string, date: string) => `ws_lexx_author_unsaved:${trader}|${date}`;
+
+export function keepUnsavedNote(trader: string, date: string, n: UnsavedNote | null): void {
   try {
-    localStorage.setItem(CUSTOM_TPL_KEY, JSON.stringify(list.slice(0, 12)));
+    if (n) localStorage.setItem(unsavedKey(trader, date), JSON.stringify(n));
+    else localStorage.removeItem(unsavedKey(trader, date));
   } catch { /* storage unavailable */ }
+}
+
+export function readUnsavedNote(trader: string, date: string): UnsavedNote | null {
+  try {
+    const p = JSON.parse(localStorage.getItem(unsavedKey(trader, date)) ?? "null") as Partial<UnsavedNote> | null;
+    return p && typeof p.raw === "string" ? { raw: p.raw, mood: typeof p.mood === "string" ? p.mood : "" } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Fills only empty sections, so a template never overwrites what was already written. */
@@ -328,16 +341,6 @@ export function writingStreak(dates: Set<string>, today: string): number {
 export function horizonLabel(h: Horizon): string {
   return commonI18n.t(`trading.${h}`);
 }
-
-export const CHART_TOOLTIP: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
 
 /* ───────────────────────── API ───────────────────────── */
 

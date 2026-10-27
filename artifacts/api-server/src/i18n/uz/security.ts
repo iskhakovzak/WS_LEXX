@@ -23,8 +23,8 @@ export default {
     tooLarge: "Soʻrov juda katta ({limit} dan ortiq)",
   },
   alert: {
-    title: "WS_LEXX: serverda yangi xato",
-    titleClient: "WS_LEXX: ilovada yangi xato",
+    title: "WS_Desk: serverda yangi xato",
+    titleClient: "WS_Desk: ilovada yangi xato",
     route: "Yoʻnalish: {route}",
     count: "Takrorlar: {count}",
     open: "Ochish: {url}",

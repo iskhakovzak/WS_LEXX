@@ -36,7 +36,7 @@ export type IntradaySpec = {
   tf: IntradayTf;
   /** Minutes of the regular session to play from 9:30. */
   playMinutes: number;
-  /** Day filter on |gap %| and the regular-session range in % of the open. */
+  /** Day filter on |gap %| and the regular-session range in % of the open (on top of the gap + catalyst rule). */
   filter: (f: DayFeatures) => boolean;
   /** Ranking when nothing passes the filter (higher = closer to what this level wants). */
   rank: (f: DayFeatures) => number;
@@ -54,26 +54,31 @@ export type SwingSpec = {
 export type DayFeatures = { gapPct: number; rangePct: number };
 export type SeriesFeatures = { atrPct: number; bigGaps: number };
 
+/**
+ * Intraday levels. Every level plays only days that gapped ≥ trainer.minGapPct with a catalyst (owner 2026-10-25;
+ * pick.ts applies that rule before these filters, which never relax it): the levels differ by the day's range, the bar
+ * size and how long the session runs — easy reads a calmer gap day on 5-minute bars, hard gets the wildest ones.
+ */
 export const INTRADAY_SPECS: Record<Difficulty, IntradaySpec> = {
   easy: {
     mode: "intraday", tf: "5m", playMinutes: 390,
-    filter: (f) => Math.abs(f.gapPct) < 2.5 && f.rangePct >= 1 && f.rangePct <= 6,
-    rank: (f) => -Math.abs(f.gapPct) - Math.abs(f.rangePct - 3),
+    filter: (f) => f.rangePct >= 2 && f.rangePct <= 15,
+    rank: (f) => -Math.abs(f.rangePct - 8),
   },
   medium: {
     mode: "intraday", tf: "1m", playMinutes: 90,
-    filter: (f) => f.rangePct >= 0.8,
-    rank: (f) => f.rangePct,
+    filter: (f) => f.rangePct >= 4,
+    rank: (f) => Math.min(f.rangePct, 30),
   },
   hard: {
     mode: "intraday", tf: "1m", playMinutes: 180,
-    filter: (f) => Math.abs(f.gapPct) >= 2.5 || f.rangePct >= 4,
+    filter: (f) => Math.abs(f.gapPct) >= 15 || f.rangePct >= 15,
     rank: (f) => Math.abs(f.gapPct) + f.rangePct,
   },
 };
 
 export const SWING_SPECS: Record<Difficulty, SwingSpec> = {
-  easy: { mode: "swing", tf: "1d", history: 120, play: 60, filter: (f) => f.atrPct < 2.8 && f.bigGaps <= 1, rank: (f) => -f.atrPct },
+  easy: { mode: "swing", tf: "1d", history: 120, play: 60, filter: (f) => f.atrPct < 2.8 && f.bigGaps <= 2, rank: (f) => -f.atrPct },
   medium: { mode: "swing", tf: "1d", history: 120, play: 100, filter: () => true, rank: () => 0 },
   hard: { mode: "swing", tf: "1d", history: 120, play: 140, filter: (f) => f.atrPct >= 3.2 || f.bigGaps >= 3, rank: (f) => f.atrPct + f.bigGaps },
 };

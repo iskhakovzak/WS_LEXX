@@ -10,6 +10,7 @@ import watchlistRouter from "./watchlist";
 import playbookRouter from "./playbook";
 import playbookTodayRouter from "./playbook-today";
 import playbookSpacesRouter from "./playbook-spaces";
+import { forgetOfficeSetups } from "../lib/tradesSetupLink";
 import activityRouter from "./activity";
 import errorsRouter from "./errors";
 import big7levelsRouter from "./big7levels";
@@ -17,6 +18,7 @@ import big7catalystsRouter from "./big7catalysts";
 import big7tickersRouter from "./big7tickers";
 import ratingsRouter from "./ratings";
 import usersRouter from "./users";
+import onboardingRouter from "./onboarding";
 import appErrorsRouter from "./app-errors";
 import adminSettingsRouter from "./admin-settings";
 import stockdataRouter from "./stockdata";
@@ -27,6 +29,9 @@ import marketBriefRouter from "./marketbrief";
 import marketConditionsRouter from "./marketconditions";
 import tradeIdeasRouter from "./tradeideas";
 import aireviewRouter from "./aireview";
+import aibatchRouter from "./aibatch";
+import mentorRouter from "./mentor";
+import aiAssistantRouter from "./ai-assistant";
 import emotionalstateRouter from "./emotionalstate";
 import voicenotesRouter from "./voicenotes";
 import psychologyanalyticsRouter from "./psychologyanalytics";
@@ -39,6 +44,7 @@ import leaderboardRouter from "./leaderboard";
 import rulesRouter from "./rules";
 import adminRouter from "./admin";
 import authRouter from "./auth";
+import screenLockRouter from "./screen-lock";
 import fxRouter from "./fx";
 import earningsRouter from "./earnings";
 import authorNotesRouter from "./author-notes";
@@ -64,6 +70,12 @@ import scalingRouter from "./scaling";
 import weeklyReviewRouter from "./weekly-review";
 import eodRouter from "./eod";
 import edgeRouter from "./edge";
+import myEdgeRouter from "./my-edge";
+import marketRegimeRouter from "./market-regime";
+import leakGuardRouter from "./leak-guard";
+import capitalRouter from "./capital";
+import profileRouter from "./profile";
+import juniorCostRouter from "./junior-cost";
 import statsAggregateRouter from "./stats-aggregate";
 import permissionsRouter from "./permissions";
 import whatifRouter from "./whatif";
@@ -86,14 +98,18 @@ import trainingRouter from "./training";
 import simRouter from "./sim";
 import trainerRouter from "./trainer";
 import chartDrawingsRouter from "./chart-drawings";
+import chartLabRouter from "./chart-lab";
 import officeStatsRouter from "./officeStats";
+import officeRecsRouter from "./officeRecs";
 import askRouter from "./ask";
 import dailyRouter from "./daily";
+import dayStateRouter from "./day-state";
 import deskDayRouter from "./deskDay";
 import topRouter from "./top";
 import questsRouter from "./quests";
 import gamificationRouter from "./gamification";
 import myReviewRouter from "./my-review";
+import coachRouter from "./coach";
 import usageRouter from "./usage";
 import finvizRouter from "./finviz";
 import themesRouter from "./themes";
@@ -115,6 +131,12 @@ router.use(dailyfeedRouter);
 router.use(discussionsRouter);
 router.use(dashboardRouter);
 router.use(watchlistRouter);
+// Any successful playbook write (create, rename, move to the office space, delete) drops the 60 s office-setups memo, so
+// a trade tagged with a setup made a moment ago links to it (lib/tradesSetupLink).
+router.use("/playbook", (req, res, next) => {
+  if (req.method !== "GET") res.on("finish", () => { if (res.statusCode < 400) forgetOfficeSetups(); });
+  next();
+});
 router.use(playbookTodayRouter); // before playbookRouter: /playbook/today is not a setup id
 router.use(playbookRouter);
 router.use(playbookSpacesRouter);
@@ -125,6 +147,7 @@ router.use(big7catalystsRouter);
 router.use(big7tickersRouter);
 router.use(ratingsRouter);
 router.use(usersRouter);
+router.use(onboardingRouter);
 router.use(appErrorsRouter);
 router.use(adminSettingsRouter);
 router.use(stockdataRouter);
@@ -135,6 +158,9 @@ router.use(marketBriefRouter);
 router.use(marketConditionsRouter);
 router.use(tradeIdeasRouter);
 router.use(aireviewRouter);
+router.use(aibatchRouter);
+router.use(mentorRouter); // AI mentor: memory, daily rhythm, commitments, escalation (lib/mentor)
+router.use(aiAssistantRouter); // «Ассистент WS» (docs/AI_ASSISTANT.md)
 router.use(emotionalstateRouter);
 router.use(voicenotesRouter);
 router.use(psychologyanalyticsRouter);
@@ -147,6 +173,7 @@ router.use(leaderboardRouter);
 router.use(rulesRouter);
 router.use(adminRouter);
 router.use(authRouter);
+router.use(screenLockRouter); // «Заблокировать»: /auth/lock, /auth/unlock, /auth/quick-code
 router.use(fxRouter);
 router.use(earningsRouter);
 // «Сводка автора» is behind the desk switch nav.authorNotes (default off, Волна 2 п. 2.15): off → every route 404.
@@ -168,6 +195,12 @@ router.use(scalingRouter);
 router.use(weeklyReviewRouter);
 router.use(eodRouter);
 router.use(edgeRouter);
+router.use(myEdgeRouter); // «Мой edge и рынок» (analytics)
+router.use(marketRegimeRouter); // desk market regime: day, limit multiplier, playbook tags, edge by regime, reflection
+router.use(leakGuardRouter); // live leak guard: active pauses, acknowledgement, impact in $, desk, levels
+router.use(capitalRouter); // capital allocation: risk moves to proven edge (lib/capital), proposals in the scaling queue
+router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)
+router.use(juniorCostRouter); // «Цена джуна до безубытка»: own / ward path, staff desk view (cohorts, «что окупается»)
 router.use(statsAggregateRouter); // GET /stats/aggregate — staff /stats and /analytics without raw trades
 router.use(permissionsRouter);
 router.use(whatifRouter);
@@ -190,14 +223,18 @@ router.use(trainingRouter);
 router.use(simRouter);
 router.use(trainerRouter);
 router.use(chartDrawingsRouter);
+router.use(chartLabRouter);
 router.use(officeStatsRouter);
+router.use(officeRecsRouter);
 router.use(askRouter);
 router.use(dailyRouter);
+router.use(dayStateRouter); // the trader's day state: /me/state, /state/team, /state/message (lib/dayState)
 router.use(deskDayRouter);
 router.use(topRouter);
 router.use(questsRouter);
 router.use(gamificationRouter);
 router.use(myReviewRouter); // GET /my-review — the trader's own review digest
+router.use(coachRouter); // coaching evidence: interventions log (R9a), edge map (R4), plateau (R6)
 router.use(usageRouter);
 router.use(finvizRouter); // Finviz Elite: screener, ticker snapshot, earnings calendar (lib/finviz)
 router.use(themesRouter); // «Темы рынка»: theme tracker (lib/themes)

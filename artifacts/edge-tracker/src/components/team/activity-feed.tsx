@@ -1,12 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, List, Newspaper, NotebookPen, Trophy } from "lucide-react";
+import { ArrowUpRight, ChevronDown, List, Newspaper, NotebookPen, Trophy } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { nyDate } from "@/lib/trading-date";
+import { DayStepper } from "@/components/shared/day-stepper";
 import { links } from "@/lib/links";
-import { KPI_FORMULAS } from "@/lib/trade-math";
+import { KPI_FORMULAS, winRateOf } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
 import { fmtCount, fmtDeskDateTime, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -177,10 +179,8 @@ export function DigestCard({
   summary,
   loading,
   unavailable,
-  dayLabel,
-  canNext,
-  onPrev,
-  onNext,
+  day,
+  onDay,
   onPickSection,
   onPickTrader,
   tradesHref,
@@ -189,10 +189,9 @@ export function DigestCard({
   summary: ActivitySummary | undefined;
   loading: boolean;
   unavailable?: boolean;
-  dayLabel: string;
-  canNext: boolean;
-  onPrev: () => void;
-  onNext: () => void;
+  /** The digest day (YYYY-MM-DD, NY); null while it is being picked. */
+  day: string | null;
+  onDay: (day: string) => void;
   onPickSection: (section: string) => void;
   onPickTrader: (trader: string) => void;
   /** Cross-links for the day (trades of the day, journal day). */
@@ -207,7 +206,7 @@ export function DigestCard({
   }
   const sectionList = [...sections.entries()].sort((a, b) => b[1] - a[1]);
   const t = summary?.trades;
-  const wr = t && t.wins + t.losses ? t.wins / (t.wins + t.losses) : null;
+  const wr = t && winRateOf(t.wins, t.losses);
   const social = (summary?.bySection ?? []).filter((r) => SOCIAL.has(r.action)).reduce((s, r) => s + r.count, 0);
   const total = sectionList.reduce((s, [, n]) => s + n, 0);
 
@@ -217,16 +216,9 @@ export function DigestCard({
         <div className="flex items-center gap-2">
           <Newspaper className="h-4 w-4 text-primary" aria-hidden="true" />
           <h2 className="text-sm font-semibold">{tr("digest.title")}</h2>
-          <span className="text-sm text-muted-foreground">· {dayLabel}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onPrev} aria-label={tr("digest.prevDay")}>
-            <ChevronLeft />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext} disabled={!canNext} aria-label={tr("digest.nextDay")}>
-            <ChevronRight />
-          </Button>
-        </div>
+        {/* The app's one day switcher (calendar days: the team acts on weekends too); [ ] T keys built in. */}
+        {day && <DayStepper value={day} onChange={onDay} max={nyDate()} step="calendar" />}
       </div>
 
       {unavailable ? (
@@ -240,7 +232,7 @@ export function DigestCard({
           <DigestStat label={tr("digest.teamActions")} value={fmtCount(total)} hint={social ? tr("digest.socialHint", { count: social }) : tr("digest.noSocial")} />
           <DigestStat
             label={tr("digest.tradesOfDay")}
-            value={fmtCount(t?.count ?? 0)}
+            value={t?.count != null ? fmtCount(t.count) : "—"}
             hint={t?.count ? tr("digest.tradesHint", { wr: fmtRate(wr), count: t.traders }) : tr("digest.nobodyTraded")}
           />
           <DigestStat

@@ -48,6 +48,7 @@ import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { unlockText } from "./today/today-text";
 
 import { personName } from "@/i18n";
+import { RegimeTags } from "@/components/shared/regime/regime-tags";
 const st = playbookSetupI18n.t; // called at render / call time only
 /** «Copy from …»: a person (Latin name in EN/UZ) or the office space, which the API stores as the label «Офис». */
 const OFFICE_AUTHOR = "Офис"; // i18n-ignore (stored copied_from_author of the office space)
@@ -161,7 +162,7 @@ export function SetupView({
               </>
             )}
           </nav>
-          <IconAction aria-label={t("view.close")} title={t("view.close")} onClick={onClose} className="hidden lg:inline-grid"><X /></IconAction>
+          <IconAction aria-label={t("view.close")} title={t("view.close")} onClick={onClose} className="hidden lg:[display:inline-grid]"><X /></IconAction>
         </div>
 
         <h2 id="pb-doc-title" className="mt-2 text-2xl font-semibold tracking-tight text-foreground [overflow-wrap:anywhere]">{entry.name}</h2>
@@ -196,6 +197,7 @@ export function SetupView({
           {live && access.space === "office" && can("settings.manage") && access.canEdit && <MinTierSelect entry={entry} />}
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
+        <div className="mt-2"><RegimeTags id={entry.id} regimes={entry.regimes} canEdit={live && access.canEdit} /></div>
         {proposed && access.canPromote && entry.officeProposedNote && (
           <p className="mt-2 rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.08)] px-3 py-2 text-sm text-foreground">
             <span className="text-muted-foreground">{t("view.proposalComment")} </span>{entry.officeProposedNote}
@@ -206,15 +208,12 @@ export function SetupView({
           {access.canAddExamples && live && (
             <Button size="sm" onClick={() => onAddExamples(entry)} aria-keyshortcuts="a" title={t("view.addExamplesTitle")}><Plus className="h-4 w-4" aria-hidden="true" /> {t("view.addExamples")}</Button>
           )}
-          {access.canShare && live && (
-            <Button size="sm" variant="outline" onClick={() => onShare(entry)}><Share2 className="h-4 w-4" aria-hidden="true" /> {access.shared ? t("view.access") : t("view.share")}</Button>
-          )}
           {canCopy && (
             <Button size="sm" variant="outline" onClick={() => action.mutate("copy")} disabled={action.isPending} title={t("view.copyToMineTitle")}><CopyPlus className="h-4 w-4" aria-hidden="true" /> {t("view.copyToMine")}</Button>
           )}
           {live && access.mine && !access.canPromote && (
             proposed
-              ? <Button size="sm" variant="ghost" onClick={() => action.mutate("unpropose")} disabled={action.isPending}><Undo2 className="h-4 w-4" aria-hidden="true" /> {t("view.unpropose")}</Button>
+              ? null
               : (
                 <Popover open={proposeOpen} onOpenChange={setProposeOpen}>
                   <PopoverTrigger asChild>
@@ -247,7 +246,7 @@ export function SetupView({
                 </Popover>
               )
           )}
-          {live && access.canPromote && (
+          {live && access.canPromote && proposed && (
             <Button size="sm" variant="outline" onClick={() => action.mutate("promote")} disabled={action.isPending} title={t("view.promoteTitle")}>
               <ArrowUpFromLine className="h-4 w-4" aria-hidden="true" /> {t("view.promote")}
             </Button>
@@ -257,15 +256,24 @@ export function SetupView({
               <X className="h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.reject")}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => onCompare(entry)}><Columns2 className="h-4 w-4" aria-hidden="true" /> {t("view.compare")}</Button>
-          {access.canEdit && <MoveToFolderButton entry={entry} folders={folders} folderColors={folderColors} />}
+          {/* Design audit wave 3: secondary actions (share, compare, promote, withdraw) live in «…» — one primary stays visible. */}
           <span className="ml-auto flex items-center gap-1">
+            {access.canEdit && <MoveToFolderButton entry={entry} folders={folders} folderColors={folderColors} compact />}
             {access.canEdit && <PlaybookAICritiqueButton playbookId={entry.id} playbookName={entry.name} />}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <IconAction aria-label={commonI18n.t("actions.moreActions")} title={commonI18n.t("actions.moreActions")}><MoreHorizontal /></IconAction>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="end" className="w-60">
+                {access.canShare && live && <DropdownMenuItem onSelect={() => onShare(entry)}><Share2 className="h-4 w-4" aria-hidden="true" /> {access.shared ? t("view.access") : t("view.share")}</DropdownMenuItem>}
+                {live && access.canPromote && !proposed && (
+                  <DropdownMenuItem onSelect={() => action.mutate("promote")} disabled={action.isPending} title={t("view.promoteTitle")}><ArrowUpFromLine className="h-4 w-4" aria-hidden="true" /> {t("view.promote")}</DropdownMenuItem>
+                )}
+                {live && access.mine && !access.canPromote && proposed && (
+                  <DropdownMenuItem onSelect={() => action.mutate("unpropose")} disabled={action.isPending}><Undo2 className="h-4 w-4" aria-hidden="true" /> {t("view.unpropose")}</DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={() => onCompare(entry)}><Columns2 className="h-4 w-4" aria-hidden="true" /> {t("view.compare")} <span className="ml-auto text-xs text-muted-foreground">C</span></DropdownMenuItem>
+                <DropdownMenuSeparator />
                 {access.canEdit && <DropdownMenuItem onSelect={() => onEdit(entry)}><Pencil className="h-4 w-4" aria-hidden="true" /> {t("view.editAll")} <span className="ml-auto text-xs text-muted-foreground">E</span></DropdownMenuItem>}
                 {viewer.canEdit && <DropdownMenuItem onSelect={() => onDuplicate(entry)}><Copy className="h-4 w-4" aria-hidden="true" /> {t("view.duplicate")}</DropdownMenuItem>}
                 {access.canEdit && <DropdownMenuItem onSelect={() => onCreateChild(entry)}><FileText className="h-4 w-4" aria-hidden="true" /> {t("view.newVariant")}</DropdownMenuItem>}
@@ -537,12 +545,12 @@ export function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
   if (entry.updatedAt) facts.push([st("history.updated"), timeAgo(entry.updatedAt) ?? ""]);
   if (entry.copiedFromAuthor) facts.push([st("history.copiedFrom"), `${copiedFromLabel(entry.copiedFromAuthor)}${entry.copiedFromId ? ` (#${entry.copiedFromId})` : ""}`]);
   if (entry.promotedFromId) facts.push([st("history.promotedFrom"), `#${entry.promotedFromId}`]);
-  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push([st("history.shared"), `${fmtDate(entry.sharedAt, "short")}${entry.sharedBy ? ` · ${personName(entry.sharedBy)}` : ""}`]);
-  if (entry.officeProposedAt) facts.push([st("history.proposed"), `${fmtDate(entry.officeProposedAt, "short")}${entry.officeProposedBy ? ` · ${personName(entry.officeProposedBy)}` : ""}`]);
+  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push([st("history.shared"), `${fmtDate(entry.sharedAt, "medium")}${entry.sharedBy ? ` · ${personName(entry.sharedBy)}` : ""}`]);
+  if (entry.officeProposedAt) facts.push([st("history.proposed"), `${fmtDate(entry.officeProposedAt, "medium")}${entry.officeProposedBy ? ` · ${personName(entry.officeProposedBy)}` : ""}`]);
   if (entry.reviewed && entry.reviewedBy) facts.push([st("history.reviewedBy"), personName(entry.reviewedBy)]);
 
   return (
-    <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]">
       <DocSection title={st("history.journal")} icon={History} actions={<PlaybookRevisionsButton playbookId={entry.id} currentSnapshot={entry as unknown as Record<string, unknown>} />}>
         {q.isLoading ? (
           <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none" />)}</div>

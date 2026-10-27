@@ -8,8 +8,12 @@ import {
   horizonOf as horizonOfTrade, maxDrawdownByDay, payoffOf, winRateOf, entryMinutes,
 } from "@/lib/trade-math";
 import { personName } from "@/i18n";
-import { fmtDateCustom, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
+import { fmtDateCustom, fmtDateRange, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
+import { commonI18n } from "@/i18n/ns/common";
+import { prevDayRange, presetRange, type DayRange } from "@/lib/period-range";
+import { DEFAULT_ANALYTICS_PERIOD, type AnalyticsPeriod, type AnalyticsPreset } from "@/hooks/use-analytics-scope";
+import { heatFill } from "@/components/shared/charts/heat";
 
 /*
  * R / P&L / result buckets come from @/lib/trade-math — the single desk definition shared with /analytics,
@@ -38,15 +42,8 @@ export const horizonLabel = (h: Horizon): string => statsI18n.t(`horizon.${h}`);
 export function horizonOf(t: Trade): Horizon {
   return horizonOfTrade(t);
 }
-export type PeriodKey = "7d" | "30d" | "90d" | "ytd" | "all";
-
-const PERIOD_KEYS: PeriodKey[] = ["7d", "30d", "90d", "ytd", "all"];
-/** Period options (labels are getters: they follow the UI language). */
-export const PERIOD_OPTIONS: { value: PeriodKey; readonly label: string; readonly long: string }[] = PERIOD_KEYS.map((value) => ({
-  value,
-  get label() { return statsI18n.t(`period.${value}.label`); },
-  get long() { return statsI18n.t(`period.${value}.long`); },
-}));
+/** The period presets of /stats: the vocabulary of the analytics group (hooks/use-analytics-scope; no «Сегодня»). */
+export type PeriodKey = AnalyticsPreset;
 
 /** Short weekday for a Monday-first index 0–6 (weekdayIdx): «Пн» / «Mon» / «Du». Language read at call time. */
 export function weekdayLabel(i: number): string {
@@ -82,23 +79,30 @@ export function weekdayIdx(k: string): number {
 
 export type Range = { from: string | null; to: string | null };
 
-/** Current range and the equally long range right before it (null for "all"). */
+/** Current range (ending today) and the equally long range right before it (null for «Всё»). */
 export function periodRanges(period: PeriodKey, now = new Date()): { cur: Range; prev: Range | null } {
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const shift = (d: Date, days: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
-  if (period === "all") return { cur: { from: null, to: null }, prev: null };
-  if (period === "ytd") {
-    const from = new Date(today.getFullYear(), 0, 1);
-    const prevFrom = new Date(today.getFullYear() - 1, 0, 1);
-    const prevTo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-    return { cur: { from: toKey(from), to: null }, prev: { from: toKey(prevFrom), to: toKey(prevTo) } };
+  const win = presetRange(period, toKey(now));
+  if (!win) return { cur: { from: null, to: null }, prev: null };
+  return { cur: { from: win.from, to: null }, prev: prevDayRange(win) };
+}
+
+/** A preset or «Свой период» (the custom range is stored next to it). */
+export type StatsPeriod = AnalyticsPeriod;
+
+/** periodRanges plus «Свой период»: the range itself and the equally long window right before it. */
+export function statsRanges(period: StatsPeriod, custom: DayRange | null, now = new Date()): { cur: Range; prev: Range | null } {
+  if (period === "custom" && custom) return { cur: { from: custom.from, to: custom.to }, prev: prevDayRange(custom) };
+  return periodRanges(period === "custom" ? DEFAULT_ANALYTICS_PERIOD : period, now);
+}
+
+/** Label / phrase of the period («Квартал» / «последние 90 дней»; «Свой период» / «3–21 окт. 2026 г.»). */
+export function periodTexts(period: StatsPeriod, custom: DayRange | null): { label: string; long: string; short: string } {
+  if (period === "custom" && custom) {
+    const range = fmtDateRange(custom.from, custom.to, "short");
+    return { label: commonI18n.t("periodPicker.title"), long: range, short: range };
   }
-  const n = period === "7d" ? 7 : period === "30d" ? 30 : 90;
-  const from = shift(today, -(n - 1));
-  return {
-    cur: { from: toKey(from), to: null },
-    prev: { from: toKey(shift(from, -n)), to: toKey(shift(from, -1)) },
-  };
+  const p = period === "custom" ? DEFAULT_ANALYTICS_PERIOD : period;
+  return { label: commonI18n.t(`periodPicker.presets.${p}`), long: statsI18n.t(`period.${p}`), short: commonI18n.t(`periodPicker.short.${p}`) };
 }
 
 /**
@@ -303,6 +307,7 @@ export function equitySeries(trades: Trade[], metric: Metric): EquityPoint[] {
     const v = valueOf(t, metric);
     if (v == null) continue;
     cum += v;
+    // core-metric-ok: the underwater series / candle of the chart, point by point
     peak = Math.max(peak, cum);
     out.push({ idx: out.length + 1, equity: cum, drawdown: cum - peak, label: `${t.ticker} · ${fmtDayKey(dayKey(t))}`, id: t.id });
   }
@@ -360,7 +365,7 @@ export function groupBy(trades: Trade[], keyFn: (t: Trade) => string | null | un
     count: e.count,
     closed: e.closed,
     wins: e.wins,
-    winRate: e.wins + e.losses ? e.wins / (e.wins + e.losses) : null,
+    winRate: winRateOf(e.wins, e.losses),
     value: e.valued ? e.sum : null,
     avg: e.valued ? e.sum / e.valued : null,
     valued: e.valued,
@@ -407,11 +412,9 @@ export function fmtMetricCompact(v: number | null | undefined, metric: Metric): 
   return fmtUsd(v, { signed: true, compact: true, fallback: "" });
 }
 
-/** Background colour for a heat cell: intensity ∝ |v| / max. Uses theme tokens only. */
+/** Background colour for a heat cell: the shared heat scale (intensity ∝ √(|v| / max)), theme tokens only. */
 export function heatBg(v: number | null | undefined, max: number): string | undefined {
-  if (v == null || !Number.isFinite(v) || v === 0 || max <= 0) return undefined;
-  const a = 0.12 + 0.48 * Math.min(1, Math.abs(v) / max);
-  return v > 0 ? `hsl(var(--up) / ${a.toFixed(2)})` : `hsl(var(--down) / ${a.toFixed(2)})`;
+  return heatFill(v, max);
 }
 
 /* ───────────── entry hour · bases · names ───────────── */

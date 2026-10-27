@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Bookmark, BookmarkCheck, Copy, Pencil, Trash2, TrendingUp, TrendingDown, Circle, CheckCheck, Hash, CheckCircle2, Crosshair, Eye, UserRound } from "lucide-react";
 import { AddToPlaybookButton, type PlaybookPayload } from "@/components/add-to-playbook";
-import { Pill } from "@/components/ds";
+import { Pill, RowActions } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { FeedGallery } from "./FeedGallery";
 import { hasServerAcks, parseShots, parseTickers, splitList, type AckKind, type FeedEntry } from "./feed-utils";
@@ -160,6 +160,7 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
     <article
       ref={ref}
       id={`feed-${feed.id}`}
+      data-row
       aria-label={t("card.entryAria", { theme: feed.marketTheme || t("card.noThemeLower") })}
       className={cn(
         "glass-panel relative overflow-hidden rounded-2xl",
@@ -167,7 +168,6 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
         p.focused && "ring-2 ring-primary",
       )}
     >
-      {unread && <span className="absolute inset-y-0 left-0 w-[3px] bg-primary" aria-hidden="true" />}
 
       {/* header */}
       <div className="flex items-start gap-3 px-4 pt-4 sm:px-5">
@@ -191,14 +191,23 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
             {feed.marketTheme ? <Hl text={feed.marketTheme} q={q} /> : <span className="text-muted-foreground">{t("card.noTheme")}</span>}
           </h3>
         </div>
-        <div className="-mr-1 flex shrink-0 items-center">
+        {/* One visible toggle (bookmark); the rest shows on hover / focus — «В плейбук» and a «…» menu (design audit:
+            8 actions on every post were noise). */}
+        <div className="-mr-1 flex shrink-0 items-center gap-0.5">
           <IconBtn label={p.bookmarked ? t("card.unbookmark") : t("card.bookmark")} active={p.bookmarked} onClick={p.onBookmark}>
             {p.bookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
           </IconBtn>
-          <IconBtn label={unread ? t("card.markRead") : t("card.markUnread")} onClick={unread ? p.onMarkRead : p.onMarkUnread}>
-            {unread ? <CheckCheck className="h-4 w-4" /> : <Circle className="h-3.5 w-3.5" />}
-          </IconBtn>
-          <IconBtn label={t("card.copy")} onClick={p.onCopy}><Copy className="h-4 w-4" /></IconBtn>
+          <RowActions
+            menuLabel={t("card.moreAria", { theme: feed.marketTheme || t("card.noThemeLower") })}
+            more={[
+              { label: unread ? t("card.markRead") : t("card.markUnread"), icon: unread ? CheckCheck : Circle, onSelect: unread ? p.onMarkRead : p.onMarkUnread },
+              { label: t("card.copy"), icon: Copy, onSelect: p.onCopy },
+              p.canEdit && { label: t("card.edit"), icon: Pencil, onSelect: p.onEdit },
+              p.canEdit && { label: t("card.delete"), icon: Trash2, onSelect: p.onDelete },
+            ]}
+          >
+            {p.canEdit && <AddToPlaybookButton payload={p.playbookPayload} size="icon" />}
+          </RowActions>
         </div>
       </div>
 
@@ -233,9 +242,9 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
 
         {/* works / doesn't */}
         {(feed.whatWorksNow || feed.whatDoesntWork) && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {feed.whatWorksNow && (
-              <div className="rounded-xl border border-up/25 bg-up/[0.06] p-3">
+              <div>
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-up">
                   <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" /> {t("card.works")}
                 </div>
@@ -243,7 +252,7 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
               </div>
             )}
             {feed.whatDoesntWork && (
-              <div className="rounded-xl border border-down/25 bg-down/[0.06] p-3">
+              <div>
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-down">
                   <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" /> {t("card.doesntWork")}
                 </div>
@@ -260,7 +269,7 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
         )}
 
         {/* footer: tags + acks + write actions */}
-        {(tags.length > 0 || p.canEdit || acks) && (
+        {(tags.length > 0 || acks) && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               {acks && (
@@ -283,13 +292,6 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
                 </button>
               ))}
             </div>
-            {p.canEdit && (
-              <div className="ml-auto flex items-center gap-0.5">
-                <span className="grid h-8 w-8 place-items-center"><AddToPlaybookButton payload={p.playbookPayload} size="icon" /></span>
-                <IconBtn label={t("card.edit")} onClick={p.onEdit}><Pencil className="h-4 w-4" /></IconBtn>
-                <IconBtn label={t("card.delete")} onClick={p.onDelete} className="hover:text-down"><Trash2 className="h-4 w-4" /></IconBtn>
-              </div>
-            )}
           </div>
         )}
       </div>

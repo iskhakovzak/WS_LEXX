@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useServerPref } from "@/hooks/use-server-pref";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getListDailyFeedQueryKey, type DailyFeed } from "@workspace/api-client-react";
 import { http } from "@/lib/api/http";
@@ -113,6 +114,12 @@ function loadState(user: string): StoredState {
   return { baseline: fallbackBaseline, read: [], bookmarks: [] };
 }
 
+/** Account copy: a list of ids; the old browser copy: the whole viewer state with `bookmarks` inside. */
+export function parseBookmarkIds(v: unknown): number[] | null {
+  const list = Array.isArray(v) ? v : v && typeof v === "object" && Array.isArray((v as StoredState).bookmarks) ? (v as StoredState).bookmarks : null;
+  return list ? list.filter((n): n is number => typeof n === "number" && Number.isInteger(n)).slice(0, 500) : null;
+}
+
 function saveState(user: string, s: StoredState) {
   try { localStorage.setItem(storageKey(user), JSON.stringify(s)); } catch { /* ignore */ }
 }
@@ -133,8 +140,11 @@ export function useFeedViewerState(user: string) {
     });
   }, [user]);
 
+  // Bookmarks are the person's own list: kept on the account (users.settings.prefs["feed.bookmarks"]), the old
+  // browser-only list is moved up once. The read state stays per browser.
+  const [bookmarks, setBookmarks] = useServerPref<number[]>("feed.bookmarks", [], { legacyKey: storageKey(user), parse: parseBookmarkIds });
   const readSet = useMemo(() => new Set(state.read), [state.read]);
-  const bookmarkSet = useMemo(() => new Set(state.bookmarks), [state.bookmarks]);
+  const bookmarkSet = useMemo(() => new Set(bookmarks), [bookmarks]);
   const baselineMs = useMemo(() => Date.parse(state.baseline) || 0, [state.baseline]);
 
   /** Created after the viewer's baseline (first visit minus a short lookback / last «прочитать всё»). */
@@ -160,10 +170,7 @@ export function useFeedViewerState(user: string) {
   /** Moving the baseline to "now" marks everything existing as read and keeps the read list small. */
   const markAllRead = useCallback(() => update((s) => ({ ...s, baseline: new Date().toISOString(), read: [] })), [update]);
 
-  const toggleBookmark = useCallback((id: number) => update((s) => ({
-    ...s,
-    bookmarks: s.bookmarks.includes(id) ? s.bookmarks.filter((x) => x !== id) : [...s.bookmarks, id],
-  })), [update]);
+  const toggleBookmark = useCallback((id: number) => setBookmarks((b) => (b.includes(id) ? b.filter((x) => x !== id) : [...b, id])), [setBookmarks]);
 
   return { isUnread, afterBaseline, markRead, markUnread, markAllRead, bookmarkSet, toggleBookmark };
 }

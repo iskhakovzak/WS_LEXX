@@ -27,6 +27,12 @@ export default {
     title: "Только для участников деска",
     desc: "Войдите под своим аккаунтом, чтобы видеть сделки коллег.",
   },
+  top: {
+    label: "Деск торговал {date}",
+    aria: "Самые торгуемые тикеры деска за {date}",
+    chipTitle: "{traders} · {trades}",
+    mine: "вы тоже торговали",
+  },
   legend: {
     title: "Трейдеры",
     count: { one: "{count} трейдер", few: "{count} трейдера", many: "{count} трейдеров", other: "{count} трейдера" },

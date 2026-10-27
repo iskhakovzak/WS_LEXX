@@ -1,25 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
-import {
-  BarChart3, Columns3, Lightbulb, List, Plus, RotateCcw, Search, Target, Timer, TrendingUp, X, Scale,
-} from "lucide-react";
+import { replaceSearchParams } from "@/hooks/use-search-param";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
+import { Lightbulb, PieChart, Plus, Scale, Search, Target, Timer, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, ErrorState, FilterChip, Page, PageHeader, Panel, Segmented, StatCard, StatGrid, Toolbar } from "@/components/ds";
+import { EmptyState, ErrorState, Page, PageHeader, Panel, StatCard, StatGrid } from "@/components/ds";
 import { useAuth, WriteOnly } from "@/contexts/auth-context";
 import { stringToScreenshotUrls } from "@/components/screenshot-fields";
 import { TradeIdeaForm, type TradeIdeaFormData } from "@/components/trade-idea-form";
 import { IdeaBoard } from "@/components/ideas/IdeaBoard";
 import { IdeaCard } from "@/components/ideas/IdeaCard";
 import { IdeaDetailSheet } from "@/components/ideas/IdeaDetailSheet";
+import { IdeasToolbar, type IdeasScope, type IdeasSort, type IdeasStageFilter, type IdeasView } from "@/components/ideas/IdeasToolbar";
 import { IDEAS_KEY, useIdeaMutations, useIdeas, useTracking } from "@/components/ideas/hooks";
 import {
-  HORIZONS, STAGES, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
+  STAGES, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
   type Horizon, type IdeaTracking, type Stage, type TradeIdea,
 } from "@/components/ideas/model";
 import { fmtDate, fmtNum, fmtR, fmtRate } from "@/lib/format";
@@ -27,15 +26,23 @@ import { nyDate, addDays } from "@/lib/trading-date";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
 import { UndoToast } from "@/components/undo-toast";
-import { PersonSelect } from "@/components/people/person-select";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName, comparePersonNames } from "@/i18n";
 
-type View = "board" | "list";
-type Scope = "all" | "mine";
-type Sort = "new" | "score" | "rr";
-type StageFilter = "all" | Stage;
+type View = IdeasView;
+type Scope = IdeasScope;
+type Sort = IdeasSort;
+type StageFilter = IdeasStageFilter;
+
+function urlPick<T extends string>(name: string, allowed: readonly string[], fallback: T): T {
+  try {
+    const v = new URLSearchParams(window.location.search).get(name);
+    return v && (!allowed.length || allowed.includes(v)) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const PREF = { view: "ideas.view", scope: "ideas.scope", sort: "ideas.sort", author: "ideas.author" };
 
@@ -93,10 +100,16 @@ export default function TradeIdeas() {
   const [scope, setScopeState] = useState<Scope>(() => readPref<Scope>(PREF.scope, ["all", "mine"], "all"));
   const [sort, setSortState] = useState<Sort>(() => readPref<Sort>(PREF.sort, ["new", "score", "rr"], "new"));
   const [author, setAuthorState] = useState<string>(() => { try { return localStorage.getItem(PREF.author) || "all"; } catch { return "all"; } });
-  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  // Stage / horizon / ticker filters ride in the URL (?stage= ?hz= ?ticker=): a reload or a shared link keeps them.
+  const [stageFilter, setStageFilter] = useState<StageFilter>(() => urlPick<StageFilter>("stage", ["draft", "review", "active", "won", "lost", "rejected"], "all"));
   const [query, setQuery] = useState("");
-  const [tickerFilter, setTickerFilter] = useState<string | null>(null);
-  const [horizon, setHorizon] = useState<"all" | Horizon>("all");
+  const [tickerFilter, setTickerFilter] = useState<string | null>(() => urlPick("ticker", [], "").toUpperCase() || null);
+  const [horizon, setHorizon] = useState<"all" | Horizon>(() => urlPick<"all" | Horizon>("hz", ["intraday", "overnight", "swing"], "all"));
+  const tickerRef = useRef<string | null>(null);
+  useEffect(() => {
+    tickerRef.current = tickerFilter;
+    replaceSearchParams({ ticker: tickerFilter, stage: stageFilter, hz: horizon }, { stage: "all", hz: "all" });
+  }, [tickerFilter, stageFilter, horizon]);
   const setView = (v: View) => { setViewState(v); writePref(PREF.view, v); };
   const setScope = (v: Scope) => { setScopeState(v); writePref(PREF.scope, v); };
   const setSort = (v: Sort) => { setSortState(v); writePref(PREF.sort, v); };
@@ -207,10 +220,10 @@ export default function TradeIdeas() {
       if (canEdit) { setEditing(null); setPrefillTicker(t); setFormOpen(true); }
       params.delete("new"); strip = true;
     }
-    if (t) {
+    if (t && t !== tickerRef.current) {
+      tickerRef.current = t;
       setTickerFilter(t);
-      setStageFilter("all");
-      params.delete("ticker"); strip = true;
+      if (!params.get("stage")) setStageFilter("all");
     }
     const raw = params.get("idea") ?? params.get("highlight");
     if (raw && !isLoading && raw !== handledIdeaParam.current) {
@@ -277,7 +290,6 @@ export default function TradeIdeas() {
       }
       if (isTypingTarget(e.target) || formOpen) return;
       if ((e.key === "n" || e.key === "т") && canEdit) { e.preventDefault(); openCreate(); } // i18n-ignore
-      else if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -292,8 +304,7 @@ export default function TradeIdeas() {
     }
   }
 
-  const filtersActive = scope !== "all" || author !== "all" || horizon !== "all" || !!tickerFilter || !!query.trim();
-  const resetFilters = () => { setScope("all"); setAuthor("all"); setHorizon("all"); setTickerFilter(null); setQuery(""); setStageFilter("all"); };
+    const resetFilters = () => { setScope("all"); setAuthor("all"); setHorizon("all"); setSort("new"); setTickerFilter(null); setQuery(""); setStageFilter("all"); };
 
   // Day groups for list view (only when sorted by date). Days are NY trading dates, like everywhere on the desk.
   const dayGroups = useMemo(() => {
@@ -314,6 +325,7 @@ export default function TradeIdeas() {
 
   const anim = reduceMotion ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] as const } };
 
+  const noIdeas = !isLoading && !isError && ideas.length === 0;
   return (
     <Page>
       <PageHeader
@@ -323,7 +335,7 @@ export default function TradeIdeas() {
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setLocation("/trade-idea-stats")} className="gap-1.5">
-              <BarChart3 className="h-4 w-4" aria-hidden="true" /> {t("page.stats")}
+              <PieChart className="h-4 w-4" aria-hidden="true" /> {t("page.stats")}
             </Button>
             <WriteOnly>
               <Button size="sm" onClick={openCreate} className="hidden gap-1.5 sm:inline-flex" title={t("page.newIdeaTitle")}>
@@ -335,6 +347,8 @@ export default function TradeIdeas() {
         }
       />
 
+      {/* An empty page shows its empty state alone: no KPI row of zeros and no filters until the first idea (design audit). */}
+      {!noIdeas && <>
       <StatGrid>
         <StatCard
           label={isReviewer ? t("page.awaitingReview") : t("page.onReview")}
@@ -375,90 +389,25 @@ export default function TradeIdeas() {
         />
       </StatGrid>
 
-      <Toolbar className="gap-2">
-        <div className="relative min-w-0 flex-1 basis-56">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            ref={searchRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-            placeholder={t("page.searchPlaceholder")}
-            aria-label={t("page.searchAria")}
-            className="pl-10 pr-10"
-          />
-          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
-        </div>
-        <Segmented<Scope>
-          ariaLabel={t("page.scopeAria")}
-          value={scope}
-          onChange={setScope}
-          options={[{ value: "all", label: tc("states.all") }, { value: "mine", label: tc("fields.mine"), disabled: !me }]}
-        />
-        <PersonSelect value={author} onValueChange={setAuthor} allValue="all" allLabel={t("page.allAuthors")} options={authors} placeholder={t("page.author")} ariaLabel={t("page.author")} className="h-9 w-auto min-w-[150px] max-w-[240px]" />
-        <Select value={horizon} onValueChange={(v) => setHorizon(v as "all" | Horizon)}>
-          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label={t("page.horizon")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("page.anyHorizon")}</SelectItem>
-            {HORIZONS.map((h) => <SelectItem key={h.key} value={h.key}>{h.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={sort} onValueChange={(v) => setSort(v as Sort)}>
-          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label={t("page.sortAria")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="new">{t("page.sortNew")}</SelectItem>
-            <SelectItem value="score">{t("page.sortScore")}</SelectItem>
-            <SelectItem value="rr">{t("page.sortRr")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <Segmented<View>
-          ariaLabel={t("page.viewAria")}
-          className="sm:ml-auto"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "board", label: <><Columns3 className="h-3.5 w-3.5" aria-hidden="true" />{t("page.board")}</> },
-            { value: "list", label: <><List className="h-3.5 w-3.5" aria-hidden="true" />{t("page.list")}</> },
-          ]}
-        />
-      </Toolbar>
-
-      {(view === "list" || tickerFilter || filtersActive) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {view === "list" && (
-            <>
-              <FilterChip active={stageFilter === "all"} onClick={() => setStageFilter("all")} count={sorted.length}>{tc("states.all")}</FilterChip>
-              {STAGES.filter((s) => s.key !== "rejected" || groups.rejected.length > 0).map((s) => (
-                <FilterChip key={s.key} active={stageFilter === s.key} onClick={() => setStageFilter(s.key)} count={groups[s.key].length}>
-                  {s.short}
-                </FilterChip>
-              ))}
-            </>
-          )}
-          {tickerFilter && (
-            <FilterChip active onClick={() => setTickerFilter(null)} title={t("page.resetTicker")}>
-              {tickerFilter} <X className="h-3 w-3" aria-hidden="true" />
-            </FilterChip>
-          )}
-          {filtersActive && (
-            <Button size="sm" variant="ghost" onClick={resetFilters} className="gap-1 text-muted-foreground">
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> {tc("actions.resetFilters")}
-            </Button>
-          )}
-          {trackingFetching && <span className="text-2xs text-muted-foreground">{t("page.updatingPrices")}</span>}
-        </div>
-      )}
+      <IdeasToolbar
+        f={{ query, view, scope, author, horizon, sort, stage: stageFilter, ticker: tickerFilter }}
+        set={{ setQuery, setView, setScope, setAuthor, setHorizon, setSort, setStage: setStageFilter, setTicker: setTickerFilter }}
+        me={me}
+        authors={authors}
+        stageCounts={{ draft: groups.draft.length, review: groups.review.length, active: groups.active.length, won: groups.won.length, lost: groups.lost.length, rejected: groups.rejected.length }}
+        total={sorted.length}
+        resultCount={view === "list" ? listItems.length : scoped.length}
+        updating={trackingFetching}
+        searchRef={searchRef}
+        onReset={resetFilters}
+      />
+      </>}
 
       {isLoading && <BoardSkeleton />}
 
       {isError && <ErrorState title={t("page.loadFailed")} error={error} onRetry={refetch} />}
 
-      {!isLoading && !isError && ideas.length === 0 && (
+      {noIdeas && (
         <Panel>
           <EmptyState
             icon={Lightbulb}
@@ -566,6 +515,7 @@ export default function TradeIdeas() {
             submitLabel={editing && editing.status !== "draft" ? tc("actions.save") : t("form.saveDraft")}
             onCancel={closeForm}
             submitting={submitting}
+            draftKey={`idea:${editing?.id ?? "new"}`}
           />
         </DialogContent>
       </Dialog>

@@ -61,6 +61,14 @@ export default {
   openTheme: "{name} mavzusini ochish",
   sheetDesc: "Mavzu tikerlari, teng vazn. Saralash uchun ustun sarlavhasini bosing.",
   missing: "Maʼlumot yoʻq: {list}",
+  warming: {
+    title: "Kotirovkalar yuklanmoqda",
+    desc: "Server ishga tushgandan keyin mavzularning birinchi hisobi bir daqiqagacha davom etadi. Sahifa oʻzi yangilanadi.",
+  },
+  slow: {
+    title: "Mavzular yuklanmadi",
+    desc: "Server 9 soniya ichida javob bermadi. Qayta urinib koʻring.",
+  },
   noData: {
     title: "Kotirovkalar yoʻq",
     desc: "Kotirovkalar manbasi hozir mavjud emas. Sahifa oʻzi yangilanadi.",

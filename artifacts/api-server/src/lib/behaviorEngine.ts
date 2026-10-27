@@ -208,7 +208,8 @@ export type DayTimeline = {
   norms: { tradesPerDayNorm: number; medianGapMin: number | null; revengeMin: number; euphoriaMin: number };
 };
 
-const DEFAULTS: Required<BehaviorOptions> = {
+/** Canonical behaviour thresholds (roadmap R3: one source) — lib/dayReport reads revenge / size-up from here. */
+export const DEFAULTS: Readonly<Required<BehaviorOptions>> = {
   revengeMin: 10,
   overtradingK: 2,
   martingaleRatio: 1.3,
@@ -1024,6 +1025,7 @@ export function dayTimeline(input: BehaviorTrade[], date: string, options: Behav
   let cum = 0, peak = 0, trough = 0, wins = 0, losses = 0;
   const rows: TimelineTrade[] = day.map((t) => {
     cum = round2(cum + (t.net ?? 0));
+    // core-metric-ok: the day's intraday high / low of the trade-by-trade curve (timeline), not the drawdown metric
     peak = Math.max(peak, cum); trough = Math.min(trough, cum);
     if (t.result === "win") wins++; else if (t.result === "loss") losses++;
     return {

@@ -8,6 +8,8 @@ import { addDays, nyDate } from "../lib/tradingDate";
 import { badRequest, forbidden } from "../lib/http";
 import { psychologyT } from "../lib/behaviorI18n";
 import { langOf, type Lang } from "../i18n";
+import { facetCacheKey, facetsOfQuery, keepFacetPassing } from "../lib/tradeFacetsFilter";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const psychologyCache = new TtlCache<string, unknown>(3 * 60 * 1000);
 
@@ -77,7 +79,7 @@ function aggregate(trades: TradeRow[]): GroupAgg {
     count: trades.length,
     wins,
     losses,
-    winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+    winRate: winRateOf(wins, losses),
     avgR: rs.length > 0 ? round(rs.reduce((a, b) => a + b, 0) / rs.length) : null,
     rCount: rs.length,
     avgPnl: pnls.length > 0 ? round(pnls.reduce((a, b) => a + b, 0) / pnls.length) : null,
@@ -246,7 +248,8 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   if (setup.length > 120) throw badRequest("INVALID_FIELD", { field: "setup" }, { field: "setup" });
 
   // Generated texts depend on the language → it is part of the cache key.
-  const CACHE_KEY = `psychology:${lang}:${userId}:${from}:${to}:${side}:${ticker}:${setup}:${horizon}`;
+  const facets = facetsOfQuery(req.query as Record<string, unknown>); // /analytics «Разрезы»
+  const CACHE_KEY = `psychology:${lang}:${userId}:${from}:${to}:${side}:${ticker}:${setup}:${horizon}:${facetCacheKey(facets)}`;
   const cached = psychologyCache.get(CACHE_KEY);
   if (cached) { res.json(cached); return; }
 
@@ -262,7 +265,7 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
     const day = (d ?? "").substring(0, 10);
     return (!from || day >= from) && (!to || day <= to);
   };
-  const allTrades = rawTrades.filter((t) => {
+  const allTrades = await keepFacetPassing(facets, rawTrades.filter((t) => {
     if (!inRange(t.date)) return false;
     if (side && !(t.side ?? "").toLowerCase().startsWith(side)) return false;
     if (ticker && (t.ticker ?? "").toUpperCase() !== ticker) return false;
@@ -272,7 +275,7 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
       else if ((t.setup ?? "") !== setup) return false;
     }
     return true;
-  });
+  }), (t) => t.id);
   const allStates = rawStates.filter((s) => inRange(s.date));
 
   // WR, expectancy (R) and P&L by conviction level (1-5)

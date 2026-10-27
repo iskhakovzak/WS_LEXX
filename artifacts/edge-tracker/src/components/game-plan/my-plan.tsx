@@ -282,7 +282,7 @@ function MyPlanEditor({
   );
 
   return (
-    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
       <Panel
         title={
           <span className="flex items-center gap-2">
@@ -524,7 +524,7 @@ function DeskSummary({ plan, taken, onAdd }: { plan: GamePlan | null; taken: Set
 
 function MyPlanSkeleton() {
   return (
-    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]" aria-busy="true" aria-label={gpI18n.t("page.loadingPlan")}>
+    <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]" aria-busy="true" aria-label={gpI18n.t("page.loadingPlan")}>
       <div className="glass-panel flex flex-col gap-4 rounded-2xl p-[var(--panel-p)]">
         <Skeleton className="h-5 w-48 rounded-full" />
         <Skeleton className="h-9 w-full max-w-80 rounded-full" />

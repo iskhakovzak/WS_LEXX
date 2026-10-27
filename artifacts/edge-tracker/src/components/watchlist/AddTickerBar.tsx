@@ -169,7 +169,7 @@ export function AddTickerBar({
           title={t("add.title")}
           autoComplete="off"
           spellCheck={false}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm uppercase tracking-wide outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-muted-foreground"
+          className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-muted-foreground"
         />
         {multiPreview && (
           <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground md:inline">

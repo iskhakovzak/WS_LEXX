@@ -139,7 +139,7 @@ export default {
     unknown: "Ошибка «{id}»",
     ruleUnknown: "Правило «{kind}»",
     behavior: {
-      revenge: "Реванш после убытка",
+      revenge: "Быстрый перезаход после убытка",
       martingale: "Рост размера после убытка",
       overtrading: "Овертрейдинг",
       fatigue: "Сделки на усталости",

@@ -7,6 +7,8 @@ import { levelName } from "@/components/shared/badges";
 import { masteryLevelName } from "@/components/shared/gamification-labels";
 import { gamificationI18n } from "@/i18n/ns/gamification";
 import { questsI18n } from "@/i18n/ns/quests";
+import { academyPathI18n } from "@/i18n/ns/academyPath";
+import { sliceLabel } from "@/components/shared/edge-map/model";
 import type { LeagueView, RewardItemInput } from "./api";
 
 export type ConditionKind = RewardItem["condition"]["kind"];
@@ -20,7 +22,13 @@ export const KNOWN_ACHIEVEMENTS: readonly string[] = [
 ];
 
 export function achievementName(line: string): string {
-  return questsI18n.tryT(`ach.${line}.title`) ?? line;
+  if (line.startsWith("setup:")) return questsI18n.t("ach.setup.title", { name: line.slice(6) });
+  if (line.startsWith("leak:")) return questsI18n.t("ach.leak.title", { slice: sliceLabel(line.slice(5)) });
+  if (line.startsWith("path:")) {
+    const metric = line.split(":")[2] ?? "";
+    return questsI18n.t("ach.path.title", { metric: academyPathI18n.tryT(`metrics.${metric}.label`) ?? metric });
+  }
+  return questsI18n.tryT(`ach.${line}.title`) ?? questsI18n.t("ach.fallback");
 }
 
 export function tierName(tier: string): string {

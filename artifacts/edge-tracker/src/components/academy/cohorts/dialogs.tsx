@@ -80,7 +80,7 @@ export function CohortDialog({ open, onOpenChange, cohort }: { open: boolean; on
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{cohort ? t("cohortDialog.editTitle") : t("cohortDialog.newTitle")}</DialogTitle>
@@ -460,7 +460,7 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
             <DialogTitle>{t("meeting.title")}</DialogTitle>
             <DialogDescription>{t("meeting.description")}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field id="m-student" label={t("cols.student")}>
               <PersonSelect id="m-student" value={student ?? ""} onValueChange={pickStudent} options={names} placeholder={t("meeting.pickStudent")} ariaLabel={t("cols.student")} />
             </Field>
@@ -521,7 +521,7 @@ export function ActionDialog({ open, onOpenChange, student }: { open: boolean; o
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader><DialogTitle>{t("action.title", { student: personName(student) })}</DialogTitle><DialogDescription>{t("action.description")}</DialogDescription></DialogHeader>
           <Field id="a-title" label={t("action.what")}><Input id="a-title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={300} /></Field>

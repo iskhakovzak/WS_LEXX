@@ -106,7 +106,7 @@ export function IndicatorSheet({
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl lg:max-w-2xl [&>*]:shrink-0">
+      <SheetContent side="right" size="lg" className="flex flex-col gap-0 overflow-y-auto p-0 [&>*]:shrink-0">
         {ind && (
           <>
             <SheetHeader className="space-y-3 border-b border-border/60 p-5 pr-14 text-left">
@@ -145,7 +145,8 @@ export function IndicatorSheet({
               </div>
             </SheetHeader>
 
-            <div className="flex-1 space-y-6 p-5">
+            {/* Wide sheet: the sections flow in two newspaper columns, so lines stay readable (never one 70-rem line). */}
+            <div className="flex-1 space-y-section p-5 @4xl/sheet:columns-2 @4xl/sheet:gap-x-8 @4xl/sheet:space-y-0 @4xl/sheet:[&>*]:mb-section @4xl/sheet:[&>*]:break-inside-avoid">
               <div className="glass-panel rounded-2xl p-3">
                 <IndicatorSpark id={ind.id} kind={ind.spark} className="h-24" />
                 <p className="mt-1 text-xs text-muted-foreground">{t("sheet.illustration")}</p>

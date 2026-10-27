@@ -1,217 +1,65 @@
 /**
- * Command palette (Ctrl/⌘K): search trades, tickers, setups, ideas, feed, research, events and pages;
- * run actions (new trade, new idea, theme, language…); jump anywhere ("Go to…", or G then a letter); recent items.
- * Texts: shell namespace `palette.*` (i18n/locales/<lang>/shell.ts).
- * Built on cmdk with our own filtering (corpora can be large), loaded lazily on first open.
- * This module is a lazy chunk: the header button and the global keys live in shell/palette-launcher.tsx.
+ * Command palette (Ctrl/⌘K, the header search): the hub of the app.
+ * - Open with nothing typed: «Recent» (last 8 opened, per user) → «Quick actions» valid for the viewer now → sections.
+ * - Typing: a ticker hub (its trades, chart, own stats), a trade by `#id`, people, commands, trades / ideas / playbook
+ *   setups / feed / research / events, pages and settings — grouped, ranked, matched characters highlighted.
+ * - Keys: ↑↓ move, Enter opens, Tab / Shift+Tab jump between groups, Esc closes (or leaves the language list).
+ * Texts: shell `palette.*`. Built on cmdk with our own ranking (components/palette/rank.ts); data and the quick actions
+ * live in global-search-hub.tsx. This module is a lazy chunk: the header button and the global keys are in
+ * shell/palette-launcher.tsx.
  */
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
 import { useLocation } from "wouter";
+import type { Trade } from "@workspace/api-client-react";
 import {
-  useListEvents, useListResearch, useListDailyFeed,
-  getListEventsQueryKey, getListResearchQueryKey, getListDailyFeedQueryKey,
-} from "@workspace/api-client-react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { fetchTradesPage, TRADES_PAGE_KEY } from "@/hooks/use-trades-page";
-import {
-  Search, X, CandlestickChart, CalendarClock, BookOpen, Newspaper, BookMarked, Lightbulb, StickyNote,
-  CornerDownLeft, History, Hash, Eye, MessageSquare, SunMoon, ArrowRight, Loader2,
-  UserRound, UsersRound, ClipboardList, NotebookPen, BookText, Languages,
+  ArrowLeft, ArrowRight, BookMarked, BookOpen, CalendarClock, CandlestickChart, Check, Eye, Hash, History, Languages,
+  LineChart, Lightbulb, Loader2, MessageSquare, Newspaper, Search, StickyNote, UserRound, UsersRound, X,
 } from "lucide-react";
-import { http } from "@/lib/api/http";
-import { STALE } from "@/lib/api/keys";
-import { tradeIdeasQuery } from "@/lib/api/queries";
-import { cn } from "@/lib/utils";
-import { Kbd } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
-import { useTheme } from "@/contexts/theme-context";
-import { ALL_NAV_ITEMS, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
-import { useVisibleNav } from "@/components/shell/use-nav-model";
-import { navItemOpen } from "@/components/shell/nav-model";
-import { rankPeople, usePeopleDirectory, type DirectoryPerson } from "@/components/people/search";
-import { Highlight } from "@/components/people/highlight";
+import { LANGS, LANG_META, personName, useLang } from "@/i18n";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
-import { fmtUsd } from "@/lib/format";
-import { LANGS, LANG_META, personName, setLang, useLang } from "@/i18n";
+import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { links } from "@/lib/links";
+import { ALL_NAV_ITEMS, groupOf, parentOf, type NavItem } from "@/components/shell/nav";
+import { useVisibleNav } from "@/components/shell/use-nav-model";
+import { navItemOpen } from "@/components/shell/nav-model";
+import { usePeopleDirectory, type DirectoryPerson, type SearchHit } from "@/components/people/search";
 import { openSetupSheet } from "@/components/shared/playbook-sheet";
-import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
-
-const RECENT_KEY = "ws_lexx_palette_recent";
-/** Extra match terms for the «Language: …» actions (hidden, not translated). i18n-ignore */
-const LANG_SEARCH = { ru: "russian русский ruscha", en: "english английский inglizcha", uz: "uzbek узбекский ozbek" } as const;
-
-type Section = "trades" | "ideas" | "playbook" | "feed" | "research" | "events";
-/** Kinds stored in recents: a result section, a page, a ticker or a person (older entries stored Russian labels). */
-type Kind = Section | "page" | "ticker" | "people";
-const LEGACY_KIND: Record<string, Kind> = {
-  "Сделки": "trades", "Идеи": "ideas", "Плейбук": "playbook", "Лента": "feed", "Исследования": "research", // i18n-ignore
-  "События": "events", "Раздел": "page", "Тикер": "ticker", "Люди": "people", // i18n-ignore
-};
-function kindLabel(kind: string): string {
-  const k = LEGACY_KIND[kind] ?? kind;
-  if (k === "people") return shellI18n.t("palette.people.heading");
-  return shellI18n.tryT(`palette.sections.${k}`) ?? kind;
-}
-
-/** People results (cross-script: «zokir», «Rakhmatullo», «Pfrbh» on the EN layout). */
-// Getters: read during render, so they follow the UI language (shell `palette.people.*`).
-const PEOPLE = {
-  get heading() { return shellI18n.t("palette.people.heading"); },
-  actionsFor: (name: string) => shellI18n.t("palette.people.actionsFor", { name }),
-  get profile() { return shellI18n.t("palette.people.profile"); },
-  get trades() { return shellI18n.t("palette.people.trades"); },
-  get day() { return shellI18n.t("palette.people.day"); },
-  get journal() { return shellI18n.t("palette.people.journal"); },
-  get notes() { return shellI18n.t("palette.people.notes"); },
-  get group() { return shellI18n.t("palette.people.group"); },
-  get role(): Record<string, string> {
-    const t = shellI18n.t;
-    return { trader: t("palette.people.role.trader"), curator: t("palette.people.role.curator"), admin: t("palette.people.role.admin") };
-  },
-  curatorOf: (c: string) => shellI18n.t("palette.people.curatorOf", { name: c }),
-  get noCurator() { return shellI18n.t("palette.people.noCurator"); },
-  latin: (n: string) => shellI18n.t("palette.people.latin", { name: n }),
-};
-
-type ResultItem = {
-  id: string;
-  section: Section;
-  title: string;
-  subtitle?: string;
-  badge?: string;
-  badgeTone?: "up" | "down" | "warn" | "neutral" | "accent";
-  meta?: string;
-  path: string;
-  /** Fires the in-page `ws-search-navigate` event for pages already mounted. */
-  highlight?: number;
-  /** An office setup: opens its cheat sheet over the current page instead of navigating. */
-  sheetId?: number;
-};
-
-/** `person`: the stored name of a person result (shown through personName, so it follows the UI language). */
-type RecentItem = { id: string; title: string; subtitle?: string; path: string; kind: string; highlight?: number; person?: string };
+import { Group, Hl, Item, PaletteFooter, RowMeta } from "@/components/palette/parts";
+import { orderGroups, parseQuery, rankItems, titleRanges, SCORE, type Hit } from "@/components/palette/rank";
+import { readRecents, rememberRecent, type RecentItem, type RecentKind } from "@/components/palette/recent";
+import { buildResults, bySection, tradeResult, type ResultItem, type Section } from "@/components/palette/results";
+import { personActions, personSubtitle, useGroupSizes, usePeopleHits } from "@/components/palette/people";
+import { MOVE_KEYS, useGroupTab, usePinFirst } from "@/components/palette/keyboard";
+import {
+  ShareCardHost, chartDay, switchLang, useDebounced, useHubActions, usePaletteCorpora, useTickerStats, useTradeById, type HubAction,
+} from "@/components/global-search-hub";
 
 const SECTION_ICON: Record<Section, React.ElementType> = {
-  trades: CandlestickChart,
-  ideas: Lightbulb,
-  playbook: BookMarked,
-  feed: Newspaper,
-  research: BookOpen,
-  events: CalendarClock,
+  trades: CandlestickChart, ideas: Lightbulb, playbook: BookMarked, feed: Newspaper, research: BookOpen, events: CalendarClock,
 };
+const SECTION_PRIORITY: Record<Section, number> = { trades: 5, playbook: 6, ideas: 7, events: 8, research: 9, feed: 10 };
+const PEOPLE_TIER = { exact: SCORE.exact, prefix: SCORE.prefix, substring: SCORE.substring, fuzzy: 150 } as const;
 
-const BADGE_TONE: Record<NonNullable<ResultItem["badgeTone"]>, string> = {
-  up: "bg-up/15 text-up",
-  down: "bg-down/15 text-down",
-  warn: "bg-[hsl(var(--chart-3)/0.15)] text-[hsl(var(--chart-3))]",
-  accent: "bg-primary/15 text-primary",
-  neutral: "bg-[var(--glass-bg)] text-muted-foreground",
-};
-
-async function fetchList(path: string, signal?: AbortSignal): Promise<any[]> {
-  const data = await http.get<unknown>(path, { signal });
-  return Array.isArray(data) ? data : [];
+function kindLabel(kind: RecentKind): string {
+  if (kind === "people") return shellI18n.t("palette.people.heading");
+  return shellI18n.t(`palette.sections.${kind}`);
 }
-
-const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
-const has = (v: unknown, q: string) => typeof v === "string" && v.toLowerCase().includes(q);
-const clip = (v: unknown, n = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : undefined);
-
-/** «Сетап…»: the typed text without the action's own words («сетап orb» → «orb»). i18n-ignore */
-const setupQuery = (raw: string) => raw.replace(/(^|\s)(setup|setap|playbook|pleybuk|сетап|плейбук|шпаргалка)(?=\s|$)/giu, " ").trim(); // i18n-ignore
-function loadRecent(): RecentItem[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
-    return Array.isArray(raw) ? raw.filter((r) => r && typeof r.path === "string" && typeof r.title === "string").slice(0, 7) : [];
-  } catch {
-    return [];
-  }
-}
-function saveRecent(item: RecentItem) {
-  try {
-    const next = [item, ...loadRecent().filter((r) => r.id !== item.id)].slice(0, 7);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-  } catch {}
-}
-
-/** A recent page shows its name in the current language (the stored title is from the language at save time). */
+/** Pages and people follow the UI language (the stored title is from the language at save time). */
 function recentTitle(r: RecentItem): string {
   if (r.person) return personName(r.person);
-  return r.id.startsWith("page-") ? (ALL_NAV_ITEMS.find((i) => `page-${i.href}` === r.id)?.name ?? r.title) : r.title;
+  return r.kind === "page" ? (ALL_NAV_ITEMS.find((i) => `page-${i.href}` === r.id)?.name ?? r.title) : r.title;
 }
-
-function tradeResult(t: any): Pick<ResultItem, "badge" | "badgeTone"> {
-  const pnl = typeof t.pnl === "number" ? t.pnl - (typeof t.fees === "number" ? t.fees : 0) : null;
-  if (pnl != null && Number.isFinite(pnl) && pnl !== 0) {
-    // Money keeps the trading format in every language ($1,234).
-    const s = fmtUsd(pnl, { signed: true, decimals: 0 });
-    return { badge: s, badgeTone: pnl > 0 ? "up" : "down" };
-  }
-  if (t.result === "win") return { badge: commonI18n.t("trading.win"), badgeTone: "up" };
-  if (t.result === "loss") return { badge: commonI18n.t("trading.loss"), badgeTone: "down" };
-  if (t.result) return { badge: commonI18n.t("trading.breakeven"), badgeTone: "neutral" };
-  return {};
-}
-
-const IDEA_STATUS_TONE: Record<string, ResultItem["badgeTone"]> = { approved: "up", published: "warn", draft: "neutral", rejected: "down" };
-const ideaStatusLabel = (status: string) => shellI18n.tryT(`palette.ideaStatus.${status}`) ?? status;
-
-function Item({
-  value,
-  onSelect,
-  icon: Icon,
-  title,
-  subtitle,
-  right,
-  className,
-}: {
-  value: string;
-  onSelect: () => void;
-  icon?: React.ElementType;
-  title: React.ReactNode;
-  subtitle?: React.ReactNode;
-  right?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <CommandPrimitive.Item
-      value={value}
-      onSelect={onSelect}
-      className={cn(
-        "group flex min-h-10 cursor-pointer select-none items-center gap-3 rounded-xl px-2.5 py-2 text-sm outline-none",
-        "data-[selected=true]:bg-primary/12 data-[selected=true]:text-foreground",
-        className,
-      )}
-    >
-      {Icon && (
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] text-muted-foreground group-data-[selected=true]:text-primary">
-          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-        </span>
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-foreground">{title}</span>
-        {subtitle && <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>}
-      </span>
-      {right}
-      <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-data-[selected=true]:opacity-100" aria-hidden="true" />
-    </CommandPrimitive.Item>
-  );
-}
-
-const groupCls =
-  "px-1.5 pb-1 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground";
-
-/** Value that settles `ms` after the last change (server-side search inputs). */
-function useDebounced<T>(value: T, ms: number): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setV(value), ms);
-    return () => window.clearTimeout(t);
-  }, [value, ms]);
-  return v;
+const goKeys = (p: NavItem) => (p.goKey ? ["G", p.goKey.toUpperCase()] : undefined);
+const recentKeys = (r: RecentItem) => {
+  const page = r.kind === "page" ? ALL_NAV_ITEMS.find((i) => `page-${i.href}` === r.id) : undefined;
+  return page ? goKeys(page) : undefined;
+};
+function pagePath(p: NavItem) {
+  return [groupOf(p)?.label, parentOf(p)?.name].filter(Boolean).join(" · ") || undefined;
 }
 
 type Props = {
@@ -223,522 +71,381 @@ type Props = {
   triggerRef: React.RefObject<HTMLButtonElement | null>;
 };
 
+type Rendered = { id: string; best: number; priority: number; node: React.ReactNode };
+
 export default function GlobalSearch({ open, onOpenChange: setOpen, request, triggerRef }: Props) {
   const [query, setQuery] = useState("");
   const [notesOnly, setNotesOnly] = useState(false);
-  const [recent, setRecent] = useState<RecentItem[]>(() => loadRecent());
+  const [mode, setMode] = useState<"root" | "lang">("root");
+  const [value, setValue] = useState("");
+  const [shareTrade, setShareTrade] = useState<Trade | null>(null);
   const [, navigate] = useLocation();
-  const { canEdit, isCurator, user, permissions } = useAuth();
-  const navPrefs = permissions.nav;
-  const me = user?.traderName ?? null;
-  const { people: directory } = usePeopleDirectory(open);
-  const { cycleTheme, themeLabel } = useTheme();
+  const { user, isCurator, permissions } = useAuth();
+  const me = user && user.role !== "guest" ? user.traderName : null;
+  const [recent, setRecent] = useState<RecentItem[]>(() => readRecents(me));
   const { t: ts } = shellI18n.useT();
   const { t: tc } = commonI18n.useT();
   const lang = useLang();
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const onTab = useGroupTab(listRef, setValue);
 
-  // Trades are searched server-side (P1-5): GET /api/trades/page?q=&limit=20&lite=1 (rows, no summary aggregates) per
-  // (deferred) query instead of loading the whole book into the palette. Other corpora load after the first open.
-  // Debounced (200 ms): typing «NVDA» used to fire 4 server searches; now one after the pause.
-  const tradeQ = useDebounced(query, 200).trim().replace(/^\$/, "").slice(0, 120);
-  const { data: tradesRaw, isLoading: l1 } = useQuery<any[]>({
-    queryKey: [TRADES_PAGE_KEY, "search", tradeQ.toLowerCase()],
-    queryFn: async ({ signal }) => (await fetchTradesPage(new URLSearchParams({ q: tradeQ, limit: "20", lite: "1" }), signal)).items ?? [],
-    enabled: open && tradeQ.length > 0,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
-  });
-  const { data: eventsRaw, isLoading: l2 } = useListEvents(undefined, { query: { queryKey: getListEventsQueryKey(), enabled: open } });
-  const { data: researchRaw, isLoading: l3 } = useListResearch({ query: { queryKey: getListResearchQueryKey(), enabled: open } });
-  const { data: feedsRaw, isLoading: l4 } = useListDailyFeed({ query: { queryKey: getListDailyFeedQueryKey(), enabled: open } });
-  const { data: playbookRaw, isLoading: l5 } = useQuery<any[]>({
-    queryKey: ["playbook"],
-    queryFn: ({ signal }) => fetchList("/api/playbook", signal),
-    enabled: open,
-    staleTime: STALE.default,
-  });
-  // Same cache entry as the ideas board / stats / ratings (one request).
-  const { data: tradeIdeasRaw, isLoading: l6 } = useQuery({ ...tradeIdeasQuery<any>(), enabled: open });
-  const trades = asArray<any>(tradesRaw);
-  const events = asArray<any>(eventsRaw);
-  const research = asArray<any>(researchRaw);
-  const feeds = asArray<any>(feedsRaw);
-  const playbook = asArray<any>(playbookRaw);
-  const tradeIdeas = asArray<any>(tradeIdeasRaw);
-  const tradePending = query.trim().replace(/^\$/, "").slice(0, 120) !== tradeQ;
-  const loading = open && ((tradeQ.length > 0 && (l1 || tradePending)) || l2 || l3 || l4 || l5 || l6);
+  const debounced = useDebounced(query, 200);
+  const { corpora, loading } = usePaletteCorpora(open, debounced, query);
+  const { people: directory } = usePeopleDirectory(open);
+  const groupSize = useGroupSizes(directory);
 
-  // `openCommandPalette(query)` (the launcher owns Ctrl/⌘K and the G-keys).
+  useEffect(() => { if (typeof request.query === "string") { setMode("root"); setQuery(request.query); } }, [request]);
   useEffect(() => {
-    if (typeof request.query === "string") setQuery(request.query);
-  }, [request]);
-
-  useEffect(() => {
-    if (open) setRecent(loadRecent());
-    else { setQuery(""); setNotesOnly(false); }
-  }, [open]);
+    if (open) setRecent(readRecents(me));
+    else { setQuery(""); setNotesOnly(false); setMode("root"); setValue(""); }
+  }, [open, me]);
 
   const deferredQuery = useDeferredValue(query);
-  const raw = deferredQuery.trim();
-  const q = raw.toLowerCase().replace(/^\$/, "");
   const isStale = query !== deferredQuery;
+  const pq = useMemo(() => parseQuery(deferredQuery), [deferredQuery]);
+  const { raw, q } = pq;
+  const settled = parseQuery(debounced);
+  const ticker = notesOnly ? null : pq.ticker;
+  const tickerStats = useTickerStats(open, notesOnly ? null : settled.ticker, me);
+  const byId = useTradeById(open, notesOnly ? null : settled.tradeId);
 
-  // ── Data results ──
-  const results: ResultItem[] = useMemo(() => {
-    if (!q) return [];
-    const items: ResultItem[] = [];
-    const tradeItem = (t: any): ResultItem => ({
-      id: `trade-${t.id}`,
-      section: "trades",
-      title: t.ticker ?? "—",
-      subtitle: notesOnly ? clip(t.notes) : [
-        t.setup,
-        t.side === "short" ? ts("palette.side.short") : t.side === "long" ? ts("palette.side.long") : null,
-        t.horizon && t.horizon !== "intraday" ? (t.horizon === "swing" ? ts("palette.horizon.swing") : ts("palette.horizon.overnight")) : null,
-      ].filter(Boolean).join(" · ") || undefined,
-      ...tradeResult(t),
-      meta: t.date?.substring(0, 10),
-      path: "/trades",
-      highlight: t.id,
-    });
-    const ideaItem = (i: any): ResultItem => ({
-      id: `idea-${i.id}`,
-      section: "ideas",
-      title: i.ticker ?? "—",
-      subtitle: notesOnly ? clip(i.notes || i.description) : [i.setup, personName(i.trader)].filter(Boolean).join(" · ") || undefined,
-      badge: ideaStatusLabel(i.status),
-      badgeTone: IDEA_STATUS_TONE[i.status] ?? "neutral",
-      meta: i.createdAt?.substring?.(0, 10),
-      path: `/trade-ideas?idea=${i.id}`,
-    });
-    const pbItem = (e: any): ResultItem => ({
-      id: `playbook-${e.id}`,
-      section: "playbook",
-      title: e.name ?? ts("palette.fallback.setup"),
-      subtitle: notesOnly ? clip(e.notes || e.conditions) : (e.parentId ? ts("palette.setupVariation") : e.folder || clip(e.conditions, 60)),
-      badge: e.confidenceLevel != null ? `${e.confidenceLevel}%` : undefined,
-      badgeTone: e.confidenceLevel >= 85 ? "up" : e.confidenceLevel >= 70 ? "accent" : "warn",
-      // Deep link (the page opens ?id= in the library view on its own); an event fired right after navigate()
-      // arrived before the lazy page mounted, so the setup never opened from another page.
-      path: `/playbook?id=${e.id}`,
-      sheetId: e.space === "office" || (!e.space && !e.trader) ? e.id : undefined,
-    });
-    const feedItem = (f: any): ResultItem => ({
-      id: `feed-${f.id}`,
-      section: "feed",
-      title: f.date?.substring(0, 10) ?? ts("palette.fallback.feedEntry"),
-      subtitle: clip(notesOnly ? f.notes || f.whatWorksNow : f.marketTheme || f.notes, 70),
-      path: "/dailyfeed",
-      highlight: f.id,
-    });
-    const resItem = (r: any): ResultItem => ({
-      id: `research-${r.id}`,
-      section: "research",
-      title: r.patternName ?? ts("palette.fallback.research"),
-      subtitle: notesOnly ? clip(r.description || r.context) : r.ticker || clip(r.description, 60),
-      badge: r.confidenceLevel != null ? `${r.confidenceLevel}%` : undefined,
-      badgeTone: r.confidenceLevel >= 70 ? "up" : "neutral",
-      path: "/research",
-    });
-    const evItem = (e: any): ResultItem => ({
-      id: `event-${e.id}`,
-      section: "events",
-      title: e.ticker ?? ts("palette.fallback.event"),
-      subtitle: clip(notesOnly ? e.summary : e.headline || e.summary),
-      meta: e.date?.substring(0, 10),
-      path: `/events?id=${e.id}`,
-    });
-
-    if (notesOnly) {
-      tradeIdeas.filter((i) => has(i.notes, q) || has(i.description, q)).slice(0, 4).forEach((i) => items.push(ideaItem(i)));
-      trades.filter((t) => has(t.notes, q)).slice(0, 6).forEach((t) => items.push(tradeItem(t)));
-      playbook.filter((e) => has(e.notes, q) || has(e.conditions, q) || has(e.checklist, q)).slice(0, 5).forEach((e) => items.push(pbItem(e)));
-      feeds.filter((f) => has(f.notes, q) || has(f.whatWorksNow, q) || has(f.whatDoesntWork, q)).slice(0, 4).forEach((f) => items.push(feedItem(f)));
-      research.filter((r) => has(r.description, q) || has(r.context, q) || has(r.whatWorked, q)).slice(0, 3).forEach((r) => items.push(resItem(r)));
-      events.filter((e) => has(e.summary, q)).slice(0, 3).forEach((e) => items.push(evItem(e)));
-      return items;
+  const go = useCallback((path: string, rec?: RecentItem, highlight?: number) => {
+    setOpen(false);
+    if (rec) setRecent(rememberRecent(me, rec));
+    navigate(path);
+    if (highlight != null) {
+      const base = path.split("?")[0];
+      setTimeout(() => window.dispatchEvent(new CustomEvent("ws-search-navigate", { detail: { path: base, highlightId: highlight } })), 0);
     }
-    // Exact ticker hits first, then partial matches.
-    const tickerFirst = <T,>(arr: T[], get: (x: T) => unknown) =>
-      [...arr].sort((a, b) => Number(String(get(b) ?? "").toLowerCase() === q) - Number(String(get(a) ?? "").toLowerCase() === q));
-    tickerFirst(trades.filter((t) => has(t.ticker, q) || has(t.setup, q) || has(t.notes, q) || has(t.tags, q) || has(t.trader, q)), (t: any) => t.ticker)
-      .slice(0, 5).forEach((t) => items.push(tradeItem(t)));
-    tickerFirst(tradeIdeas.filter((i) => has(i.ticker, q) || has(i.setup, q) || has(i.trader, q) || has(i.tags, q) || has(i.notes, q) || has(i.description, q)), (i: any) => i.ticker)
-      .slice(0, 5).forEach((i) => items.push(ideaItem(i)));
-    playbook.filter((e) => has(e.name, q) || has(e.conditions, q) || has(e.notes, q) || has(e.tags, q) || has(e.folder, q) || has(e.checklist, q))
-      .slice(0, 4).forEach((e) => items.push(pbItem(e)));
-    feeds.filter((f) => has(f.marketTheme, q) || has(f.notes, q) || has(f.tags, q) || has(f.bestTickers, q) || has(f.whatWorksNow, q) || has(f.whatDoesntWork, q) || (typeof f.date === "string" && f.date.includes(q)))
-      .slice(0, 4).forEach((f) => items.push(feedItem(f)));
-    research.filter((r) => has(r.patternName, q) || has(r.description, q) || has(r.ticker, q) || has(r.context, q) || has(r.whatWorked, q))
-      .slice(0, 3).forEach((r) => items.push(resItem(r)));
-    events.filter((e) => has(e.ticker, q) || has(e.headline, q) || has(e.summary, q))
-      .slice(0, 3).forEach((e) => items.push(evItem(e)));
-    return items;
-  }, [q, notesOnly, trades, playbook, feeds, research, events, tradeIdeas]);
-
-  const sections = useMemo(() => {
-    const map = new Map<Section, ResultItem[]>();
-    for (const item of results) {
-      const arr = map.get(item.section);
-      if (arr) arr.push(item); else map.set(item.section, [item]);
-    }
-    return map;
-  }, [results]);
-
-  // ── People ──
-  const peopleHits = useMemo(() => {
-    if (!q || notesOnly) return [];
-    // Field 0 is the name as shown (Latin in EN/UZ when set), field 1 the other spelling, field 2 the curator.
-    const other = new Map<string, string>();
-    for (const p of directory) {
-      const shown = personName(p.name);
-      const alt = shown !== p.name ? p.name : p.nameLatin;
-      if (alt && alt !== shown) other.set(shown, alt);
-    }
-    return rankPeople(directory, raw, (p) => personName(p.name), other, (p) => [p.curator], 6)
-      // a curator match (secondary field) only when it is a strong one
-      .filter((h) => h.field !== 2 || h.tier === "exact" || h.tier === "prefix");
-  }, [q, raw, notesOnly, directory]);
-  const groupSize = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of directory) if (p.role === "trader" && p.curator) m.set(p.curator, (m.get(p.curator) ?? 0) + 1);
-    return m;
-  }, [directory]);
-  const enc = encodeURIComponent;
-  const personActions = (p: DirectoryPerson) => {
-    const isTrader = p.role === "trader";
-    const self = p.name === me;
-    const out: { id: string; label: string; icon: React.ElementType; path: string }[] = [];
-    if (isCurator && isTrader) out.push({ id: "profile", label: PEOPLE.profile, icon: UserRound, path: `/curator?trader=${enc(p.name)}` });
-    if (isTrader && (isCurator || self)) {
-      out.push({ id: "trades", label: PEOPLE.trades, icon: CandlestickChart, path: `/trades?trader=${enc(p.name)}` });
-      out.push({ id: "day", label: PEOPLE.day, icon: ClipboardList, path: `/day-report?trader=${enc(p.name)}` });
-      out.push({ id: "journal", label: PEOPLE.journal, icon: BookText, path: `/journal?trader=${enc(p.name)}` });
-    }
-    if (isCurator && isTrader) out.push({ id: "notes", label: PEOPLE.notes, icon: NotebookPen, path: `/curator?trader=${enc(p.name)}&tab=notes` });
-    if (isCurator && !isTrader && (groupSize.get(p.name) ?? 0) > 0) out.push({ id: "group", label: ts("palette.people.groupCount", { count: groupSize.get(p.name) ?? 0 }), icon: UsersRound, path: `/curator?view=traders&group=${enc(p.name)}` });
-    return out;
+  }, [navigate, setOpen, me]);
+  const openRecent = (r: RecentItem) => {
+    if (r.kind === "ticker") { setQuery(r.title); inputRef.current?.focus(); setRecent(rememberRecent(me, r)); return; }
+    if (r.sheetId != null) { setOpen(false); setRecent(rememberRecent(me, r)); openSetupSheet({ setupId: r.sheetId }); return; }
+    go(r.path, r, r.highlight);
   };
-  const personSubtitle = (p: DirectoryPerson) => [
-    PEOPLE.role[p.role] ?? p.role,
-    p.role === "trader" ? (p.curator ? PEOPLE.curatorOf(personName(p.curator)) : PEOPLE.noCurator) : null,
-    // The Latin alias only when it is not already the name shown (RU, or a Latin name that differs).
-    p.nameLatin && p.nameLatin !== personName(p.name) ? PEOPLE.latin(p.nameLatin) : null,
-  ].filter(Boolean).join(" · ");
-  const topPerson = peopleHits[0]?.item ?? null;
-  const topActions = topPerson ? personActions(topPerson).slice(1) : [];
+  const goResult = (it: ResultItem) => {
+    const rec: RecentItem = { id: it.id, kind: it.section, title: it.title, subtitle: it.subtitle, path: it.path, highlight: it.highlight, sheetId: it.sheetId };
+    if (it.sheetId != null) { setOpen(false); setRecent(rememberRecent(me, rec)); openSetupSheet({ setupId: it.sheetId }); return; }
+    const path = it.highlight != null && !it.path.includes("?") ? `${it.path}?highlight=${it.highlight}` : it.path;
+    go(path, { ...rec, path }, it.highlight);
+  };
+  const goPage = (p: NavItem) => go(p.to ?? p.href, { id: `page-${p.href}`, kind: "page", title: p.name, path: p.to ?? p.href });
 
-  // ── Tickers known to the desk (trades + ideas), with counts ──
+  const actions = useHubActions({
+    open, raw, go: (path) => go(path), close: () => setOpen(false), openShare: setShareTrade,
+    openLanguages: () => { setMode("lang"); setQuery(""); inputRef.current?.focus(); },
+  });
+
+  // ── Search results ──
+  const results = useMemo(() => buildResults(pq.tradeId ? "" : raw, notesOnly, corpora), [pq.tradeId, raw, notesOnly, corpora]);
+  const sections = useMemo(() => bySection(results), [results]);
+  const peopleHits = usePeopleHits(directory, raw, !notesOnly && !pq.tradeId);
+  const navPrefs = permissions.nav;
+  const pages = useMemo(() => {
+    if (!q || notesOnly || pq.tradeId) return [];
+    const visible = ALL_NAV_ITEMS.filter((i) => navItemOpen(i, isCurator, navPrefs));
+    // Current-language name, the Russian name and RU/EN keywords: a section is found whatever language you type in.
+    return rankItems(visible, q, (i) => [i.name, { text: i.ruName, weight: 0.9 }, { text: i.keywords, weight: 0.6, fuzzy: false }], 8);
+  }, [q, notesOnly, pq.tradeId, isCurator, navPrefs]);
+  const actionHits = useMemo<Hit<HubAction>[]>(() => {
+    if (notesOnly || pq.tradeId) return [];
+    if (!q) return actions.filter((a) => a.quick).map((item) => ({ item, score: 0, field: -1, ranges: [] }));
+    return rankItems(actions.filter((a) => a.id !== "language"), q, (a) => [a.label, ...a.terms.map((text) => ({ text, weight: 0.6, fuzzy: false }))], 6);
+  }, [actions, q, notesOnly, pq.tradeId]);
+  const markMoved = usePinFirst(listRef, value, setValue, `${open}|${mode}|${notesOnly}|${deferredQuery}`, open);
+
+  // Tickers the desk knows (from the trades / ideas found), with counts.
   const tickerIndex = useMemo(() => {
     const m = new Map<string, { trades: number; ideas: number }>();
-    for (const t of trades) {
-      const k = String(t.ticker ?? "").toUpperCase();
-      if (!k) continue;
-      const e = m.get(k) ?? { trades: 0, ideas: 0 };
-      e.trades++; m.set(k, e);
-    }
-    for (const i of tradeIdeas) {
-      const k = String(i.ticker ?? "").toUpperCase();
-      if (!k) continue;
-      const e = m.get(k) ?? { trades: 0, ideas: 0 };
-      e.ideas++; m.set(k, e);
-    }
+    const add = (k: unknown, f: "trades" | "ideas") => {
+      const key = String(k ?? "").toUpperCase();
+      if (!key) return;
+      const e = m.get(key) ?? { trades: 0, ideas: 0 };
+      e[f]++; m.set(key, e);
+    };
+    for (const tr of corpora.trades) add((tr as { ticker?: string }).ticker, "trades");
+    for (const i of corpora.ideas) add((i as { ticker?: string }).ticker, "ideas");
     return m;
-  }, [trades, tradeIdeas]);
-
-  const looksLikeTicker = !notesOnly && /^\$?[a-zA-Z][a-zA-Z.]{0,5}$/.test(raw);
-  const ticker = looksLikeTicker ? raw.replace(/^\$/, "").toUpperCase() : "";
+  }, [corpora.trades, corpora.ideas]);
   const otherTickers = useMemo(() => {
     if (!q || notesOnly || q.length > 6) return [];
     const up = q.toUpperCase();
-    return [...tickerIndex.entries()]
-      .filter(([k]) => k.startsWith(up) && k !== up)
-      .sort((a, b) => b[1].trades + b[1].ideas - (a[1].trades + a[1].ideas))
-      .slice(0, 5);
+    return [...tickerIndex.entries()].filter(([k]) => k.startsWith(up) && k !== up).sort((a, b) => b[1].trades + b[1].ideas - (a[1].trades + a[1].ideas)).slice(0, 5);
   }, [q, notesOnly, tickerIndex]);
 
-  // ── Pages ──
-  // Empty query: the sidebar rows under the sidebar's own group headings (same IA, ~15 rows). With a query: every page,
-  // second-level ones included, each with where it lives in the sidebar («Разбор и рост · Аналитика»).
-  const navGroups = useVisibleNav();
-  const pages = useMemo(() => {
-    if (!q) return [];
-    const visible = ALL_NAV_ITEMS.filter((i) => navItemOpen(i, isCurator, navPrefs));
-    // Current-language name, the Russian name and the RU/EN keywords: a section is found whatever language you type in.
-    const hit = (s?: string) => !!s && s.toLowerCase().includes(q);
-    return visible.filter((i) => hit(i.name) || hit(i.ruName) || hit(i.hubLabel) || hit(i.ruHubLabel) || hit(i.keywords)).slice(0, 8);
-  }, [q, isCurator, navPrefs]);
-  const pagePath = (p: NavItem) => {
-    const owner = parentOf(p) ?? (p.hubLabel ? p : undefined);
-    return [groupOf(p)?.label, owner ? rowLabel(owner) : null].filter(Boolean).join(" · ") || undefined;
-  };
-  const goKeyHint = (p: NavItem) => (p.goKey ? <Kbd keys={["G", p.goKey.toUpperCase()]} className="hidden sm:inline-flex" /> : undefined);
+  const hasAny = results.length + pages.length + actionHits.length + peopleHits.length + otherTickers.length > 0 || !!ticker || !!pq.tradeId;
+  const nothing = !!q && mode === "root" && !loading && !isStale && !hasAny;
 
-  const go = useCallback(
-    (path: string, rec?: Omit<RecentItem, "path">, highlight?: number) => {
-      setOpen(false);
-      if (rec) saveRecent({ ...rec, path, highlight });
-      navigate(path);
-      if (highlight != null) {
-        const base = path.split("?")[0];
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("ws-search-navigate", { detail: { path: base, highlightId: highlight } }));
-        }, 0);
-      }
-    },
-    [navigate, setOpen],
-  );
-
-  const goResult = (item: ResultItem) => {
-    if (item.sheetId != null) { setOpen(false); saveRecent({ id: item.id, title: item.title, subtitle: item.subtitle, kind: item.section, path: item.path }); openSetupSheet({ setupId: item.sheetId }); return; }
-    const path = item.highlight != null && !item.path.includes("?") ? `${item.path}?highlight=${item.highlight}` : item.path;
-    go(path, { id: item.id, title: item.title, subtitle: item.subtitle, kind: item.section }, item.highlight);
-  };
-  const goPage = (p: NavItem) => go(p.href, { id: `page-${p.href}`, title: p.name, kind: "page" });
-
-  type Action = { id: string; label: string; hint?: string; icon: React.ElementType; run: () => void; keywords: string; when?: boolean };
-  const actions: Action[] = [
-    { id: "new-idea", label: ts("palette.action.newIdea"), icon: Lightbulb, run: () => go("/trade-ideas?new=1"), keywords: "new idea добавить идею yangi goya", when: canEdit },
-    { id: "new-event", label: ts("palette.action.newEvent"), icon: CalendarClock, run: () => go("/events?new=1"), keywords: "new event катализатор отчёт yangi voqea", when: canEdit },
-    { id: "setup", label: playbookTodayI18n.t("palette.action"), hint: playbookTodayI18n.t("palette.hint"), icon: BookMarked, run: () => { setOpen(false); openSetupSheet({ query: setupQuery(raw) }); }, keywords: "setup сетап setap playbook плейбук pleybuk шпаргалка orb vwap flag gap" },
-    { id: "theme", label: ts("palette.action.theme"), hint: tc("theme.currentHint", { name: themeLabel }), icon: SunMoon, run: () => cycleTheme(), keywords: "theme тема dark light тёмная светлая mavzu" },
-    // «Язык: English» / «Language: Oʻzbekcha»… for each other language; «язык», «language», «til» match in any UI language.
-    ...LANGS.filter((l) => l !== lang).map((l): Action => ({
-      id: `lang-${l}`,
-      label: ts("palette.action.language", { name: LANG_META[l].native }),
-      icon: Languages,
-      run: () => { setOpen(false); void setLang(l, { source: "user", focus: "#main-content" }); },
-      keywords: `language язык til lang ${LANG_META[l].native} ${LANG_META[l].code} ${LANG_SEARCH[l]}`,
-    })),
-  ].filter((a) => a.when !== false);
-  const visibleActions = q ? actions.filter((a) => a.label.toLowerCase().includes(q) || a.keywords.toLowerCase().includes(q)) : actions;
-
-  const tickerActions = ticker
-    ? [
-        { id: "t-ideas", label: ts("palette.tickerAction.ideas", { ticker }), icon: Lightbulb, path: `/trade-ideas?ticker=${encodeURIComponent(ticker)}` },
-        { id: "t-watch", label: ts("palette.tickerAction.watch", { ticker }), icon: Eye, path: `/watchlist?ticker=${encodeURIComponent(ticker)}` },
-        { id: "t-events", label: ts("palette.tickerAction.events", { ticker }), icon: CalendarClock, path: `/events?ticker=${encodeURIComponent(ticker)}` },
-        { id: "t-disc", label: ts("palette.tickerAction.discussions", { ticker }), icon: MessageSquare, path: `/discussions?ticker=${encodeURIComponent(ticker)}` },
-      ]
-    : [];
-  const tickerStats = ticker ? tickerIndex.get(ticker) : undefined;
-
-  const nothing =
-    !!q && !loading && !isStale && results.length === 0 && pages.length === 0 && visibleActions.length === 0 && !ticker && otherTickers.length === 0 && peopleHits.length === 0;
+  // ── Groups (search mode), ordered by their best hit ──
+  const groups: Rendered[] = [];
+  if (q && mode === "root") {
+    if (pq.tradeId) groups.push({ id: "trade-id", priority: 0, best: 2000, node: <TradeByIdGroup id={pq.tradeId} query={byId} onOpen={goResult} /> });
+    if (ticker) {
+      const known = tickerIndex.has(ticker);
+      groups.push({
+        id: "ticker", priority: 1, best: pq.tickerStrong ? 1500 : known ? 900 : 300,
+        node: <TickerGroup ticker={ticker} counts={tickerIndex.get(ticker)} stats={tickerStats} me={me} onGo={(path, label) => go(path, { id: `ticker-${ticker}`, kind: "ticker", title: ticker, subtitle: label, path })} />,
+      });
+    }
+    if (peopleHits.length) groups.push({ id: "people", priority: 2, best: PEOPLE_TIER[peopleHits[0].tier], node: <PeopleGroups hits={peopleHits} ctx={{ isCurator, me, groupSize }} go={go} setQuery={setQuery} /> });
+    if (actionHits.length) groups.push({ id: "actions", priority: 3, best: actionHits[0].score, node: <ActionsGroup heading={ts("palette.actions")} hits={actionHits} /> });
+    for (const [name, items] of sections) {
+      groups.push({
+        id: `section-${name}`, priority: SECTION_PRIORITY[name], best: Math.max(...items.map((i) => i.score)),
+        node: (
+          <Group key={name} heading={ts(`palette.sections.${name}`)}>
+            {items.map((it) => (
+              <Item key={it.id} value={it.id} icon={SECTION_ICON[it.section]} title={<Hl text={it.title} ranges={it.ranges} />} subtitle={it.subtitle}
+                onSelect={() => goResult(it)} right={<RowMeta badge={it.badge} tone={it.badgeTone} meta={it.meta} />} />
+            ))}
+          </Group>
+        ),
+      });
+    }
+    if (pages.length) {
+      groups.push({
+        id: "pages", priority: 11, best: pages[0].score,
+        node: (
+          <Group heading={ts("palette.goTo")}>
+            {pages.map((h) => (
+              <Item key={h.item.href} value={`page-${h.item.href}`} icon={h.item.icon} title={<Hl text={h.item.name} ranges={titleRanges(h)} />}
+                subtitle={pagePath(h.item)} onSelect={() => goPage(h.item)} hint={goKeys(h.item)} />
+            ))}
+          </Group>
+        ),
+      });
+    }
+    if (otherTickers.length) {
+      groups.push({
+        id: "tickers", priority: 12, best: 0,
+        node: (
+          <Group heading={ts("palette.tickers")}>
+            {otherTickers.map(([k, c]) => (
+              <Item key={k} value={`ticker-${k}`} icon={Hash} title={<Hl text={k} ranges={[[0, q.length]]} />}
+                subtitle={ts("palette.tickerCounts", { trades: tc("units.trades", { count: c.trades }), ideas: tc("units.ideas", { count: c.ideas }) })}
+                right={<ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />} onSelect={() => { setQuery(k); inputRef.current?.focus(); }} />
+            ))}
+          </Group>
+        ),
+      });
+    }
+  }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-modal bg-[var(--overlay)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          aria-describedby={undefined}
-          onOpenAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus(); }}
-          onCloseAutoFocus={(e) => { e.preventDefault(); triggerRef.current?.focus({ preventScroll: true }); }}
-          className="glass-thick glass-solid fixed left-1/2 top-[max(10vh,calc(env(safe-area-inset-top)+0.75rem))] z-modal flex max-h-[min(640px,80dvh)] w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98]"
-        >
-          <DialogPrimitive.Title className="sr-only">{ts("palette.title")}</DialogPrimitive.Title>
-          <CommandPrimitive shouldFilter={false} loop label={ts("palette.title")} className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-4">
-              {loading || isStale ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
-              ) : (
-                <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              )}
-              <CommandPrimitive.Input
-                ref={inputRef}
-                value={query}
-                onValueChange={setQuery}
-                placeholder={notesOnly ? ts("palette.placeholderNotes") : ts("palette.placeholder")}
-                aria-label={ts("palette.inputAria")}
-                autoComplete="off"
-                spellCheck={false}
-                enterKeyHint="go"
-                className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => { setNotesOnly((v) => !v); inputRef.current?.focus(); }}
-                aria-pressed={notesOnly}
-                title={ts("palette.notesToggleTitle")}
-                className="chip inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium"
-              >
-                <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">{ts("palette.notesToggle")}</span>
-              </button>
-              {query && (
-                <button type="button" aria-label={ts("palette.clearAria")} onClick={() => { setQuery(""); inputRef.current?.focus(); }} className="chip grid h-8 w-8 shrink-0 place-items-center">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {/* Phones have no Esc key: a visible «Отмена» closes the palette (the overlay is not an obvious target). */}
-              <DialogPrimitive.Close className="chip inline-flex h-8 shrink-0 items-center px-2.5 text-xs font-medium sm:text-2xs" aria-label={ts("palette.closeAria")}>
-                <span className="sm:hidden">{commonI18n.t("actions.cancel")}</span>
-                <span className="hidden sm:inline">Esc</span>
-              </DialogPrimitive.Close>
-            </div>
+    <>
+      <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-modal bg-[var(--overlay)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            onOpenAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus(); }}
+            onCloseAutoFocus={(e) => { e.preventDefault(); if (!shareTrade) triggerRef.current?.focus({ preventScroll: true }); }}
+            onEscapeKeyDown={(e) => { if (mode !== "root") { e.preventDefault(); setMode("root"); setQuery(""); } }}
+            className="glass-thick glass-solid fixed left-1/2 top-[max(10vh,calc(env(safe-area-inset-top)+0.75rem))] z-modal flex max-h-[min(640px,80dvh)] w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98]"
+          >
+            <DialogPrimitive.Title className="sr-only">{ts("palette.title")}</DialogPrimitive.Title>
+            <CommandPrimitive
+              shouldFilter={false} loop label={ts("palette.title")} value={value} onValueChange={setValue}
+              onKeyDown={(e) => {
+                if (e.key === "Backspace" && mode !== "root" && !query) { e.preventDefault(); setMode("root"); return; }
+                if (MOVE_KEYS.has(e.key)) markMoved();
+                onTab(e);
+              }}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-4">
+                {mode === "lang" ? (
+                  <button type="button" onClick={() => { setMode("root"); inputRef.current?.focus(); }} aria-label={ts("palette.back")} title={ts("palette.back")} className="chip grid h-8 w-8 shrink-0 place-items-center">
+                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                ) : loading || isStale ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
+                ) : (
+                  <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                )}
+                <CommandPrimitive.Input
+                  ref={inputRef} value={query} onValueChange={setQuery}
+                  placeholder={mode === "lang" ? ts("palette.languageHeading") : notesOnly ? ts("palette.placeholderNotes") : ts("palette.placeholder")}
+                  aria-label={ts("palette.inputAria")} autoComplete="off" spellCheck={false} enterKeyHint="go"
+                  className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
+                />
+                {mode === "root" && (
+                  <button type="button" onClick={() => { setNotesOnly((v) => !v); inputRef.current?.focus(); }} aria-pressed={notesOnly} title={ts("palette.notesToggleTitle")} className="chip inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium">
+                    <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">{ts("palette.notesToggle")}</span>
+                  </button>
+                )}
+                {query && (
+                  <button type="button" aria-label={ts("palette.clearAria")} onClick={() => { setQuery(""); inputRef.current?.focus(); }} className="chip grid h-8 w-8 shrink-0 place-items-center">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {/* Phones have no Esc key: a visible «Cancel» closes the palette (the overlay is not an obvious target). */}
+                <DialogPrimitive.Close className="chip inline-flex h-8 shrink-0 items-center px-2.5 text-xs font-medium sm:text-2xs" aria-label={ts("palette.closeAria")}>
+                  <span className="sm:hidden">{tc("actions.cancel")}</span>
+                  <span className="hidden sm:inline">Esc</span>
+                </DialogPrimitive.Close>
+              </div>
 
-            <CommandPrimitive.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
-              {nothing && (
-                <div role="status" className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  {notesOnly ? ts("palette.nothingInNotes", { query: raw }) : ts("palette.nothing", { query: raw })}
-                </div>
-              )}
+              <CommandPrimitive.List ref={listRef} onPointerMove={markMoved} className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+                {nothing && (
+                  <div role="status" className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {notesOnly ? ts("palette.nothingInNotes", { query: raw }) : ts("palette.nothing", { query: raw })}
+                  </div>
+                )}
+                {mode === "lang" && <LanguageGroup current={lang} query={q} close={() => setOpen(false)} />}
+                {mode === "root" && !q && (
+                  <>
+                    {recent.length > 0 && (
+                      <Group heading={ts("palette.recent")}>
+                        {recent.map((r) => (
+                          <Item key={r.id} value={`recent-${r.id}`} icon={r.kind === "ticker" ? Hash : r.kind === "people" ? UserRound : History}
+                            title={recentTitle(r)} subtitle={[kindLabel(r.kind), r.subtitle].filter(Boolean).join(" · ")} onSelect={() => openRecent(r)}
+                            hint={recentKeys(r)} />
+                        ))}
+                      </Group>
+                    )}
+                    {actionHits.length > 0 && <ActionsGroup heading={ts("palette.quick")} hits={actionHits} />}
+                    <NavGroups onPick={goPage} />
+                  </>
+                )}
+                {orderGroups(groups).map((g) => <React.Fragment key={g.id}>{g.node}</React.Fragment>)}
+              </CommandPrimitive.List>
+              <PaletteFooter />
+            </CommandPrimitive>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+      <ShareCardHost trade={shareTrade} onClose={() => setShareTrade(null)} />
+    </>
+  );
+}
 
-              {!q && recent.length > 0 && (
-                <CommandPrimitive.Group heading={ts("palette.recent")} className={groupCls}>
-                  {recent.map((r) => (
-                    <Item
-                      key={r.id}
-                      value={`recent-${r.id}`}
-                      icon={History}
-                      title={recentTitle(r)}
-                      subtitle={[kindLabel(r.kind), r.subtitle].filter(Boolean).join(" · ")}
-                      onSelect={() => go(r.path, { id: r.id, title: r.title, subtitle: r.subtitle, kind: r.kind, person: r.person }, r.highlight)}
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              )}
+function ActionsGroup({ heading, hits }: { heading: string; hits: Hit<HubAction>[] }) {
+  return (
+    <Group heading={heading}>
+      {hits.map((h) => (
+        <Item key={h.item.id} value={`action-${h.item.id}`} icon={h.item.icon} title={<Hl text={h.item.label} ranges={titleRanges(h)} />}
+          subtitle={h.item.subtitle} hint={h.item.keys} onSelect={h.item.run} />
+      ))}
+    </Group>
+  );
+}
 
-              {peopleHits.length > 0 && (
-                <CommandPrimitive.Group heading={PEOPLE.heading} className={groupCls}>
-                  {peopleHits.map((h) => {
-                    const acts = personActions(h.item);
-                    const main = acts[0];
-                    return (
-                      <Item
-                        key={`person-${h.item.id}`}
-                        value={`person-${h.item.id}`}
-                        icon={h.item.role === "trader" ? UserRound : UsersRound}
-                        title={h.field === 0 ? <Highlight text={personName(h.item.name)} ranges={h.ranges} /> : personName(h.item.name)}
-                        subtitle={personSubtitle(h.item)}
-                        right={main ? <span className="hidden shrink-0 text-2xs text-muted-foreground sm:inline">{main.label}</span> : undefined}
-                        onSelect={() => main ? go(main.path, { id: `person-${h.item.id}`, title: h.item.name, subtitle: main.label, kind: "people", person: h.item.name }) : setQuery(personName(h.item.name))}
-                      />
-                    );
-                  })}
-                </CommandPrimitive.Group>
-              )}
+/** Empty query: the sidebar rows under the sidebar's own group headings (same IA). */
+function NavGroups({ onPick }: { onPick: (p: NavItem) => void }) {
+  const navGroups = useVisibleNav();
+  return (
+    <>
+      {navGroups.map((g) => (
+        <Group key={g.id} heading={g.label}>
+          {g.rows.map((row) => (
+            <Item key={row.href} value={`page-${row.href}`} icon={row.icon} title={row.name}
+              subtitle={(row.children ?? []).map((c) => c.name).join(" · ") || undefined} onSelect={() => onPick(row)} hint={goKeys(row)} />
+          ))}
+        </Group>
+      ))}
+    </>
+  );
+}
 
-              {topPerson && topActions.length > 0 && (
-                <CommandPrimitive.Group heading={PEOPLE.actionsFor(personName(topPerson.name))} className={groupCls}>
-                  {topActions.map((a) => (
-                    <Item
-                      key={a.id}
-                      value={`person-act-${a.id}`}
-                      icon={a.icon}
-                      title={a.label}
-                      subtitle={personName(topPerson.name)}
-                      onSelect={() => go(a.path, { id: `person-${topPerson.id}-${a.id}`, title: topPerson.name, subtitle: a.label, kind: "people", person: topPerson.name })}
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              )}
+function LanguageGroup({ current, query, close }: { current: string; query: string; close: () => void }) {
+  const { t } = shellI18n.useT();
+  const langs = LANGS.filter((l) => !query || `${LANG_META[l].native} ${LANG_META[l].code} ${t(`palette.langNames.${l}`)}`.toLowerCase().includes(query));
+  return (
+    <Group heading={t("palette.languageHeading")}>
+      {langs.map((l) => (
+        <Item key={l} value={`lang-${l}`} icon={Languages} title={LANG_META[l].native} subtitle={t(`palette.langNames.${l}`)}
+          right={l === current ? <Check className="h-4 w-4 text-primary" aria-label={t("palette.languageCurrentMark")} /> : undefined}
+          onSelect={() => (l === current ? close() : switchLang(l, close))} />
+      ))}
+    </Group>
+  );
+}
 
-              {ticker && (
-                <CommandPrimitive.Group heading={tickerStats ? ts("palette.tickerHeadingStats", { ticker, trades: tickerStats.trades, ideas: tickerStats.ideas }) : ts("palette.tickerHeading", { ticker })} className={groupCls}>
-                  {tickerActions.map((a) => (
-                    <Item key={a.id} value={a.id} icon={a.icon} title={a.label} onSelect={() => go(a.path, { id: a.id, title: a.label, kind: "ticker" })} />
-                  ))}
-                </CommandPrimitive.Group>
-              )}
+type TickerStatsQuery = { data?: { total: number; winRate?: number | null; net?: number | null; lastDate?: string | null } | null; isLoading: boolean; isError: boolean };
 
-              {otherTickers.length > 0 && (
-                <CommandPrimitive.Group heading={ts("palette.tickers")} className={groupCls}>
-                  {otherTickers.map(([k, c]) => (
-                    <Item
-                      key={k}
-                      value={`ticker-${k}`}
-                      icon={Hash}
-                      title={k}
-                      subtitle={ts("palette.tickerCounts", { trades: tc("units.trades", { count: c.trades }), ideas: tc("units.ideas", { count: c.ideas }) })}
-                      right={<ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />}
-                      onSelect={() => { setQuery(k); inputRef.current?.focus(); }}
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              )}
+/** Typed «NVDA»: the ticker's trades, its chart, the viewer's own numbers on it, then ideas / watchlist / events / talk. */
+function TickerGroup({ ticker, counts, stats, me, onGo }: {
+  ticker: string; counts?: { trades: number; ideas: number }; stats: TickerStatsQuery; me: string | null; onGo: (path: string, label: string) => void;
+}) {
+  const { t } = shellI18n.useT();
+  const s = stats.data;
+  const statsLine = !me ? undefined
+    : stats.isLoading ? t("palette.ticker.statsLoading")
+    : !s || !s.total ? t("palette.ticker.statsNone", { ticker })
+    : t("palette.ticker.statsLine", {
+      trades: commonI18n.t("units.trades", { count: s.total }),
+      winRate: s.winRate != null ? fmtRate(s.winRate) : "—",
+      net: s.net != null ? fmtUsd(s.net, { signed: true, decimals: 0 }) : "—",
+    });
+  const day = chartDay(s?.lastDate);
+  const rows: { id: string; label: string; sub?: string; icon: React.ElementType; path: string }[] = [
+    { id: "trades", label: t("palette.ticker.trades", { ticker }), icon: CandlestickChart, path: links.trades({ ticker }) },
+    { id: "chart", label: t("palette.ticker.chart", { ticker }), sub: t("palette.ticker.chartHint", { date: fmtDate(day, "dayMonth") }), icon: LineChart, path: `/chart-lab?ticker=${encodeURIComponent(ticker)}&date=${day}` },
+    ...(me ? [{ id: "stats", label: t("palette.ticker.stats", { ticker }), sub: statsLine, icon: Hash, path: links.trades({ ticker, trader: me }) }] : []),
+    { id: "ideas", label: t("palette.tickerAction.ideas", { ticker }), icon: Lightbulb, path: `/trade-ideas?ticker=${encodeURIComponent(ticker)}` },
+    { id: "watch", label: t("palette.tickerAction.watch", { ticker }), icon: Eye, path: links.watchlist(ticker) },
+    { id: "events", label: t("palette.tickerAction.events", { ticker }), icon: CalendarClock, path: links.events(ticker) },
+    { id: "disc", label: t("palette.tickerAction.discussions", { ticker }), icon: MessageSquare, path: `/discussions?ticker=${encodeURIComponent(ticker)}` },
+  ];
+  const heading = counts ? t("palette.tickerHeadingStats", { ticker, trades: counts.trades, ideas: counts.ideas }) : t("palette.tickerHeading", { ticker });
+  return (
+    <Group heading={heading}>
+      {rows.map((r) => <Item key={r.id} value={`t-${r.id}`} icon={r.icon} title={r.label} subtitle={r.sub} onSelect={() => onGo(r.path, r.label)} />)}
+    </Group>
+  );
+}
 
-              {visibleActions.length > 0 && (
-                <CommandPrimitive.Group heading={ts("palette.actions")} className={groupCls}>
-                  {visibleActions.map((a) => (
-                    <Item
-                      key={a.id}
-                      value={`action-${a.id}`}
-                      icon={a.icon}
-                      title={a.label}
-                      subtitle={a.hint}
-                      onSelect={a.run}
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              )}
+function TradeByIdGroup({ id, query, onOpen }: { id: number; query: { data?: Trade | null; isLoading: boolean; isFetching: boolean }; onOpen: (it: ResultItem) => void }) {
+  const { t } = shellI18n.useT();
+  const tr = query.data;
+  const pending = query.isLoading || (query.isFetching && !tr);
+  const hit = tr && tr.id === id ? tradeResult(tr) : null;
+  return (
+    <Group heading={t("palette.trade.heading", { id })}>
+      {hit ? (
+        <Item value={`trade-id-${id}`} icon={CandlestickChart} title={hit.title} subtitle={hit.subtitle} onSelect={() => onOpen(hit)} right={<RowMeta badge={hit.badge} tone={hit.badgeTone} meta={hit.meta} />} />
+      ) : (
+        // Unknown yet / not found: Enter still opens the trades page, which looks the id up and explains a miss.
+        <Item value={`trade-id-${id}`} icon={pending ? Loader2 : CandlestickChart} title={pending ? t("palette.trade.loading", { id }) : t("palette.trade.notFound", { id })}
+          onSelect={() => onOpen({ id: `trade-${id}`, section: "trades", title: `#${id}`, path: "/trades", highlight: id, score: 0 })} />
+      )}
+    </Group>
+  );
+}
 
-              {[...sections.entries()].map(([name, items]) => (
-                <CommandPrimitive.Group key={name} heading={name} className={groupCls}>
-                  {items.map((item) => (
-                    <Item
-                      key={item.id}
-                      value={item.id}
-                      icon={SECTION_ICON[item.section]}
-                      title={item.title}
-                      subtitle={item.subtitle}
-                      onSelect={() => goResult(item)}
-                      right={
-                        <span className="flex shrink-0 items-center gap-2">
-                          {item.badge && (
-                            <span className={cn("rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums", BADGE_TONE[item.badgeTone ?? "neutral"])}>{item.badge}</span>
-                          )}
-                          {item.meta && <span className="hidden text-2xs tabular-nums text-muted-foreground sm:inline">{item.meta}</span>}
-                        </span>
-                      }
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              ))}
-
-              {pages.length > 0 && (
-                <CommandPrimitive.Group heading={ts("palette.goTo")} className={groupCls}>
-                  {pages.map((p) => (
-                    <Item
-                      key={p.href}
-                      value={`page-${p.href}`}
-                      icon={p.icon}
-                      title={p.name}
-                      subtitle={pagePath(p)}
-                      onSelect={() => goPage(p)}
-                      right={goKeyHint(p)}
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              )}
-
-              {!q && navGroups.map((g) => (
-                <CommandPrimitive.Group key={g.id} heading={g.label} className={groupCls}>
-                  {g.rows.map((row) => (
-                    <Item
-                      key={row.href}
-                      value={`page-${row.href}`}
-                      icon={row.hubIcon ?? row.icon}
-                      title={rowLabel(row)}
-                      subtitle={rowChildren(row).map((c) => c.name).join(" · ") || undefined}
-                      onSelect={() => goPage(row)}
-                      right={goKeyHint(row)}
-                    />
-                  ))}
-                </CommandPrimitive.Group>
-              ))}
-            </CommandPrimitive.List>
-
-            <div aria-hidden="true" className="hidden items-center gap-4 border-t border-[var(--glass-border)] px-4 py-2 text-2xs text-muted-foreground sm:flex">
-              <span className="inline-flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> {ts("palette.footerSelect")}</span>
-              <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> {ts("palette.footerOpen")}</span>
-              <span className="inline-flex items-center gap-1"><Kbd>$</Kbd> {ts("palette.footerTicker")}</span>
-              <span className="ml-auto inline-flex items-center gap-1"><Kbd>G</Kbd> {ts("palette.footerGo")}</span>
-            </div>
-          </CommandPrimitive>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+function PeopleGroups({ hits, ctx, go, setQuery }: {
+  hits: SearchHit<DirectoryPerson>[];
+  ctx: Parameters<typeof personActions>[1];
+  go: (path: string, rec?: RecentItem) => void;
+  setQuery: (q: string) => void;
+}) {
+  const { t } = shellI18n.useT();
+  const top = hits[0]?.item ?? null;
+  const topActions = top ? personActions(top, ctx).slice(1) : [];
+  const rec = (p: DirectoryPerson, label: string, path: string, suffix = ""): RecentItem => ({ id: `person-${p.id}${suffix}`, kind: "people", title: p.name, subtitle: label, path, person: p.name });
+  return (
+    <>
+      <Group heading={t("palette.people.heading")}>
+        {hits.map((h) => {
+          const main = personActions(h.item, ctx)[0];
+          return (
+            <Item key={`person-${h.item.id}`} value={`person-${h.item.id}`} icon={h.item.role === "trader" ? UserRound : UsersRound}
+              title={h.field === 0 ? <Hl text={personName(h.item.name)} ranges={h.ranges} /> : personName(h.item.name)} subtitle={personSubtitle(h.item)}
+              right={main ? <span className="hidden shrink-0 text-2xs text-muted-foreground sm:inline">{main.label}</span> : undefined}
+              onSelect={() => (main ? go(main.path, rec(h.item, main.label, main.path)) : setQuery(personName(h.item.name)))} />
+          );
+        })}
+      </Group>
+      {top && topActions.length > 0 && (
+        <Group heading={t("palette.people.actionsFor", { name: personName(top.name) })}>
+          {topActions.map((a) => (
+            <Item key={a.id} value={`person-act-${a.id}`} icon={a.icon} title={a.label} subtitle={personName(top.name)} onSelect={() => go(a.path, rec(top, a.label, a.path, `-${a.id}`))} />
+          ))}
+        </Group>
+      )}
+    </>
   );
 }

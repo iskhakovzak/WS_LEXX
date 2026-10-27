@@ -43,9 +43,23 @@ const sheetVariants = cva(
         right:
           "inset-y-0 right-0 h-full w-[88%] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-md",
       },
+      // Width presets for side sheets (sizing only — the motion classes above are untouched). Phones: full width.
+      // Every preset is an inline-size container (`@container/sheet`), so the body reflows with the sheet, not the window.
+      size: {
+        default: "",
+        md: "",
+        lg: "",
+        xl: "",
+      },
     },
+    compoundVariants: [
+      { side: ["left", "right"], size: "md", className: "@container/sheet w-full sm:max-w-[30rem]" },
+      { side: ["left", "right"], size: "lg", className: "@container/sheet w-full sm:max-w-[min(72rem,max(42rem,70vw))]" },
+      { side: ["left", "right"], size: "xl", className: "@container/sheet w-full sm:max-w-[min(90rem,max(48rem,82vw))]" },
+    ],
     defaultVariants: {
       side: "right",
+      size: "default",
     },
   }
 )
@@ -57,15 +71,15 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", size = "default", className, children, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
-      className={cn(sheetVariants({ side }), className)}
+      className={cn(sheetVariants({ side, size }), className)}
       {...props}
     >
-      <SheetPrimitive.Close className="chip absolute right-4 top-[max(1rem,env(safe-area-inset-top))] inline-flex h-8 w-8 items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:right-3 pointer-coarse:h-10 pointer-coarse:w-10">
+      <SheetPrimitive.Close className="chip absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-sticky inline-flex h-8 w-8 items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:right-3 pointer-coarse:h-10 pointer-coarse:w-10">
         <X className="h-4 w-4" />
         <span className="sr-only">{commonI18n.t("actions.close")}</span>
       </SheetPrimitive.Close>
@@ -81,7 +95,7 @@ const SheetHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col gap-1.5 pr-10 text-left",
+      "overlay-bar overlay-bar-top flex flex-col gap-1.5 pr-10 text-left",
       className
     )}
     {...props}
@@ -95,7 +109,7 @@ const SheetFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end",
+      "overlay-bar overlay-bar-bottom flex flex-col-reverse gap-inline sm:flex-row sm:flex-wrap sm:items-center sm:justify-end",
       className
     )}
     {...props}

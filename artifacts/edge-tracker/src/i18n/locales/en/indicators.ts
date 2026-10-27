@@ -157,7 +157,7 @@ export default {
     download: "Download set (.md)",
   },
   md: {
-    title: "# My indicator set — WS_LEXX",
+    title: "# My indicator set — WS_Desk",
     exported: "Exported: {date} · {count} items",
     horizon: "Horizon: {value}",
     timeframe: "Timeframe: {value}",

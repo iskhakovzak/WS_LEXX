@@ -60,12 +60,20 @@ const TYPE_DEFS: readonly NotificationTypeDef[] = [
   { type: "quest_failed", group: "review", severity: "info" },
   { type: "quest_cancelled", group: "review", severity: "info" },
   { type: "achievement_earned", group: "review", severity: "info" },
+  { type: "achievement_summary", group: "review", severity: "info" },
+  { type: "kudos_received", group: "review", severity: "info" },
   { type: "reward_eligible", group: "review", severity: "info" },
   { type: "reward_requested", group: "review", severity: "info" },
   { type: "reward_granted", group: "review", severity: "info" },
   { type: "reward_declined", group: "review", severity: "info" },
   { type: "curator_request", group: "review", severity: "info" },
   { type: "curator_request_done", group: "review", severity: "info" },
+  { type: "curator_digest", group: "review", severity: "info" },
+  { type: "ai_review_ready", group: "review", severity: "info" },
+  { type: "mentor_ready", group: "review", severity: "info" },
+  { type: "mentor_escalation", group: "review", severity: "warn" },
+  { type: "trader_silence", group: "review", severity: "info" },
+  { type: "curator_message", group: "review", severity: "info" },
   // risk
   { type: "risk_warn", group: "risk", severity: "warn" },
   { type: "risk_breach", group: "risk", severity: "critical" },
@@ -73,6 +81,7 @@ const TYPE_DEFS: readonly NotificationTypeDef[] = [
   { type: "risk_breach_review", group: "risk", severity: "info" },
   { type: "limit_change", group: "risk", severity: "info" },
   { type: "rule_violation", group: "risk", severity: "warn" },
+  { type: "leak_guard", group: "risk", severity: "warn" },
   // scaling
   { type: "scaling_proposal", group: "scaling", severity: "info" },
   { type: "scaling_decision", group: "scaling", severity: "info" },
@@ -247,6 +256,48 @@ export function sanitizePrefs(input: unknown): PrefRow[] {
     out.push({ type, inApp, muteUntil });
   }
   return out;
+}
+
+// ─── Telegram push budget (roadmap R3) ──────────────────────────────────────
+//
+// Per person and New York day: at most `dailyPush` Telegram pushes, of which at most `coachingPush` coaching ones.
+// Risk alerts are never capped but go out once per dedup key. A daily-loop contract alert is held back while a risk
+// push to the same person is fresher than `riskQuietMinutes` (the same stop, said twice). Exempt kinds are direct
+// conversation (a reply to the person's own idea / comment) and the curator's evening digest (it replaces up to 25
+// pushes); they are not counted. The DB side (lib/pushBudget.ts) applies this verdict under a per-person lock.
+
+export type PushCategory = "risk" | "coaching" | "standard" | "exempt";
+
+const RISK_KINDS: ReadonlySet<string> = new Set(["risk_warn", "risk_breach", "risk_repeat_breach"]);
+/** Coaching nudges: the intraday own-contract alert now; live flags / rule-trial nudges later (R5, R10). */
+const COACHING_KINDS: ReadonlySet<string> = new Set(["daily_contract_alert"]);
+const EXEMPT_KINDS: ReadonlySet<string> = new Set(["idea_comment", "idea_review", "idea_reply", "curator_digest"]);
+
+export function pushCategory(kind: string): PushCategory {
+  if (RISK_KINDS.has(kind)) return "risk";
+  if (COACHING_KINDS.has(kind) || kind.startsWith("coach_")) return "coaching";
+  if (EXEMPT_KINDS.has(kind)) return "exempt";
+  return "standard";
+}
+
+export type PushBudget = { dailyPush: number; coachingPush: number; riskQuietMinutes: number };
+/** Today's pushes of one person (NY day), any order. */
+export type PushLogRow = { kind: string; category: Exclude<PushCategory, "exempt">; dedupKey: string | null; sentAt: string | Date };
+export type PushVerdict = { send: true; category: PushCategory } | { send: false; reason: "duplicate" | "daily_cap" | "coaching_cap" | "risk_quiet" };
+
+export function pushVerdict(kind: string, dedupKey: string | null, today: readonly PushLogRow[], budget: PushBudget, now: Date = new Date()): PushVerdict {
+  const category = pushCategory(kind);
+  if (category === "exempt") return { send: true, category };
+  if (dedupKey && today.some((r) => r.dedupKey === dedupKey)) return { send: false, reason: "duplicate" };
+  if (category === "risk") return { send: true, category };
+  if (kind === "daily_contract_alert") {
+    const quietFrom = now.getTime() - budget.riskQuietMinutes * 60_000;
+    if (today.some((r) => r.category === "risk" && r.kind !== "risk_repeat_breach" && (toMs(r.sentAt) ?? 0) >= quietFrom)) return { send: false, reason: "risk_quiet" };
+  }
+  const counted = today.filter((r) => r.category !== "risk");
+  if (category === "coaching" && counted.filter((r) => r.category === "coaching").length >= budget.coachingPush) return { send: false, reason: "coaching_cap" };
+  if (counted.length >= budget.dailyPush) return { send: false, reason: "daily_cap" };
+  return { send: true, category };
 }
 
 // ─── keyset pagination ──────────────────────────────────────────────────────

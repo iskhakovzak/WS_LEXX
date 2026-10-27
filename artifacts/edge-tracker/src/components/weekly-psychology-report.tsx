@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
+import { Brain, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, Lightbulb } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { http, ApiError } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
@@ -9,11 +9,12 @@ import { STALE } from "@/lib/api/keys";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Pill, EmptyState, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
-import { WidgetShell, IconAction, WidgetError, Sparkline, num, relTime, useStoredState } from "@/components/widgets/widget-kit";
+import { WidgetShell, IconAction, WidgetError, Sparkline, num, relTime } from "@/components/widgets/widget-kit";
 import { fmtDate, fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import { readinessTone } from "@/components/widgets/checkin-model";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
@@ -111,7 +112,6 @@ export function WeeklyPsychologyReport() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [idx, setIdx] = useState(0);
-  const [details, setDetails] = useStoredState<"open" | "closed">("weekly_psych_details", "closed", ["open", "closed"] as const);
 
   const historyQ = useQuery<HistoryData>({
     queryKey: ["weekly-psychology-history", userId],
@@ -361,69 +361,72 @@ export function WeeklyPsychologyReport() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setDetails(details === "open" ? "closed" : "open")}
-            aria-expanded={details === "open"}
-            aria-controls="weekly-psychology-details"
-            className="flex min-h-8 w-full items-center justify-between rounded-lg px-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="flex items-center gap-1.5">
-              <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("psych.detailsToggle")}
-              {report.keyInsights?.length ? <span className="tabular-nums">· {report.keyInsights.length}</span> : null}
-            </span>
-            {details === "open" ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
-          </button>
-
-          {details === "open" && (
-            <div id="weekly-psychology-details" className="grid gap-4 md:grid-cols-2">
-              <div>
-                <div className="micro-label mb-2">{t("psych.byState")}</div>
-                {breakdown.length ? (
-                  <ul className="space-y-1.5">
-                    {breakdown.map(([state, s]) => {
-                      const tone = STATE_TONE[state] ?? "neutral";
-                      return (
-                        <li key={state} className="grid grid-cols-[6.5rem_minmax(0,1fr)_3rem_3.5rem] items-center gap-2 text-xs">
-                          <span className="truncate" title={stateLabel(state)}>{stateLabel(state)}</span>
-                          <span className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden="true">
-                            <span
-                              className={cn("block h-full rounded-full", s.winRate >= 0.5 ? "bg-up" : "bg-down")}
-                              style={{ width: `${Math.round(s.winRate * 100)}%` }}
-                            />
-                          </span>
-                          <span className={cn("text-right tabular-nums", tone === "down" && s.winRate < 0.5 ? "text-down" : "text-foreground")}>
-                            {fmtRate(s.winRate)}
-                          </span>
-                          <span className="text-right tabular-nums text-muted-foreground">
-                            {commonI18n.t("units.tradesShort", { count: s.count })}
-                          </span>
+          {/* The details open over the tile (popover): a dashboard row shares one height, so an inline fold stretched every neighbour. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="group flex min-h-8 w-full min-w-0 items-start justify-between gap-2 rounded-lg px-1 py-1.5 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex min-w-0 items-start gap-1.5">
+                  <Lightbulb className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">
+                    {t("psych.detailsToggle")}
+                    {report.keyInsights?.length ? <span className="tabular-nums"> · {report.keyInsights.length}</span> : null}
+                  </span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none group-data-[state=open]:rotate-180" aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[min(36rem,calc(100vw-2rem))] p-4">
+              <div id="weekly-psychology-details" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <div className="micro-label mb-2">{t("psych.byState")}</div>
+                  {breakdown.length ? (
+                    <ul className="space-y-1.5">
+                      {breakdown.map(([state, s]) => {
+                        const tone = STATE_TONE[state] ?? "neutral";
+                        return (
+                          <li key={state} className="grid grid-cols-[6.5rem_minmax(0,1fr)_3rem_3.5rem] items-center gap-2 text-xs">
+                            <span className="truncate" title={stateLabel(state)}>{stateLabel(state)}</span>
+                            <span className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden="true">
+                              <span
+                                className={cn("block h-full rounded-full", s.winRate >= 0.5 ? "bg-up" : "bg-down")}
+                                style={{ width: `${Math.round(s.winRate * 100)}%` }}
+                              />
+                            </span>
+                            <span className={cn("text-right tabular-nums", tone === "down" && s.winRate < 0.5 ? "text-down" : "text-foreground")}>
+                              {fmtRate(s.winRate)}
+                            </span>
+                            <span className="text-right tabular-nums text-muted-foreground">
+                              {commonI18n.t("units.tradesShort", { count: s.count })}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{t("psych.noStateTrades")}</p>
+                  )}
+                </div>
+                <div>
+                  <div className="micro-label mb-2">{t("psych.keyInsights")}</div>
+                  {report.keyInsights?.length ? (
+                    <ul className="space-y-1.5">
+                      {report.keyInsights.map((insight, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm leading-snug text-foreground/90">
+                          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                          {insight}
                         </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{t("psych.noStateTrades")}</p>
-                )}
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{t("psych.noInsights")}</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="micro-label mb-2">{t("psych.keyInsights")}</div>
-                {report.keyInsights?.length ? (
-                  <ul className="space-y-1.5">
-                    {report.keyInsights.map((insight, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm leading-snug text-foreground/90">
-                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                        {insight}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{t("psych.noInsights")}</p>
-                )}
-              </div>
-            </div>
-          )}
+            </PopoverContent>
+          </Popover>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2 text-2xs text-muted-foreground">
             <span title={fmtDate(report.generatedAt, "shortDateTime")}>{t("psych.recalculatedAgo", { ago: relTime(report.generatedAt) })}</span>

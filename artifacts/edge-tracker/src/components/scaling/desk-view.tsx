@@ -1,7 +1,8 @@
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import * as React from "react";
-import { ArrowDownRight, ArrowUpRight, Inbox, Search, TrendingUp, Users } from "lucide-react";
-import { DataTable, EmptyState, FilterChip, Panel, Pill, SortableTh, StatCard, StatGrid, Toolbar, useTableSort } from "@/components/ds";
-import { Input } from "@/components/ui/input";
+import { ArrowDownRight, ArrowUpRight, Inbox, TrendingUp, Users } from "lucide-react";
+import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, Toolbar, usePersistentState, useTableSort } from "@/components/ds";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { personName } from "@/i18n";
 import type { Action, Evaluation, TraderEval } from "./use-scaling";
 import { useEvaluation, useProposals } from "./use-scaling";
 import { ProposalCard } from "./proposal-card";
+import { CapitalPanel } from "./capital-panel";
 import { TraderSheet } from "./trader-sheet";
 import { ProposeButton, TierPopover } from "./curator-actions";
 import { ACTION_TONE, actionLabel, fmtMetric, tierLabel } from "./format";
@@ -60,23 +62,14 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const { t: tc } = commonI18n.useT();
   const ev = useEvaluation(null);
   const pending = useProposals("pending", null);
-  const [filter, setFilter] = React.useState<Filter>("all");
+  const [filter, setFilter] = usePersistentState<Filter>("scaling.desk.filter", "all");
   const [query, setQuery] = React.useState("");
-  const [selected, setSelected] = React.useState<string | null>(focusTrader);
-  React.useEffect(() => { if (focusTrader) setSelected(focusTrader); }, [focusTrader]);
-  const searchRef = React.useRef<HTMLInputElement>(null);
+  const [selected, setSelectedState] = React.useState<string | null>(focusTrader);
+  React.useEffect(() => { if (focusTrader) setSelectedState(focusTrader); }, [focusTrader]);
+  // The open card lives in ?trader= (a reload keeps it, closing clears it).
+  const setSelected = React.useCallback((t: string | null) => { setSelectedState(t); replaceSearchParams({ trader: t }); }, []);
 
   React.useEffect(() => { if (ev.dataUpdatedAt) onUpdatedAt?.(ev.dataUpdatedAt); }, [ev.dataUpdatedAt, onUpdatedAt]);
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const data: Evaluation | undefined = ev.data;
   const all = data?.traders ?? [];
@@ -103,8 +96,9 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const filterLabel = (f: Filter) => (f === "all" ? tc("states.all") : f === "action" ? t("desk.filterAction") : t("desk.filterPending"));
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
-      <StatGrid>
+    <div className="flex flex-col gap-section">
+      {/* Zero problem counters fold into «Всё чисто: …» (design audit); the traders count is never zero on a desk. */}
+      <StatGrid allClear>
         {ev.isLoading || !s ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
         ) : (
@@ -118,11 +112,11 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
       </StatGrid>
 
       {(pending.isLoading || pendingList.length > 0) && (
-        <Panel title={t("desk.queueTitle")} description={t("desk.queueDesc")} icon={Inbox}>
+        <Panel id="scaling-queue" className="scroll-mt-[var(--sticky-top,1rem)]" title={t("desk.queueTitle")} description={t("desk.queueDesc")} icon={Inbox}>
           {pending.isLoading ? (
-            <div className="grid gap-2 md:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {pendingList.map((p) => (
                 <ProposalCard key={p.id} proposal={p} tiers={data?.tiers ?? []} canDecide={!!data?.canEdit} onOpenTrader={setSelected} />
               ))}
@@ -131,16 +125,16 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
         </Panel>
       )}
 
+      <CapitalPanel canDecide={!!data?.canEdit} onOpenTrader={setSelected} />
+
       <Toolbar>
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("desk.searchPlaceholder")} aria-label={t("desk.searchAria")} className="pl-9" />
-        </div>
-        {FILTERS.map((f) => (
-          <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={f === "all" ? all.length : f === "action" ? actionCount : s?.pending}>
-            {filterLabel(f)}
-          </FilterChip>
-        ))}
+        <ToolbarSearch value={query} onChange={setQuery} placeholder={t("desk.searchPlaceholder")} ariaLabel={t("desk.searchAria")} />
+        <Segmented<Filter>
+          ariaLabel={t("desk.filterAria")}
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ value: f, label: filterLabel(f), count: f === "all" ? all.length : f === "action" ? actionCount : s?.pending }))}
+        />
       </Toolbar>
 
       <Panel padded={false} title={tc("trading.desk")} description={t("desk.tableDesc")} icon={TrendingUp}>

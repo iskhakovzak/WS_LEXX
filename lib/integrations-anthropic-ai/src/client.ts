@@ -9,25 +9,28 @@ export class AnthropicNotConfiguredError extends Error {
   }
 }
 
+/**
+ * The API key: AI_INTEGRATIONS_ANTHROPIC_API_KEY only (docs/AI_ASSISTANT.md). A shell-wide ANTHROPIC_API_KEY is ignored on
+ * purpose, so the server never spends a key nobody configured for it. Never logged, never sent to a browser.
+ */
+function apiKey(): string | undefined {
+  return process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY?.trim() || undefined;
+}
+
+/**
+ * Configured = an API key is present. AI_INTEGRATIONS_ANTHROPIC_BASE_URL is optional: unset → the SDK default
+ * (api.anthropic.com), which is what a key from platform.claude.com needs.
+ */
 export function isAnthropicConfigured(): boolean {
-  return Boolean(
-    process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL &&
-    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-  );
+  return Boolean(apiKey());
 }
 
 export function getAnthropic(): Anthropic {
   if (cached) return cached;
-  if (!process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL) {
-    throw new AnthropicNotConfiguredError("AI_INTEGRATIONS_ANTHROPIC_BASE_URL");
-  }
-  if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) {
-    throw new AnthropicNotConfiguredError("AI_INTEGRATIONS_ANTHROPIC_API_KEY");
-  }
-  cached = new Anthropic({
-    apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-    baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-  });
+  const key = apiKey();
+  if (!key) throw new AnthropicNotConfiguredError("AI_INTEGRATIONS_ANTHROPIC_API_KEY");
+  const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL?.trim() || undefined;
+  cached = new Anthropic({ apiKey: key, ...(baseURL ? { baseURL } : {}) });
   return cached;
 }
 

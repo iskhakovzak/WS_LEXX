@@ -1,13 +1,14 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { config } from "../config";
+import { markSeedDone, seedDone } from "./seedMarkers";
 
 /**
  * Boot-time seeds and data repairs, no DDL: the schema lives only in src/db/migrations (0234 adopted the tables the code
  * used to create here and in the old ensure*() helpers); src/db/runner.ts applies the migrations before this runs.
  *   - legacy playbook text checklists / screenshot lists -> jsonb (idempotent, only rows still NULL)
  *   - first accounts from SEED_USERS (random dev PINs outside production) on an empty users table
- *   - SMB strategy playbook entries + their tags, playbook space/visibility for rows without them
+ *   - SMB strategy playbook entries + their tags ONCE per database (seed_markers), playbook space/visibility for rows without them
  *   - the default pre-trade checklist on an empty template
  */
 export async function runSeeds() {
@@ -188,39 +189,26 @@ export async function runSeeds() {
   };
 
   const allSeedStrategies = [...smbStrategies, ...additionalStrategies, ...opgImbxMocStrategies];
-  let seeded = 0;
-  for (const s of allSeedStrategies) {
-    try {
-      const tags = seedTags[s.name] || null;
-      const { rowCount } = await pool.query(
-        `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level, tags)
-         SELECT $1, $2, $3, $4, $5, $6, $7, $8
-         WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1)`,
-        [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel, tags]
-      );
-      if (rowCount && rowCount > 0) seeded++;
-    } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
-  }
-
-  if (seeded === 0) {
-    let tagUpdated = 0;
-    for (const s of allSeedStrategies) {
-      const tags = seedTags[s.name];
-      if (!tags) continue;
-      try {
-        const { rowCount } = await pool.query(
-          `UPDATE playbook SET tags = $1 WHERE name = $2 AND (tags IS NULL OR tags = '') AND deleted_at IS NULL`,
-          [tags, s.name]
-        );
-        if (rowCount && rowCount > 0) tagUpdated++;
-      } catch (e: any) { logger.warn({ error: e.message }, `Update tags: ${s.name}`); }
-    }
-    if (tagUpdated > 0) logger.info(`Updated tags for ${tagUpdated} existing strategies`);
-  }
-  if (seeded > 0) {
-    logger.info(`Seeded ${seeded} new playbook strategies (${allSeedStrategies.length - seeded} already existed)`);
+  // Once per database (lib/seedMarkers, migration 0274): a renamed seeded setup or its cleared tags are the desk's own
+  // edits — re-inserting by name on every boot brought the originals back as duplicates and re-filled the tags.
+  if (await seedDone("playbook.strategies").catch(() => true)) {
+    logger.info("Playbook strategies were seeded once already, skipping seed");
   } else {
-    logger.info(`All ${allSeedStrategies.length} playbook strategies already exist, skipping seed`);
+    let seeded = 0;
+    for (const s of allSeedStrategies) {
+      try {
+        const tags = seedTags[s.name] || null;
+        const { rowCount } = await pool.query(
+          `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level, tags)
+           SELECT $1, $2, $3, $4, $5, $6, $7, $8
+           WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1)`,
+          [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel, tags]
+        );
+        if (rowCount && rowCount > 0) seeded++;
+      } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
+    }
+    await markSeedDone("playbook.strategies").catch((e: any) => logger.warn({ error: e.message }, "Seed playbook: marker"));
+    logger.info(`Seeded ${seeded} new playbook strategies (${allSeedStrategies.length - seeded} already existed)`);
   }
 
   // Playbook space / visibility for rows inserted without them (the seed above, legacy rows); readers also COALESCE

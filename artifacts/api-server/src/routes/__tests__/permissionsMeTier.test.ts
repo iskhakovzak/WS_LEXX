@@ -101,6 +101,22 @@ describe("GET /permissions/me tier", () => {
   });
 });
 
+describe("GET /permissions/me share cards", () => {
+  const share = async () => ((await (await fetch(`${base}/api/permissions/me`)).json()) as { shareCards: { enabled: boolean; money: string } }).shareCards;
+
+  it("defaults: on, $ allowed; then the saved desk settings (off, R only)", async () => {
+    expect(await share()).toEqual({ enabled: true, money: "usd" });
+    __loadSettingsCache({ "shareCards.enabled": false, "shareCards.money": "r_only" });
+    expect(await share()).toEqual({ enabled: false, money: "r_only" });
+  });
+
+  it("staff read the same desk switch (no role exception)", async () => {
+    __loadSettingsCache({ "shareCards.money": "r_only" });
+    who = { id: 121, name: "Дмитрий К.", role: "admin" };
+    expect(await share()).toEqual({ enabled: true, money: "r_only" });
+  });
+});
+
 describe("GET /permissions/me stage access", () => {
   const as = (name: string, role: Who["role"] = "trader", id = 200) => { who = { id, name, role }; };
 

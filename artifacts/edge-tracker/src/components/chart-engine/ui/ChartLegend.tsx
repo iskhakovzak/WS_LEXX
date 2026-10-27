@@ -69,7 +69,7 @@ export function ChartLegend({ info, ticker, tfLabel, className }: { info: Legend
         <span>C <b className={cn("font-medium", tone(chg))}>{fmtPrice(bar.c)}</b> <span className={tone(chg)} title={chartI18n.t("legend.chgTitle")}>{fmtSigned(chg, bar.c)} ({fmtPct(chgPct)})</span></span>
       </div>
       <div className="flex items-center gap-x-2.5 overflow-hidden whitespace-nowrap [&>*]:shrink-0">
-        <span>V <b className="font-medium text-foreground">{fmtCompact(bar.v)}</b>{info.volRatio != null && <span className={cn("ml-1", info.volRatio >= 1.5 ? "text-[hsl(var(--chart-3))]" : "")} title={chartI18n.t("legend.volTitle")}>×{info.volRatio.toFixed(1)}</span>}</span>
+        <span>V <b className="font-medium text-foreground">{fmtCompact(bar.v)}</b>{info.volRatio != null && info.volRatio >= 0.05 && <span className={cn("ml-1", info.volRatio >= 1.5 ? "text-[hsl(var(--chart-3))]" : "")} title={chartI18n.t("legend.volTitle")}>×{info.volRatio.toFixed(1)}</span>}</span>
         {vsPrev != null && <span className="hidden @md:inline" title={chartI18n.t("legend.vsPrevTitle")}>{chartI18n.t("legend.vsPrev")} <b className={cn("font-medium", tone(vsPrev))}>{fmtPct(vsPrev)}</b></span>}
         {info.vwap && <span>VWAP <b className="font-medium text-[hsl(var(--chart-5))]">{fmtPrice(info.vwap.vwap)}</b></span>}
         {info.avwap != null && <span className="hidden @lg:inline">AVWAP <b className="font-medium text-primary">{fmtPrice(info.avwap)}</b></span>}

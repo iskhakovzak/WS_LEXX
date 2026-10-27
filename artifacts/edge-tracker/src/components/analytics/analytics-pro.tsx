@@ -1,3 +1,4 @@
+import { scrollBehavior } from "@/lib/motion";
 import { useCallback, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
@@ -141,7 +142,7 @@ export default function AnalyticsPro({ trades }: Props) {
     if (kind === "month") setFocus({ view: "month", year: Number(key.slice(0, 4)), month: Number(key.slice(5, 7)) - 1, day: null });
     else setFocus({ ...focusFor(key), day: kind === "day" ? key : null });
     if (typeof document !== "undefined") {
-      document.getElementById("pro-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("pro-calendar")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     }
   }, []);
 
@@ -161,7 +162,7 @@ export default function AnalyticsPro({ trades }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
+    <div className="flex flex-col gap-section">
       {/* Controls: metric + filters */}
       <section aria-label={tp("page.paramsAria")} className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -211,7 +212,7 @@ export default function AnalyticsPro({ trades }: Props) {
             <ProCalendar days={days} trades={filtered} metric={metric} val={val} focus={focus} onFocus={setFocus} />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-grid lg:grid-cols-3">
             <div className="min-w-0 lg:col-span-2">
               <EquityPanel candles={candles} metric={metric} />
             </div>
@@ -220,7 +221,7 @@ export default function AnalyticsPro({ trades }: Props) {
 
           <ExtremesPanel ext={extremes} metric={metric} onJump={jump} />
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
             <BreakdownPanel trades={filtered} metric={metric} val={val} />
             <TradingDaysInfo
               ohlc={ohlc}

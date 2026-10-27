@@ -117,7 +117,7 @@ describe("Uzbek (Latin)", () => {
     const morning = render(me());
     expect(morning).toContain("Kun fokusi");
     expect(morning).toContain("Pozitsiyaga qarshi oʻrtachalash");
-    expect(morning).toContain("Junior darajasigacha: 3/5 bajarildi");
+    expect(morning).toContain("Juniorgacha: 3/5");
     const evening = render(me({ phase: "afterclose" }));
     expect(evening).toContain("Tahlil qildim");
     expect(evening).toContain("Bu xato emas");

@@ -1,15 +1,20 @@
 /**
  * «Эталоны» — gallery of example trades across every setup the viewer can read, scoped by the page's space bar.
- * Filters (kept in the URL, so a link shows the same selection): tier (gt), setup (gs), trader (gtr), period (gp).
+ * Filters (kept in the URL, so a link shows the same selection): tier (gt), setup (gs), trader (gtr), period (gp =
+ * week|month|quarter|year|all|custom + from/to; the old 30 / 90 / 365 still read).
+ * Toolbar (design audit wave 3): tier (the main mode) · period · trader (scope) · «Фильтры» (setup) + active chips.
  * Tier 1 is the default — the showcase of textbook trades. Someone else's trade shows R only (playbookPrivacy).
  * Cards open the setup on its «Эталоны» tab. Data: GET /api/playbook-tools/gallery.
  */
 import * as React from "react";
-import { Trophy, X } from "lucide-react";
+import { Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, Segmented } from "@/components/ds";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { EmptyState, Segmented, Toolbar } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton } from "@/components/shared/filters/filter-toolbar";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { usePeriodParam } from "@/hooks/use-period-param";
+import { periodWindow, type PeriodPreset } from "@/lib/period-range";
 import { notLiveMessage, useGallery } from "./api";
 import { ExampleCard, checklistOf } from "./examples-board";
 import { RedactedHint } from "./setup-bits";
@@ -21,7 +26,6 @@ import { playbookI18n } from "@/i18n/ns/playbook";
 
 import { comparePersonNames, personName } from "@/i18n";
 type TierF = "1" | "2" | "3" | "all";
-type PeriodF = "30" | "90" | "365" | "all";
 export type GalleryScope = SpaceTab | "all";
 
 /** Labels in the current UI language (call at render time). */
@@ -31,12 +35,10 @@ const tierOptions = (): { value: TierF; label: string }[] => [
   { value: "3", label: playbookI18n.t("gallery.tier3") },
   { value: "all", label: playbookI18n.t("gallery.all") },
 ];
-const PERIOD_KEYS = { "30": "d30", "90": "d90", "365": "year", all: "all" } as const;
-const PERIODS: PeriodF[] = ["30", "90", "365", "all"];
-const DEFAULTS = { gt: "1", gp: "all" };
+const PERIODS: readonly PeriodPreset[] = ["month", "quarter", "year", "all"];
+const DEFAULTS = { gt: "1" };
 
 const isTier = (v: string | null): v is TierF => v === "1" || v === "2" || v === "3" || v === "all";
-const isPeriod = (v: string | null): v is PeriodF => PERIODS.some((p) => p === v);
 
 /** Server space filter for the page scope; «Команда» has no server filter — narrowed on the client. */
 function serverSpace(scope: GalleryScope): string | null {
@@ -57,12 +59,12 @@ export function Gallery({
   const { t } = playbookI18n.useT();
   const { params, set } = useUrlParams();
   const tier: TierF = isTier(params.get("gt")) ? (params.get("gt") as TierF) : "1";
-  const period: PeriodF = isPeriod(params.get("gp")) ? (params.get("gp") as PeriodF) : "all";
+  const pp = usePeriodParam({ param: "gp", fallback: "all", presets: PERIODS });
+  const win = periodWindow(pp.period, pp.today, pp.custom);
   const setupId = Number(params.get("gs")) || null;
   const trader = params.get("gtr") ?? "";
-  const from = period === "all" ? null : addDays(nyDate(), -Number(period));
 
-  const q = useGallery({ tier: tier === "all" ? undefined : Number(tier), setupId, space: serverSpace(scope), from, limit: 300 });
+  const q = useGallery({ tier: tier === "all" ? undefined : Number(tier), setupId, space: serverSpace(scope), from: win?.from ?? null, to: pp.period === "custom" ? win?.to ?? null : null, limit: 300 });
   const byId = React.useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
   const scoped: SetupExample[] = React.useMemo(() => {
     const all = q.data ?? [];
@@ -79,43 +81,44 @@ export function Gallery({
   }, [entries, q.data, setupId]);
   const live = q.isError ? notLiveMessage(q.error) : null;
   const setupCount = new Set(items.map((x) => x.playbookId)).size;
-  const filtered = tier !== "1" || period !== "all" || !!setupId || !!trader;
+  const filtered = tier !== "1" || pp.period !== "all" || !!setupId || !!trader;
+  const resetAll = () => { set({ gt: null, gs: null, gtr: null }); if (pp.period !== "all") pp.setPreset("all"); };
+  const setupName = setupId ? byId.get(setupId)?.name ?? t("setupN", { id: setupId }) : null;
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       {!live && (
-        <div className="glass-panel flex flex-wrap items-center gap-2 rounded-2xl p-2">
-          <Segmented<TierF> ariaLabel={t("gallery.tierAria")} size="sm" value={tier} onChange={(v) => set({ gt: v }, DEFAULTS)} options={tierOptions()} />
-          <Select value={period} onValueChange={(v) => set({ gp: v }, DEFAULTS)}>
-            <SelectTrigger className="h-9 w-36" aria-label={t("gallery.periodAria")}><SelectValue /></SelectTrigger>
-            <SelectContent>{PERIODS.map((p) => <SelectItem key={p} value={p}>{t(`gallery.period.${PERIOD_KEYS[p]}`)}</SelectItem>)}</SelectContent>
-          </Select>
-          <Select value={setupId ? String(setupId) : "__all"} onValueChange={(v) => set({ gs: v === "__all" ? null : v })}>
-            <SelectTrigger className="h-9 w-full min-w-0 sm:w-72" aria-label={t("gallery.setupAria")}><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-[min(60dvh,480px)]">
-              <SelectItem value="__all">{t("gallery.allSetups")}</SelectItem>
-              {setups.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <PersonSelect
-            value={trader || ""}
-            onValueChange={(v) => set({ gtr: v || null })}
-            disabled={!traders.length && !trader}
-            options={trader && !traders.includes(trader) ? [trader, ...traders] : traders}
-            allLabel={t("gallery.allTraders")}
-            ariaLabel={t("gallery.traderAria")}
-            className="h-9 w-full min-w-0 sm:w-48"
-          />
-          {filtered && (
-            <Button variant="ghost" size="sm" className="h-9" onClick={() => set({ gt: null, gp: null, gs: null, gtr: null })}>
-              <X className="h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.reset")}
-            </Button>
-          )}
-          {items.length > 0 && (
-            <span className="ml-auto px-1 text-sm tabular-nums text-muted-foreground">
-              {t("gallery.examples", { count: items.length })} · {commonI18n.t("units.setups", { count: setupCount })}
-            </span>
-          )}
+        <div className="flex flex-col gap-2">
+          <Toolbar>
+            <Segmented<TierF> ariaLabel={t("gallery.tierAria")} value={tier} onChange={(v) => set({ gt: v }, DEFAULTS)} options={tierOptions()} />
+            <PeriodPicker compact presets={PERIODS} value={pp.period} custom={pp.custom} onPreset={pp.setPreset} onCustom={pp.setCustom} today={pp.today} ariaLabel={t("gallery.periodAria")} />
+            <PersonSelect
+              value={trader || ""}
+              onValueChange={(v) => set({ gtr: v || null })}
+              disabled={!traders.length && !trader}
+              options={trader && !traders.includes(trader) ? [trader, ...traders] : traders}
+              allLabel={t("gallery.allTraders")}
+              ariaLabel={t("gallery.traderAria")}
+              className="h-9 w-full min-w-0 sm:w-48"
+            />
+            <FiltersButton count={setupId ? 1 : 0} onReset={() => set({ gs: null })} resultCount={items.length}>
+              <FilterSection title={t("gallery.setupAria")}>
+                <Select value={setupId ? String(setupId) : "__all"} onValueChange={(v) => set({ gs: v === "__all" ? null : v })}>
+                  <SelectTrigger className="h-9 w-full min-w-0" aria-label={t("gallery.setupAria")}><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-[min(60dvh,480px,var(--radix-select-content-available-height))]">
+                    <SelectItem value="__all">{t("gallery.allSetups")}</SelectItem>
+                    {setups.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FilterSection>
+            </FiltersButton>
+            {items.length > 0 && (
+              <span className="ml-auto px-1 text-sm tabular-nums text-muted-foreground">
+                {t("gallery.examples", { count: items.length })} · {commonI18n.t("units.setups", { count: setupCount })}
+              </span>
+            )}
+          </Toolbar>
+          <ActiveFilters items={[!!setupName && { key: "gs", label: setupName ?? "", onRemove: () => set({ gs: null }) }]} onReset={resetAll} />
         </div>
       )}
       {!q.isLoading && !q.isError && items.some((x) => x.redacted) && <RedactedHint />}
@@ -139,7 +142,7 @@ export function Gallery({
             icon={Trophy}
             title={tier === "1" && !filtered ? t("gallery.emptyTier1") : commonI18n.t("states.nothingFound")}
             description={t("gallery.emptyDesc")}
-            action={filtered ? <Button variant="outline" onClick={() => set({ gt: null, gp: null, gs: null, gtr: null })}>{commonI18n.t("actions.resetFilters")}</Button> : undefined}
+            action={filtered ? <Button variant="outline" onClick={resetAll}>{commonI18n.t("actions.resetFilters")}</Button> : undefined}
           />
         </div>
       ) : (

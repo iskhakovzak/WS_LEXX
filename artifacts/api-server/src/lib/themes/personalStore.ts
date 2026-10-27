@@ -99,11 +99,16 @@ export async function readView(userId: number): Promise<ThemesView> {
   return normalizeView(rows[0]?.v);
 }
 
-export async function writeView(userId: number, view: ThemesView): Promise<ThemesView> {
+/**
+ * Merges only the fields a change names into the stored view, in one statement: two quick changes (a column, then the
+ * tab) never undo each other the way a read → merge → write did.
+ */
+export async function mergeView(userId: number, patch: Partial<ThemesView>): Promise<ThemesView> {
   const { rows } = await db().query<{ v: unknown }>(
-    `UPDATE users SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('themesView', $2::jsonb)
+    `UPDATE users SET settings = COALESCE(settings, '{}'::jsonb)
+        || jsonb_build_object('themesView', COALESCE(settings->'themesView', '{}'::jsonb) || $2::jsonb)
       WHERE id = $1 RETURNING settings->'themesView' AS v`,
-    [userId, JSON.stringify(view)],
+    [userId, JSON.stringify(patch)],
   );
   return normalizeView(rows[0]?.v);
 }

@@ -1,9 +1,10 @@
 import * as React from "react";
 import { Lock, NotebookPen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
-import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Pill, RowActions, Segmented, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { UndoToast } from "@/components/undo-toast";
@@ -26,7 +27,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
   const KIND_OPTIONS = kindOptions();
   const [body, setBody] = React.useState("");
   const [kind, setKind] = React.useState<NoteKind>("note");
-  const [filter, setFilter] = React.useState<NoteKind | "all">("all");
+  const [filter, setFilter] = usePersistentState<NoteKind | "all">("curator.notes.filter", "all");
   const add = useCuratorMutation((v: { body: string; kind: NoteKind }) => curatorApi.addNote({ trader, ...v }));
   const patch = useCuratorMutation((v: { id: number; pinned: boolean }) => curatorApi.patchNote(v.id, { pinned: v.pinned }));
   const archive = useCuratorMutation((id: number) => curatorApi.archiveNote(id));
@@ -34,13 +35,17 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
   const edit = useCuratorMutation((v: { id: number; body: string }) => curatorApi.patchNote(v.id, { body: v.body }));
   const [editing, setEditing] = React.useState<{ id: number; body: string } | null>(null);
   const [undoId, setUndoId] = React.useState<number | null>(null);
+  // Unsaved text (a new note, an edit) survives a reload: local drafts until saved.
+  const newDraft = useTextDraft(`curator-note:${trader}:new`, body, setBody);
+  const editBase = editing ? notes.find((n) => n.id === editing.id)?.body : undefined;
+  const editDraft = useTextDraft(editing ? `curator-note:${editing.id}` : null, editing?.body ?? "", (b) => setEditing((e) => (e ? { ...e, body: b } : e)), { base: editBase });
 
   const saveEdit = () => {
     if (!editing) return;
     const text = editing.body.trim();
     if (!text || edit.isPending) return;
     edit.mutate({ id: editing.id, body: text }, {
-      onSuccess: () => { setEditing(null); toast({ title: t("notes.updated") }); },
+      onSuccess: () => { editDraft.clear(); setEditing(null); toast({ title: t("notes.updated") }); },
       onError: (e) => toast({ title: t("notes.saveFailed"), description: (e as Error).message, variant: "destructive" }),
     });
   };
@@ -49,7 +54,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
     const text = body.trim();
     if (!text || add.isPending) return;
     add.mutate({ body: text, kind }, {
-      onSuccess: () => { setBody(""); setKind("note"); toast({ title: t("notes.saved") }); },
+      onSuccess: () => { newDraft.clear(); setBody(""); setKind("note"); toast({ title: t("notes.saved") }); },
       onError: (e) => toast({ title: t("notes.saveFailed"), description: (e as Error).message, variant: "destructive" }),
     });
   };
@@ -97,46 +102,37 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
           <EmptyState compact icon={NotebookPen} title={t("notes.empty")} description={t("notes.emptyHint")} />
         ) : (
           (compact ? shown.slice(0, 3) : shown).map((n) => (
-            <article key={n.id} className={cn("tile flex flex-col gap-1.5 p-3", n.pinned && "ring-1 ring-primary/30")}>
+            <article key={n.id} data-row className={cn("tile flex flex-col gap-1.5 p-3", n.pinned && "ring-1 ring-primary/30")}>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Pill tone={NOTE_KIND_TONE[n.kind] ?? "neutral"}>{NOTE_KIND_LABEL[n.kind] ?? n.kind}</Pill>
                 <span className="font-medium text-foreground">{personName(n.author)}</span>
                 <span className="tabular-nums">{fmtDeskDateTime(n.createdAt)}</span>
                 {n.pinned && <span className="inline-flex items-center gap-1 text-primary"><Pin className="h-3 w-3" aria-hidden="true" />{t("notes.pinned")}</span>}
                 {!compact && (
-                  <span className="ml-auto flex items-center gap-1">
+                  <RowActions
+                    className="ml-auto"
+                    menuLabel={t("notes.moreActions")}
+                    more={n.author === me ? [
+                      { label: t("notes.editText"), icon: Pencil, onSelect: () => setEditing({ id: n.id, body: n.body }) },
+                      {
+                        label: t("notes.archive"), icon: Trash2, disabled: archive.isPending,
+                        onSelect: () => archive.mutate(n.id, {
+                          onSuccess: () => setUndoId(n.id),
+                          onError: (e) => toast({ title: t("notes.archiveFailed"), description: (e as Error).message, variant: "destructive" }),
+                        }),
+                      },
+                    ] : undefined}
+                  >
                     <Button
-                      type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
+                      type="button" variant="ghost" size="icon-sm"
                       aria-label={n.pinned ? tc("actions.unpin") : tc("actions.pin")}
                       title={n.pinned ? tc("actions.unpin") : tc("actions.pin")}
                       disabled={patch.isPending}
                       onClick={() => patch.mutate({ id: n.id, pinned: !n.pinned })}
                     >
-                      {n.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                      {n.pinned ? <PinOff /> : <Pin />}
                     </Button>
-                    {n.author === me && (
-                      <Button
-                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
-                        aria-label={t("notes.editText")} title={t("notes.editText")}
-                        onClick={() => setEditing({ id: n.id, body: n.body })}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    {n.author === me && (
-                      <Button
-                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-down"
-                        aria-label={t("notes.archive")} title={t("notes.archive")}
-                        disabled={archive.isPending}
-                        onClick={() => archive.mutate(n.id, {
-                          onSuccess: () => setUndoId(n.id),
-                          onError: (e) => toast({ title: t("notes.archiveFailed"), description: (e as Error).message, variant: "destructive" }),
-                        })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </span>
+                  </RowActions>
                 )}
               </div>
               {editing?.id === n.id ? (

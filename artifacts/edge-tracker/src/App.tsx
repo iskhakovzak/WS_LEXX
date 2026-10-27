@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import { RouteErrorBoundary } from "@/components/shell/route-error-boundary";
 import { Switch, Route, Redirect, Router as WouterRouter, useLocation, useSearch } from "wouter";
@@ -7,11 +7,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/hooks/use-toast";
 import { humanizeApiError, isAuthError, retryDelay, shouldRetryQuery } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageFallback } from "@/components/shell/page-fallback";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { AppearanceProvider } from "@/contexts/appearance-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
 import { blockedSectionOf, navFeatureOn } from "@/components/shell/nav-model";
@@ -20,6 +21,13 @@ import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
 import { UsageRouteTracker } from "@/components/shared/usage-tracker";
+import { WelcomeIntro } from "@/components/shell/welcome-intro";
+import { LockController } from "@/components/lock/lock-controller";
+import { lockStore, useLockState } from "@/lib/lock/lock-store";
+import { UnlockReveal } from "@/components/unlock-reveal";
+import { useReducedMotion as useAppReducedMotion } from "@/lib/motion";
+import { bgMotionAllowed } from "@/components/appearance/scenes/motion";
+import { useAppearance } from "@/contexts/appearance-context";
 
 // Every section is its own chunk; see shell/route-loaders.ts. The dashboard too (DEV-11: it pulled the equity chart,
 // the daily cards and the quest strip into the entry chunk, which the login screen and every other page also paid for);
@@ -34,6 +42,8 @@ const DailyFeed = lazy(L["/dailyfeed"]);
 const Discussions = lazy(L["/discussions"]);
 const Analytics = lazy(L["/analytics"]);
 const Settings = lazy(L["/settings"]);
+const Profile = lazy(L["/profile"]);
+const People = lazy(L["/people"]);
 const Watchlist = lazy(L["/watchlist"]);
 const Playbook = lazy(L["/playbook"]);
 const TradeIdeas = lazy(L["/trade-ideas"]);
@@ -66,6 +76,7 @@ const WhatIf = lazy(L["/what-if"]);
 const Behavior = lazy(L["/behavior"]);
 const DayReport = lazy(L["/day-report"]);
 const MyReview = lazy(L["/my-review"]);
+const Coach = lazy(L["/coach"]);
 const Benchmark = lazy(L["/benchmark"]);
 const OfficeStats = lazy(L["/office"]);
 const Ask = lazy(L["/ask"]);
@@ -82,6 +93,9 @@ const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
 // Signed-out screen and the 404 page: own chunks too (a signed-in visit never needs the login form).
 const NotFound = lazy(() => import("@/pages/not-found").then(async (m) => { await i18nReady(); return m; }));
 const LoginPage = lazy(() => import("@/pages/login").then(async (m) => { await i18nReady(); return m; }));
+// Screen lock «Заблокировать»: rendered INSTEAD of the routes while locked (components/lock-screen.tsx); preloaded when idle.
+const loadLockScreen = () => import("@/components/lock-screen").then(async (m) => { await i18nReady(); return m; });
+const LockScreen = lazy(loadLockScreen);
 // «Раздел закрыт для вашей ступени» (desk setting access.sections): own chunk, only a closed URL ever loads it.
 const SectionBlocked = lazy(() => import("@/pages/section-blocked").then(async (m) => { await i18nReady(); return m; }));
 
@@ -109,22 +123,8 @@ const queryClient = new QueryClient({
   },
 });
 
-// Mirrors the usual page shape (title, KPI row, content) so the swap to the real page doesn't jump.
-const PageFallback = () => (
-  <div role="status" aria-busy="true" className="space-y-6">
-    <span className="sr-only">{shellI18n.t("app.pageLoading")}</span>
-    <div className="space-y-2">
-      <Skeleton className="h-7 w-48" />
-      <Skeleton className="h-4 w-72 max-w-full" />
-    </div>
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
-    </div>
-    <Skeleton className="h-64" />
-  </div>
-);
 
-const APP_NAME = "WS_LEXX";
+const APP_NAME = "WS_Desk";
 
 /** Keeps the tab title in sync with the current section, and moves focus to the new page for keyboard/SR users. */
 function RouteTitle() {
@@ -147,11 +147,11 @@ function RouteTitle() {
   return null;
 }
 
-/** «Сводка автора» is behind the desk switch nav.authorNotes (Волна 2 п. 2.15, default off): off → the 404 page. */
+/** «Сводка автора» is behind the desk switch nav.authorNotes (Волна 2 п. 2.15, default off): off → «Раздел выключен администратором». */
 function AuthorNotesRoute() {
   const { permissions, permissionsLoaded } = useAuth();
   if (!permissionsLoaded) return <PageFallback />;
-  return navFeatureOn("authorNotes", permissions.nav) ? <AuthorNotes /> : <NotFound />;
+  return navFeatureOn("authorNotes", permissions.nav) ? <AuthorNotes /> : <SectionBlocked section="/author-notes" reason="off" />;
 }
 
 function Router() {
@@ -195,6 +195,8 @@ function Router() {
           <Route path="/ratings" component={Ratings} />
           <Route path="/analyst-actions" component={AnalystActions} />
           <Route path="/settings" component={Settings} />
+          <Route path="/profile" component={Profile} />
+          <Route path="/people/:id" component={People} />
           <Route path="/admin" component={Admin} />
           <Route path="/curator" component={Curator} />
           <Route path="/author-notes" component={AuthorNotesRoute} />
@@ -207,6 +209,7 @@ function Router() {
           <Route path="/scaling" component={Scaling} />
           <Route path="/weekly-review" component={WeeklyReview} />
           <Route path="/my-review" component={MyReview} />
+          <Route path="/coach" component={Coach} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/simulator" component={Simulator} />
           <Route path="/trainer" component={Trainer} />
@@ -236,7 +239,33 @@ function Router() {
 }
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const lock = useLockState();
+  // Locked: the routes unmount (no page, number or poll stays alive underneath) and the query cache is dropped; the
+  // unlock re-mounts the same URL and refetches. The server refuses this token meanwhile (423 SESSION_LOCKED).
+  const locked = isAuthenticated && lock.locked && user?.role !== "guest";
+  useEffect(() => {
+    if (locked) queryClient.clear();
+  }, [locked]);
+  // Locked → unlocked, or signed out → signed in: the site opens through an iris from where the check / the «Войти»
+  // button was (components/unlock-reveal.tsx).
+  const { appearance } = useAppearance();
+  const [revealing, setRevealing] = useState(false);
+  const wasLocked = useRef(locked);
+  const wasSignedIn = useRef(isAuthenticated);
+  useEffect(() => {
+    if (isAuthenticated && ((wasLocked.current && !locked) || !wasSignedIn.current)) setRevealing(true);
+    wasLocked.current = locked;
+    wasSignedIn.current = isAuthenticated;
+  }, [locked, isAuthenticated]);
+  const endReveal = useCallback(() => setRevealing(false), []);
+  // Right after sign-in the account's look may not be loaded yet: the sign-in page put this browser's motion setting
+  // on <html data-motion> (lib/motion), which counts too.
+  const revealMotion = !useAppReducedMotion() || bgMotionAllowed(appearance.bg.motion);
+  // Signed out (menu, 5 wrong codes, an expired session): the lock belonged to that session.
+  useEffect(() => {
+    if (!isAuthenticated && (lock.locked || lock.signedOut)) lockStore.reset();
+  }, [isAuthenticated, lock.locked, lock.signedOut]);
 
   // Drop every cached response on logout / session expiry so the next user never sees the
   // previous user's data flash in before refetching.
@@ -248,6 +277,9 @@ function AppContent() {
 
   useEffect(() => {
     if (isAuthenticated) void loadDashboard().catch(() => undefined);
+    if (!isAuthenticated) return;
+    const id = window.setTimeout(() => void loadLockScreen().catch(() => undefined), 5_000);
+    return () => window.clearTimeout(id);
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
@@ -260,10 +292,32 @@ function AppContent() {
   }
 
   return (
-    <WouterRouter base={BASE}>
-      <Router />
-    </WouterRouter>
+    <>
+      {locked ? (
+        <Suspense fallback={<div aria-hidden="true" className="fixed inset-0 z-tooltip bg-black" />}>
+          <LockScreen />
+        </Suspense>
+      ) : (
+        <WouterRouter base={BASE}>
+          <Router />
+        </WouterRouter>
+      )}
+      {revealing && !locked && <UnlockReveal motion={revealMotion} onDone={endReveal} />}
+      <LockController />
+    </>
   );
+}
+
+/** framer-motion's reduced motion from the app setting: «Вкл» animates even with the OS «reduce motion» on. */
+function AppMotion({ children }: { children: React.ReactNode }) {
+  const reduced = useAppReducedMotion();
+  return <MotionConfig reducedMotion={reduced ? "always" : "never"}>{children}</MotionConfig>;
+}
+
+/** Notifications never show over the lock screen. */
+function AppToaster() {
+  const { locked } = useLockState();
+  return locked ? null : <Toaster />;
 }
 
 function App() {
@@ -274,7 +328,13 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <ThemeProvider>
+          {/* «Вид»: personal look (accent, money colours, font, background, density) as CSS variables on <html>. */}
+          <AppearanceProvider>
+          {/* framer-motion follows «Движение и анимации» (lib/motion.ts), not only the OS setting. */}
+          <AppMotion>
             <LocaleSync />
+            {/* Opening «Добро пожаловать, трейдер» / «Доброе утро, …» overlay; the app renders underneath meanwhile. */}
+            <WelcomeIntro />
             {/* Re-mounts the app on a language switch (query cache, auth and theme survive; see i18n/README.md). */}
             <I18nProvider>
               {/* Last line of defence: a crash in the shell itself (header, sidebar) shows a retry instead of a blank page. */}
@@ -282,9 +342,11 @@ function App() {
                 <AppContent />
               </RouteErrorBoundary>
             </I18nProvider>
+          </AppMotion>
+          </AppearanceProvider>
           </ThemeProvider>
         </AuthProvider>
-        <Toaster />
+        <AppToaster />
       </TooltipProvider>
       </MotionConfig>
     </QueryClientProvider>

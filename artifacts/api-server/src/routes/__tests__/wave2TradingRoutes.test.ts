@@ -99,7 +99,6 @@ vi.mock("../../lib/playbook/examplesSeed", () => ({
 }));
 vi.mock("../../lib/activity", () => ({ logActivity: vi.fn(async () => undefined) }));
 vi.mock("../../lib/marketContext", () => ({ captureAndAttach: vi.fn(async () => undefined) }));
-vi.mock("../../lib/aiReview", () => ({ maybeAutoGenerateReview: vi.fn() }));
 vi.mock("../../lib/hotCache", () => ({ invalidateDashboardCache: vi.fn() }));
 vi.mock("../../lib/tradesPageCache", () => ({ invalidateTradesPageCache: vi.fn() }));
 vi.mock("../../lib/tradeStructureStore", () => ({ refreshTradeStructures: vi.fn(async () => undefined), structureForTrade: vi.fn(async () => null) }));

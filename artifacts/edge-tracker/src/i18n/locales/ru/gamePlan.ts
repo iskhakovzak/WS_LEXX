@@ -7,7 +7,6 @@ export default {
   page: {
     description: "Премаркет-брифинг деска · {ago}",
     timeEt: "время ET",
-    updatedAgo: "обновлено {ago}",
     dayNav: "Выбор дня",
     prevDay: "Предыдущий торговый день",
     prevDayKey: "Предыдущий торговый день (←)",

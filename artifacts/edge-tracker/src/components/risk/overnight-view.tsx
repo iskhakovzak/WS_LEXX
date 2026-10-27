@@ -275,9 +275,11 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
               ]}
               className="no-print"
             />
-            <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length} className="no-print">
-              <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />CSV
-            </Button>
+            {rows.length > 0 && (
+              <Button variant="outline" size="sm" onClick={exportCsv} className="no-print">
+                <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />CSV
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => window.print()} disabled={!rows.length} className="no-print">
               <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("overnight.print")}
             </Button>
@@ -560,7 +562,7 @@ function Bars({ items, max }: { items: { key: string; label?: string; value: num
               className="h-full rounded-full"
               style={{
                 width: `${max > 0 ? Math.max(2, (it.value / max) * 100) : 0}%`,
-                background: it.tone === "down" ? "hsl(var(--down))" : it.tone === "up" ? "hsl(var(--up))" : it.tone === "accent" ? "hsl(var(--primary))" : "hsl(var(--chart-1))",
+                background: it.tone === "down" ? "hsl(var(--down))" : it.tone === "up" ? "hsl(var(--up))" : it.tone === "accent" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
               }}
             />
           </div>

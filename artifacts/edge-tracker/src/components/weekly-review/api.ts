@@ -2,6 +2,7 @@
  * Data layer for «Отчёт недели»: types, ISO-week helpers (NY trading weeks, Mon–Fri),
  * react-query hooks and the text / Markdown export of the memo.
  */
+import type { FeeCoaching } from "@/components/shared/coach/fee-coaching-model";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { nyDate, addDays } from "@/lib/trading-date";
@@ -111,6 +112,10 @@ export type WeeklyReview = {
   review: Review | null;
   prevReview: Review | null;
   prevGoals: Goal[];
+  /** Rolling fee model + breakeven line (roadmap R2; absent on older API builds). */
+  feeCoaching?: FeeCoaching | null;
+  /** An empty week: the trader's last earlier week with closed trades (YYYY-Www), null — none; absent on older API. */
+  lastTradedWeek?: string | null;
 };
 
 export type OverviewRow = {

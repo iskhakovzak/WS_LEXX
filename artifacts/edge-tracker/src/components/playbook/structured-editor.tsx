@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, ImagePlus, LayoutTemplate, Loader2, Split, StickyNote, Target, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToastAction } from "@/components/ui/toast";
 import { toneText } from "@/components/ds";
@@ -17,7 +18,7 @@ import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { invalidatePlaybook, notLiveMessage } from "./api";
-import { http } from "@/lib/api/http";
+import { ApiError, http } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage, usePlaybookMediaUrl } from "./media";
 import { DocSection } from "./setup-bits";
 import { InlineTextSection, ThesisView, structureConditions } from "./setup-document";
@@ -56,9 +57,17 @@ function useAutosave(entryId: number) {
     } catch (e) {
       setState("error");
       toast({ title: commonI18n.t("states.saveFailed"), description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
-      invalidatePlaybook(qc, entryId);
+      // Keep the typed text: put the patch back (newer edits win) and try again shortly, instead of refetching the
+      // server copy over it. A refusal of the content itself (4xx) shows the server copy as before.
+      if (e instanceof ApiError && (e.status === 0 || e.status >= 500)) {
+        pending.current = { ...body, ...pending.current };
+        if (!timer.current) timer.current = window.setTimeout(() => void flushRef.current(), 10_000);
+      } else invalidatePlaybook(qc, entryId);
     }
   }, [entryId, qc, toast]);
+
+  const flushRef = React.useRef(flush);
+  flushRef.current = flush;
 
   const queue = React.useCallback((patch: Patch, immediate = false) => {
     pending.current = { ...pending.current, ...patch };
@@ -324,7 +333,10 @@ function FieldEditor({
   const id = React.useId();
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {label && <label htmlFor={id} className={cn("text-xs font-medium", toneText(tone))}>{label}</label>}
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        {label ? <label htmlFor={id} className={cn("text-xs font-medium", toneText(tone))}>{label}</label> : <span />}
+        <AssistHelp field="playbook" value={draft} onAccept={(v) => { setDraft(v); onChange(v); }} />
+      </div>
       <Textarea
         id={id}
         value={draft}

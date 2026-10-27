@@ -35,6 +35,12 @@ describe("describeAudit", () => {
     expect(describeAudit(entry("user.archive", { name: "Умид", reason: "ушёл", bulk: true })).text).toContain("(массово)");
   });
 
+  it("describes a cascading rename with the moved row count", () => {
+    const x = describeAudit(entry("user.rename", { from: "Закир", to: "Zakir Iskhakov", rows: 923, tables: { "trades.trader": 923 } }));
+    expect(x.text).toBe("переименовал Закир → Zakir Iskhakov");
+    expect(x.detail).toBe("записей перенесено: 923");
+  });
+
   it("falls back to #id when the name is missing", () => {
     expect(describeAudit(entry("user.unfreeze", {})).text).toBe("разморозил учётку #12");
   });

@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pill, Segmented, toneOf, toneText } from "@/components/ds";
+import { Pill, RowActions, Segmented, toneOf, toneText } from "@/components/ds";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -79,7 +79,7 @@ function CommentItem({
   const isEditing = editing?.id === c.id;
   const pending = c.id < 0;
   return (
-    <div id={`comment-${c.id}`} className={cn("group flex gap-3 rounded-xl px-2 py-2 transition-colors", isNew && "bg-primary/[0.06]", accepted && "ring-1 ring-up/40 bg-up/[0.05]", pending && "opacity-60")}>
+    <div id={`comment-${c.id}`} data-row className={cn("group flex gap-3 rounded-xl px-2 py-2 transition-colors", isNew && "bg-primary/[0.06]", accepted && "ring-1 ring-up/40 bg-up/[0.05]", pending && "opacity-60")}>
       <Avatar name={c.trader} size={compact ? "sm" : "md"} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -90,21 +90,21 @@ function CommentItem({
           {isNew && <Pill tone="accent" className="py-0 text-2xs">{t("thread.new")}</Pill>}
           {accepted && <Pill tone="up" className="py-0 text-2xs"><Award className="h-3 w-3" aria-hidden="true" />{t("thread.accepted")}</Pill>}
           {!isEditing && !pending && canEdit && (
-            <div className="ml-auto flex items-center gap-0.5 opacity-100 transition-opacity duration-[var(--dur-1)] pointer-fine:opacity-0 pointer-fine:group-focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
+            // Reply (and «принять ответ» for the thread owner) stay in view on hover / focus; edit, delete and report
+            // fold into «…» (design audit: one primary per row). The «Принят» pill stays outside, always visible.
+            <RowActions
+              className="ml-auto gap-0.5"
+              more={[
+                isOwn && { label: tc("actions.edit"), icon: Pencil, onSelect: () => setEditing({ id: c.id, text: parsed.body }) },
+                !isOwn && { label: t("thread.report"), icon: Flag, onSelect: () => onReport({ type: "comment", id: c.id, preview: plainPreview(parsed.body, 120), author: c.trader }) },
+                (isOwn || canModerate) && { label: tc("actions.delete"), icon: Trash2, onSelect: () => onDelete(c) },
+              ]}
+            >
               {canAccept && onAccept && (
-                <button type="button" aria-label={accepted ? t("thread.unaccept") : t("thread.accept")} title={accepted ? t("thread.unacceptShort") : t("thread.accepted")} onClick={() => onAccept(c)} className={cn("grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]", accepted ? "text-up" : "text-muted-foreground hover:text-up")}><Award className="h-3.5 w-3.5" /></button>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label={accepted ? t("thread.unaccept") : t("thread.accept")} title={accepted ? t("thread.unacceptShort") : t("thread.accepted")} onClick={() => onAccept(c)} className={accepted ? "text-up" : "text-muted-foreground hover:text-up"}><Award aria-hidden="true" /></Button>
               )}
-              <button type="button" aria-label={t("thread.reply")} title={t("thread.reply")} onClick={() => onReply(c)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"><Reply className="h-3.5 w-3.5" /></button>
-              {isOwn && (
-                <button type="button" aria-label={t("thread.editComment")} title={tc("actions.edit")} onClick={() => setEditing({ id: c.id, text: parsed.body })} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-              )}
-              {(isOwn || canModerate) && (
-                <button type="button" aria-label={t("thread.deleteComment")} title={tc("actions.delete")} onClick={() => onDelete(c)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-down/15 hover:text-down"><Trash2 className="h-3.5 w-3.5" /></button>
-              )}
-              {!isOwn && (
-                <button type="button" aria-label={t("thread.reportComment")} title={t("thread.report")} onClick={() => onReport({ type: "comment", id: c.id, preview: plainPreview(parsed.body, 120), author: c.trader })} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-down"><Flag className="h-3.5 w-3.5" /></button>
-              )}
-            </div>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={t("thread.reply")} title={t("thread.reply")} onClick={() => onReply(c)} className="text-muted-foreground"><Reply aria-hidden="true" /></Button>
+            </RowActions>
           )}
         </div>
         {isEditing ? (

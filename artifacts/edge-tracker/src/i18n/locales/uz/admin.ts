@@ -19,6 +19,7 @@ export default {
   never: "hech qachon",
   you: "(siz)",
   namesMore: "{names} va yana {count} kishi",
+  shownOf: "{total} tadan {shown} tasi ko‘rsatilgan",
   notDeployed: "{what} API qayta ishga tushirilgandan keyin ishlaydi (yangi admin-console routeri).",
   needRestart: "API ni qayta ishga tushirish kerak",
 
@@ -129,7 +130,7 @@ export default {
     unavailable: "Integratsiya holati mavjud emas.",
     lastSync: "Oxirgi sinxronlash",
     never: "hali boʻlmagan",
-    status: { ok: "muvaffaqiyatli", running: "bajarilmoqda", partial: "qisman", error: "xato" },
+    status: { ok: "muvaffaqiyatli", running: "bajarilmoqda", partial: "qisman", error: "xato", stale: "eskirgan" },
     fromFile: "Fayldan",
     viaApi: "API orqali",
     runCounts: "+{inserted} · yangilandi {updated}",
@@ -234,6 +235,7 @@ export default {
       tier: "Daraja: {name}",
       role: "Rol: {name}",
       latin: "Lotincha ism…",
+      rename: "Nomini oʻzgartirish…",
       password: "Parol oʻrnatish",
       sessions: "Sessiyalarni yakunlash",
       unfreeze: "Muzlatishdan chiqarish",
@@ -460,6 +462,8 @@ export default {
     roleUpdatedHint: "{name} → {role}",
     passwordUpdated: "{name} uchun parol yangilandi",
     passwordUpdatedHint: "Foydalanuvchining faol sessiyalari yakunlandi.",
+    renamed: "{from} endi {to}",
+    renamedHint: "Bitimlar, jurnal, akademiya va bildirishnomalar yangi nomga koʻchdi. Foydalanuvchi yangi nom bilan qayta kiradi.",
     ban: {
       title: "{name}ni bloklaysizmi?",
       text: "Foydalanuvchi tizimdan chiqariladi va blokdan chiqarilmaguncha kira olmaydi. Amal audit jurnaliga yoziladi.",
@@ -470,6 +474,7 @@ export default {
     unban: { title: "{name}ni blokdan chiqarasizmi?", text: "Foydalanuvchi yana kira oladi. Blokdan chiqarish audit jurnaliga yoziladi.", confirm: "Blokdan chiqarish" },
     role: { title: "{name} rolini oʻzgartirasizmi?", text: "{from} → {to}. Foydalanuvchi qayta kirishi kerak boʻladi.", confirm: "Rolni oʻzgartirish" },
     password: { title: "{name} uchun yangi parol", text: "Foydalanuvchining barcha faol sessiyalari yakunlanadi.", confirm: "Parolni saqlash", label: "Yangi parol" },
+    rename: { title: "{name} nomini oʻzgartirasizmi?", text: "Yangi nom hamma joyda koʻrinadi: bitimlar, jurnal, akademiya, bildirishnomalar, PropReports bogʻlanishi. Foydalanuvchining barcha sessiyalari yakunlanadi — u yangi nom bilan qayta kiradi.", textSelf: "Yangi nom hamma joyda koʻrinadi. Sessiyalaringiz yakunlanadi — yangi nom bilan qayta kiring.", label: "Yangi nom", confirm: "Nomini oʻzgartirish" },
   },
 
   roles: {

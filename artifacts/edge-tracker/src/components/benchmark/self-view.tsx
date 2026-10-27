@@ -1,4 +1,5 @@
 import { Lock } from "lucide-react";
+import { commonI18n } from "@/i18n/ns/common";
 import { EmptyState, Panel, Pill, StatCard, StatGrid, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { BenchmarkResponse } from "./api";
@@ -27,13 +28,13 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
     <div className="flex flex-col gap-4">
       <StatGrid>
         <StatCard label={t("self.net")} value={me.net != null ? fmtUsd(me.net, { signed: true, decimals: "auto" }) : "—"} tone={toneOf(me.net)} hint={me.gross != null ? t("self.gross", { value: fmtUsd(me.gross, { signed: true, decimals: "auto" }) }) : undefined} />
-        <StatCard label="Win rate" value={fmtRate(me.winRate)} hint={`${me.wins} W / ${me.losses} L`} />
+        <StatCard label={commonI18n.t("trading.winRate")} value={fmtRate(me.winRate)} hint={`${me.wins} W / ${me.losses} L`} />
         <StatCard label={t("self.green")} value={fmtRate(me.greenShare)} hint={t("self.ofDays", { value: me.greenDays, total: me.days })} />
         <StatCard label={t("self.bestDay")} value={me.bestDayShare != null ? fmtRate(me.bestDayShare) : "—"}
           tone={me.consistencyFlag === "breach" ? "down" : me.consistencyFlag === "warn" ? "warn" : "neutral"}
           hint={t("self.threshold", { warn: Math.round(data.rules.consistencyWarn * 100), breach: Math.round(data.rules.consistencyBreach * 100) })} />
       </StatGrid>
-      <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_420px]">
         <Panel title={t("self.vsMedian")} description={t("self.vsMedianHint", { min: data.minTrades, traders: data.rules.medianMinTraders })} padded={false} bodyClassName="p-2">
           <div className="overflow-x-auto">
           <table className="w-full text-sm tabular-nums">

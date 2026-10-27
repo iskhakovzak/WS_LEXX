@@ -8,6 +8,8 @@
  *                                       oneOnOneDue (1:1 > 30 дн. или ни одной), counts.reviews/reviewsOverdue — «ждёт разбора»:
  *                                       закрытые и не разобранные дни ростера за 14 дн. (то же число, что /eod/queue/count)
  *                                       Часы ожидания очереди — торговые (выходные и праздники не идут в SLA, OLGA-07).
+ *                                       nextActions: не больше curator.capacity шагов (срочные ≥ 80 — всегда), nextActionsMore — сколько
+ *                                       ушло в вечернюю сводку (roadmap R11, curatorLogic capNextActions)
  *   GET  /curator/traders               ?scope=group|all — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
  *                                       последний разбор, 1:1, нарушения, последняя заметка, следующий шаг
  *   GET  /curator/trader/:name          профиль: карточка + лимиты/метрики, нарушения с разбором, дни EOD, недели,
@@ -27,7 +29,7 @@
  * По умолчанию — своя группа, если она есть (lib/curatorRoster loadRoster). Запросы трейдеров — routes/curator-requests.ts.
  * Необязательные таблицы (планы, EOD, недельные, Академия) читаются с catch → пустые данные, если модуль ещё не создан.
  */
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -38,11 +40,11 @@ import { marketClosedDays, rowToBreachReview, rowToNote } from "../lib/curatorSt
 import { loadRoster, safe, type TraderSignal } from "../lib/curatorRoster";
 import { REVIEW_SLA_HOURS, tradingDaysAfter, tradingHoursBetween } from "../lib/eodLogic";
 import {
-  QUEUE_DEFAULT_DAYS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, stageLabel, staleQueueIds, tradingPhase,
-  trendDirection, weeklyTrend, type QueueKind,
+  QUEUE_DEFAULT_DAYS, arrangeQueue, capNextActions, digestTopItems, mondayOf, nextActionFor, prevTradingDay, stageLabel, staleQueueIds, tradingPhase,
+  trendDirection, weeklyTrend, type NextAction, type QueueKind,
 } from "../lib/curatorLogic";
 import { alertMessage, breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
-import { AppError, badRequest, forbidden, notFound } from "../lib/http";
+import { badRequest, notFound } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import { fmtDateFor } from "../i18n/format";
@@ -51,10 +53,18 @@ import { eveningFor } from "../lib/daily/service";
 import { curatorFocusFor } from "../lib/daily/curatorFocus";
 import { curatorQuestEvents } from "../lib/quests/store";
 import curatorTasks from "./curatorTasks";
+import curatorNotes from "./curatorNotes";
+import { plateauSignals } from "../lib/plateauStore";
+import { loadPriorityInputs } from "../lib/curatorPriority";
+import { setting } from "../lib/settings/registry";
+import { wardsOf } from "../lib/curatorRoster";
+import type { DigestRanker } from "../lib/curatorDigest";
 
 const router: IRouter = Router();
 // «Готово» on a curator task (2.13): POST /curator/tasks/:id/done — routes/curatorTasks.ts.
 router.use(curatorTasks);
+// Private staff notes: GET / POST / PATCH /curator/notes, archive / restore — routes/curatorNotes.ts.
+router.use(curatorNotes);
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -80,7 +90,7 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   const from35 = addDays(today, -35);
   const from42 = addDays(today, -42);
   const from30 = addDays(today, -29);
-  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity, closed] = await Promise.all([
+  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity, closed, plateau, coach] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
     deskSnapshot(today, null, lang, traders),
     templateStatus(traders, lang),
@@ -109,6 +119,8 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
     safe<{ name: string; ac: string | null; latin: string | null }>(`SELECT name, assigned_curator AS ac, name_latin AS latin FROM users WHERE name = ANY($1)`, [traders]),
     safe<{ trader: string; at: Date }>(`SELECT trader, MAX(created_at) AS at FROM activity_log WHERE trader = ANY($1) GROUP BY trader`, [traders]),
     marketClosedDays(today),
+    plateauSignals(traders, today), // R6: plateau / open escalation (lib/plateauStore), staff-only
+    loadPriorityInputs(traders, today).catch(() => new Map()), // R11 score inputs (lib/curatorPriority)
   ]);
   // Элементы, мягко убранные из очереди («архивировать старые»), не считаются ожидающими разбора.
   const acked = new Set(ackRows.map((r) => String(r.item_id)));
@@ -116,7 +128,7 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   const subs = subsAll.filter((x: any) => !acked.has(`academy:${x.id}`));
   const peopleBy = new Map(people.map((p) => [p.name, p]));
   const activityBy = new Map(activity.map((a) => [a.trader, iso(a.at)]));
-  return { lang, today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy, closed };
+  return { lang, today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy, closed, plateau, coach };
 }
 
 function buildSignal(name: string, b: Bulk): TraderSignal {
@@ -210,6 +222,7 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
     nameLatin: b.peopleBy.get(name)?.latin ?? null,
     month: { pnl: monthPriced.length ? Math.round(monthPriced.reduce((a, d) => a + (d.pnl ?? 0), 0) * 100) / 100 : null, trades: monthDays.reduce((a, d) => a + d.trades, 0) },
     lastActivityAt,
+    plateau: b.plateau.get(name) ?? null,
   };
   const nextAction = nextActionFor({
     trader: name,
@@ -224,8 +237,23 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
     missingPlan: b.plansAvailable && weekday && !planRow && today === nyDate() && tradingPhase(today, nyMinutes()) !== "afterclose",
     missingEod: signalBase.eod.prevTraded && !signalBase.eod.prevClosed,
     daysSinceOneOnOne: daysSince1on1,
+    plateau: signalBase.plateau,
+    coach: { ...(b.coach.get(name) ?? NO_COACH), overdueQueue: overdueQueueOf(b).get(name) ?? 0 },
   }, b.lang);
   return { ...signalBase, nextAction };
+}
+
+const NO_COACH = { shrunkMean20: null, leakCostPerDay: 0, activityDrop: false, noGreenWeek6: false, completionDrop: false } as const;
+const overdueCache = new WeakMap<Bulk, Map<string, number>>();
+/** R11 «sla»: review-queue items past their SLA per trader (the same queue as /curator/today), once per bulk load. */
+function overdueQueueOf(b: Bulk): Map<string, number> {
+  let m = overdueCache.get(b);
+  if (!m) {
+    m = new Map();
+    for (const q of arrangeQueue(buildQueueItems(b, Date.now()), { acked: b.acked }).items) if (q.overdue) m.set(q.trader, (m.get(q.trader) ?? 0) + 1);
+    overdueCache.set(b, m);
+  }
+  return m;
 }
 
 /** Latest timestamp of a list (Date / ISO / null) as ISO. */
@@ -311,10 +339,9 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
   const missingPlan = weekday && b.plansAvailable ? signals.filter((s) => s.plan.today !== "ready").map((s) => ({ trader: s.trader, status: s.plan.today })) : [];
   const missingEod = signals.filter((s) => s.eod.prevTraded && !s.eod.prevClosed).map((s) => ({ trader: s.trader, date: s.eod.prevDay }));
   const openToday = phase === "afterclose" ? signals.filter((s) => s.eod.todayTraded && !s.eod.todayClosed).map((s) => ({ trader: s.trader, date: today })) : [];
-  const nextActions = signals
-    .filter((s) => s.nextAction.kind !== "none")
-    .map((s) => ({ trader: s.trader, ...s.nextAction }))
-    .sort((x, y) => y.priority - x.priority || x.trader.localeCompare(y.trader, "ru"));
+  // R11: the list holds curator.capacity steps (urgent ones always); the rest goes to the 17:30 digest.
+  const capped = capNextActions(signals.map((s) => ({ trader: s.trader, ...s.nextAction })), setting("curator.capacity"));
+  const nextActions = capped.shown;
   // OLGA-18: a ward without a 1:1 for > 30 days (or never) is a step of its own, even when another step tops the trader.
   const oneOnOneDue = signals
     .filter((s) => s.academy.daysSinceOneOnOne == null || s.academy.daysSinceOneOnOne > ONE_ON_ONE_DUE_DAYS)
@@ -363,6 +390,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     queueWindow: { days: QUEUE_DEFAULT_DAYS, includeOld, old: arranged.old.count, oldOverdue: arranged.old.overdue },
     overdueActions,
     nextActions,
+    nextActionsMore: capped.more.length,
     oneOnOneDue,
     byCost, questEvents, // curator quests of the roster that finished in the last 3 NY days (lib/quests)
   });
@@ -493,94 +521,27 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
   });
 }));
 
-// ─── notes (private to staff) ───────────────────────────────────────────────
-
-const NOTE_KINDS = ["note", "call", "concern", "praise"] as const;
-
-router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
-  const trader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
-  if (!trader || trader.length > 100) throw badRequest("TRADER_REQUIRED");
-  if (!(await requireCap(req, res, "journal.review", { trader }))) return;
-  const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE archived_at IS NULL AND trader = $1 ORDER BY pinned DESC, created_at DESC LIMIT 200`, [trader]);
-  res.json({ trader, notes: rows.map(rowToNote) });
-}));
-
-const NoteBody = z.object({
-  trader: z.string().trim().min(1).max(100),
-  body: z.string().trim().min(1).max(4000),
-  kind: z.enum(NOTE_KINDS).default("note"),
-  pinned: z.boolean().default(false),
-  /** The NY trading day the note is about (a queue row's day): it resolves only that day (lib/daily/costQueue). */
-  day: z.string().regex(YMD_RE).nullish(),
-}).strict();
-
-router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
-  // Rights first (DEV-18): a reader without journal.review gets 403, not a form error.
-  const rawTrader = typeof req.body?.trader === "string" ? req.body.trader.trim() : "";
-  if (!(await requireCap(req, res, "journal.review", rawTrader ? { trader: rawTrader } : undefined))) return;
-  const parsed = NoteBody.safeParse(req.body ?? {});
-  if (!parsed.success) throw parsed.error.issues[0]?.path[0] === "body" ? new AppError("NOTE_EMPTY", 400, undefined, parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }))) : parsed.error;
-  const b = parsed.data;
-  const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
-  if (!exists.length) throw notFound("TRADER_NOT_FOUND");
-  const { rows } = await pool.query(
-    `INSERT INTO curator_notes (trader, author, body, kind, pinned, day) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [b.trader, req.authUser!.name, b.body, b.kind, b.pinned, b.day ?? null],
-  );
-  res.status(201).json(rowToNote(rows[0]));
-}));
-
-const NotePatch = z.object({
-  body: z.string().trim().min(1).max(4000).optional(),
-  kind: z.enum(NOTE_KINDS).optional(),
-  pinned: z.boolean().optional(),
-}).strict();
-
-/** Throws 404 NOTE_NOT_FOUND / 403 FORBIDDEN. */
-async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any }> {
-  const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NULL`, [id]);
-  const row = rows[0];
-  if (!row) throw notFound("NOTE_NOT_FOUND");
-  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden("journal.review");
-  // Body is edited by its author only; pin / kind — by any staff member of the trader.
-  return { ok: true, row };
+/**
+ * R11 / R3: the top `n` steps for a curator's 17:30 digest (one per trader, urgent first, then by score) over his
+ * wards — for the digest job (another branch renders, sends and dedupes it per curator and day). Language = the
+ * labels' language. Empty when the curator has no wards.
+ */
+export async function curatorDigestTop(curator: string, date: string = nyDate(), n = 3, lang: Lang = "ru"): Promise<(NextAction & { trader: string })[]> {
+  return rankedSteps(await wardsOf(curator), date, n, lang);
 }
 
-router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  const parsed = NotePatch.safeParse(req.body ?? {});
-  if (!parsed.success) throw badRequest("VALIDATION");
-  const found = await loadNoteForEdit(req, id);
-  const p = parsed.data;
-  if (p.body !== undefined && found.row.author !== req.authUser!.name) throw new AppError("NOTE_AUTHOR_ONLY");
-  const { rows } = await pool.query(
-    `UPDATE curator_notes SET body = COALESCE($2, body), kind = COALESCE($3, kind), pinned = COALESCE($4, pinned), updated_at = NOW() WHERE id = $1 RETURNING *`,
-    [id, p.body ?? null, p.kind ?? null, p.pinned ?? null],
-  );
-  res.json(rowToNote(rows[0]));
-}));
+async function rankedSteps(traders: readonly string[], date: string, n: number, lang: Lang = "ru"): Promise<(NextAction & { trader: string })[]> {
+  if (!traders.length) return [];
+  const b = await loadBulk([...traders], date, lang);
+  return digestTopItems(traders.map((t) => ({ trader: t, ...buildSignal(t, b).nextAction })), n);
+}
 
-router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  const found = await loadNoteForEdit(req, id);
-  await pool.query(`UPDATE curator_notes SET archived_at = NOW(), archived_by = $2 WHERE id = $1`, [id, req.authUser!.name]);
-  await logAudit({ actor: req.authUser!.name, action: "curator.note.archive", targetType: "curator_notes", targetId: String(id), details: { trader: found.row.trader, author: found.row.author } });
-  res.json({ ok: true });
-}));
-
-/** «Отменить» после архивации заметки: вернуть её (только недавно архивированную — за последние сутки). */
-router.post("/curator/notes/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NOT NULL AND archived_at > NOW() - INTERVAL '1 day'`, [id]);
-  const row = rows[0];
-  if (!row) throw notFound("NOTE_NOT_FOUND");
-  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden();
-  const { rows: out } = await pool.query(`UPDATE curator_notes SET archived_at = NULL, archived_by = NULL WHERE id = $1 RETURNING *`, [id]);
-  await logAudit({ actor: req.authUser!.name, action: "curator.note.restore", targetType: "curator_notes", targetId: String(id), details: { trader: row.trader } });
-  res.json(rowToNote(out[0]));
-}));
+/**
+ * R11 ranking for the 17:30 digest (lib/curatorDigest DigestRanker; the job curator.digest passes it as `rank`): the
+ * wards' top steps by the score, one per trader; `reason` = the step kind (curator_digest.reason.*), no $ (the score
+ * is a priority, not money).
+ */
+export const r11DigestRanker: DigestRanker = async (_curator, traders, today) =>
+  (await rankedSteps(traders, today, traders.length)).map((a) => ({ trader: a.trader, date: today, reason: a.kind, costNet: null }));
 
 export default router;

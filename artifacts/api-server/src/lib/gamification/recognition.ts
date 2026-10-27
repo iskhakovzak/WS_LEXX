@@ -45,7 +45,7 @@ export function recognitionText(e: Pick<NewRecognition, "kind" | "params">, lang
   const p = e.params;
   switch (e.kind) {
     case "achievement": {
-      const n = achievementNameFor(lang, str(p.line), str(p.tier));
+      const n = achievementNameFor(lang, str(p.line), str(p.tier), p);
       return n ? t("recognition.achievement", { name, ...n }) : null;
     }
     case "streak":

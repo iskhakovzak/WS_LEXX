@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Kbd } from "@/components/ui/kbd";
 import { Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { cn } from "@/lib/utils";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -90,6 +91,10 @@ export function MistakeDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing, prefill]);
+  // The description and lesson survive a closed dialog / reload until saved (local draft).
+  const textBase = editing ? { description: editing.description === editing.errorType ? "" : editing.description, lesson: editing.lesson ?? "" } : { description: prefill?.description ?? "", lesson: "" };
+  const draft = useTextDraft(open ? `mistake:${trader}:${editing?.id ?? "new"}` : null, { description, lesson },
+    (d) => { setDescription(d.description); setLesson(d.lesson); }, { base: textBase });
 
   const tradeOptions = useMemo(() => {
     const list = trades.slice(0, 60);
@@ -133,6 +138,7 @@ export function MistakeDialog({
         await http.post(`/api/errors`, { ...body, trader });
         toast({ title: t("mistake.logged"), description: t("mistake.loggedHint") });
       }
+      draft.clear();
       onSaved();
       onOpenChange(false);
     } catch (e) {
@@ -210,12 +216,12 @@ export function MistakeDialog({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="mistake-trade" className="text-sm font-medium">{t("mistake.trade")}</Label>
               <Select value={tradeId} onValueChange={setTradeId}>
                 <SelectTrigger id="mistake-trade"><SelectValue placeholder={t("mistake.noTrade")} /></SelectTrigger>
-                <SelectContent className="max-h-72">
+                <SelectContent className="max-h-[min(18rem,var(--radix-select-content-available-height))]">
                   <SelectItem value={NO_TRADE}>{t("mistake.noTrade")}</SelectItem>
                   {tradeOptions.map((t) => (
                     <SelectItem key={t.id} value={String(t.id)}>

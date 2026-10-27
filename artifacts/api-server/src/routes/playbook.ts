@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
+import { logger } from "../lib/logger";
 import { logActivity } from "../lib/activity";
 import { activityDetails, activityTitle } from "../lib/activityText";
 import { config } from "../config";
@@ -21,6 +22,7 @@ import { redactLockedSetup } from "../lib/playbookToday/build";
 import marksRouter from "./playbook-marks";
 import { setupLockGuard } from "../lib/playbookLock";
 import { langOf } from "../i18n";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * Playbook (setups) + per-setup edge.
@@ -107,6 +109,7 @@ const PLAYBOOK_SELECT_FIELDS = `
   screenshot_url    AS "screenshotUrl",
   screenshot_notes  AS "screenshotNotes",
   tags,
+  regimes,
   source_type       AS "sourceType",
   source_id         AS "sourceId",
   trader,
@@ -539,7 +542,7 @@ router.get("/playbook/summary", asyncHandler(async (req, res): Promise<void> => 
   const r2 = (v: number | null) => (v == null ? null : Number(v.toFixed(2)));
   const shapeHz = (h: any) => {
     const n = Number(h?.n ?? 0), wins = Number(h?.wins ?? 0), losses = Number(h?.losses ?? 0);
-    return { n, wins, losses, winrate: wins + losses ? Number((wins / (wins + losses)).toFixed(4)) : null, avgR: r3(numOrNull(h?.avgR)), netPnl: r2(numOrNull(h?.netPnl)) };
+    return { n, wins, losses, winrate: wins + losses ? Number(((winRateOf(wins, losses) ?? 0)).toFixed(4)) : null, avgR: r3(numOrNull(h?.avgR)), netPnl: r2(numOrNull(h?.netPnl)) };
   };
   res.json(rows.map((r) => {
     const row = shapeSummaryRow(r);
@@ -550,7 +553,7 @@ router.get("/playbook/summary", asyncHandler(async (req, res): Promise<void> => 
     const n = Number(r.tradeCount);
     const wins = Number(r.wins), losses = Number(r.losses);
     const rCount = Number(r.rCount);
-    const winrate = wins + losses ? wins / (wins + losses) : null;
+    const winrate = winRateOf(wins, losses);
     const avgR = numOrNull(r.avgR);
     const posR = numOrNull(r.pos_r) ?? 0, negR = numOrNull(r.neg_r) ?? 0;
     const recentAvgR = numOrNull(r.recentAvgR);
@@ -851,7 +854,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
      SELECT $1, $2, $3::jsonb
       WHERE NOT EXISTS (SELECT 1 FROM playbook_revisions WHERE playbook_id = $1 AND trader = $2 AND created_at > NOW() - INTERVAL '10 minutes')`,
     [id, auth.name, JSON.stringify(prevRows[0])]
-  ).catch(() => {});
+  ).catch((err) => logger.warn({ err, id }, "playbook: revision snapshot not saved (the edit itself goes on)"));
 
   const fields: string[] = [];
   const vals: unknown[] = [];
@@ -1002,7 +1005,7 @@ router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req,
     // Writing a setup score onto a trade requires owning that trade (or being staff).
     const own = await canTouchTrade(req, tradeId);
     await pool.query(`DELETE FROM playbook_checklist_runs WHERE playbook_id = $1 AND trade_id = $2`, [id, tradeId]);
-    await pool.query(`UPDATE trades SET setup_score = $1 WHERE id = $2`, [score, tradeId]).catch(() => {});
+    await pool.query(`UPDATE trades SET setup_score = $1 WHERE id = $2`, [score, tradeId]);
   } else {
     await pool.query(`DELETE FROM playbook_checklist_runs WHERE playbook_id = $1 AND trade_id IS NULL AND trader = $2`, [id, auth.name]);
   }
@@ -1112,7 +1115,7 @@ ${trRows.map((t: any, i: number) => // i18n-ignore (AI prompt context)
   try {
     const result: any = await anthropic.messages.create({
       model: config.ai.anthropicModel,
-      max_tokens: 1500,
+      max_tokens: 6000, // current models think adaptively before the answer; thinking counts toward max_tokens
       system: sys,
       messages: [{ role: "user", content: usr }],
     });
@@ -1155,7 +1158,7 @@ ${pb.checklist ? /* i18n-ignore (AI prompt) */ `Текущий чек-лист (
   try {
     const result: any = await anthropic.messages.create({
       model: config.ai.anthropicModel,
-      max_tokens: 800,
+      max_tokens: 4000, // room for adaptive thinking before the checklist
       system: sys,
       messages: [{ role: "user", content: usr }],
     });
@@ -1276,7 +1279,8 @@ router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<v
   const pb = await loadSetupAccess(id);
   if (!pb || !canReadPure(await loadViewer(req), pb)) throw new AppError("SETUP_NOT_FOUND");
   const own = await canTouchTrade(req, Number(tradeId));
-  await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2`, [id, Number(tradeId)]);
+  // The setup tag is playbook_id + the setup's name together (lib/tradesSetupLink): the trades list reads the name.
+  await pool.query(`UPDATE trades SET playbook_id = $1, setup = (SELECT name FROM playbook WHERE id = $1) WHERE id = $2`, [id, Number(tradeId)]);
   await tradeTagged(Number(tradeId));
   res.json({ success: true });
 }));
@@ -1286,7 +1290,12 @@ router.delete("/playbook/:id/link-trade/:tradeId", asyncHandler(async (req, res)
   const tradeId = Number(req.params.tradeId);
   if (isNaN(tradeId)) throw badRequest("INVALID_ID");
   const own = await canTouchTrade(req, tradeId);
-  await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`, [tradeId, Number.isInteger(id) ? id : null]);
+  await pool.query(
+    `UPDATE trades SET playbook_id = NULL,
+            setup = CASE WHEN setup = (SELECT name FROM playbook WHERE id = trades.playbook_id) THEN NULL ELSE setup END
+      WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`,
+    [tradeId, Number.isInteger(id) ? id : null],
+  );
   await tradeTagged(tradeId);
   res.json({ success: true });
 }));

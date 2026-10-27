@@ -13,7 +13,7 @@ import { ErrorState } from "@/components/ds";
 import type { BehaviorFlags, TraderDay } from "./use-risk";
 import { useBehaviorDay, useTraderDay } from "./use-risk";
 import { intradayCurve } from "./risk-math";
-import { AXIS, CHART_TOOLTIP_STYLE } from "./primitives";
+import { CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tint, tooltipProps } from "@/components/shared/charts";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
@@ -37,7 +37,7 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
   const lo = Math.min(curve.low, limit != null ? -limit * 1.08 : curve.low);
   const hi = Math.max(curve.high, 0);
   const pad = Math.max(10, (hi - lo) * 0.08);
-  const color = curve.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
+  const color = curve.final >= 0 ? CHART.up : CHART.down;
   const xs = curve.points.map((p) => p.min);
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs, x0 + 30);
@@ -51,24 +51,32 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
     >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={curve.points} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="min" type="number" domain={[x0, x1]} tickFormatter={clock} {...AXIS} minTickGap={28} />
-          <YAxis {...AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 })} />
-          {limit != null && <ReferenceArea y1={lo - pad} y2={-limit} fill="hsl(var(--down))" fillOpacity={0.08} ifOverflow="hidden" />}
+          <CartesianGrid {...GRID} />
+          <XAxis dataKey="min" type="number" domain={[x0, x1]} tickFormatter={clock} {...X_AXIS} minTickGap={28} />
+          <YAxis {...Y_AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 })} />
+          {limit != null && <ReferenceArea y1={lo - pad} y2={-limit} fill={CHART.down} fillOpacity={0.08} ifOverflow="hidden" />}
           {limit != null && (
-            <ReferenceLine y={-limit} stroke="hsl(var(--down))" strokeDasharray="4 3" label={{ value: t("day.stopLine", { amount: fmtUsd(-limit, { decimals: 0 }) }), position: "insideBottomLeft", fill: "hsl(var(--down))", fontSize: 11 }} />
+            <ReferenceLine y={-limit} {...REF_LINE} stroke={CHART.down} label={{ value: t("day.stopLine", { amount: fmtUsd(-limit, { decimals: 0 }) }), position: "insideBottomLeft", fill: CHART.down, fontSize: 12 }} />
           )}
-          {limit != null && <ReferenceLine y={-limit * 0.7} stroke="hsl(var(--warn))" strokeDasharray="2 4" strokeOpacity={0.7} />}
-          <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} />
+          {limit != null && <ReferenceLine y={-limit * 0.7} {...REF_LINE} stroke={tint("warn", 0.8)} strokeDasharray="2 4" />}
+          <ReferenceLine {...ZERO_LINE} />
           <Tooltip
-            contentStyle={CHART_TOOLTIP_STYLE}
-            labelFormatter={(l) => (curve.timed ? `${clock(Number(l))} ET` : "")}
-            formatter={(v: number, _n, item) => {
-              const p = item?.payload as { ticker: string | null; net: number | null } | undefined;
-              return [`${fmtUsd(v, { signed: true, decimals: 0 })}${p?.ticker ? ` · ${p.ticker} ${fmtUsd(p.net, { signed: true, decimals: 0 })}` : ""}`, t("day.cum")];
+            {...tooltipProps("line")}
+            content={<GlassTooltip
+              tone="pnl"
+              delta={(r) => (r.ticker ? (r.net as number | null) : null)}
+              deltaFormat={(v) => fmtUsd(v, { signed: true, decimals: 0 })}
+              deltaLabel={commonI18n.t("trading.net")}
+            />}
+            labelFormatter={(l, payload) => {
+              const p = (payload as unknown as { payload?: { ticker?: string | null } }[] | undefined)?.[0]?.payload;
+              const time = curve.timed ? `${clock(Number(l))} ET` : "";
+              return [time, p?.ticker].filter(Boolean).join(" · ");
             }}
+            formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: 0 }), t("day.cum")]}
           />
-          <Line type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} dot={{ r: 2.5, fill: color, strokeWidth: 0 }} isAnimationActive={false} />
+          {/* Live chart: redrawn on every poll, so no draw-in animation (it would replay each refresh). */}
+          <Line type="stepAfter" dataKey="cum" stroke={color} strokeWidth={STROKE} dot={{ r: 2.5, fill: color, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 2, stroke: CHART.surface, fill: color }} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -86,13 +94,16 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
   const { t } = riskI18n.useT();
   const c = commonI18n.t;
   return (
-    <div className="overflow-hidden rounded-xl ring-1 ring-inset ring-[var(--field-border)]">
+    // Its own container: gross and fees columns appear once the list is wide enough (≥ 42rem).
+    <div className="@container overflow-hidden rounded-xl ring-1 ring-inset ring-[var(--field-border)]">
       <table className="w-full text-sm tabular-nums">
         <thead className="bg-[var(--glass-bg)] text-xs text-muted-foreground">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-medium">{c("time.time")}</th>
             <th scope="col" className="px-3 py-2 text-left font-medium">{c("trading.ticker")}</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">{t("positions.qty")}</th>
+            <th scope="col" className="hidden px-3 py-2 text-right font-medium @2xl:table-cell">{c("trading.gross")}</th>
+            <th scope="col" className="hidden px-3 py-2 text-right font-medium @2xl:table-cell">{c("trading.fees")}</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">{c("trading.net")}</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">{t("day.cum")}</th>
           </tr>
@@ -106,6 +117,8 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
                 <span className="ml-1.5 text-xs text-muted-foreground">{sideLabel(tr.side)}</span>
               </td>
               <td className="px-3 py-1.5 text-right">{tr.qty ?? "—"}</td>
+              <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.gross != null ? fmtUsd(tr.gross, { signed: true, decimals: 0 }) : "—"}</td>
+              <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.fees != null ? fmtUsd(tr.fees, { decimals: 2 }) : "—"}</td>
               <td className={cn("px-3 py-1.5 text-right font-medium", (tr.net ?? 0) > 0 ? "text-up" : (tr.net ?? 0) < 0 ? "text-down" : "")} title={tr.fees ? t("day.feesTitle", { gross: fmtUsd(tr.gross, { signed: true, decimals: 0 }), fees: fmtUsd(tr.fees, { decimals: 0 }) }) : undefined}>
                 {tr.net != null ? fmtUsd(tr.net, { signed: true, decimals: 0 }) : "—"}
               </td>
@@ -156,7 +169,14 @@ export function DaySkeleton({ height = 180 }: { height?: number }) {
  * The trading day block: header line (which day, net, trades, fees), behaviour note, intraday curve vs the
  * daily stop and, optionally, the trades. Renders a one-line note when there were no trades in the last 10 days.
  */
-export function TraderDayBlock({ trader, dailyLimit, showTrades = false, height = 180 }: { trader: string; dailyLimit: number | null | undefined; showTrades?: boolean; height?: number }) {
+export function TraderDayBlock({ trader, dailyLimit, showTrades = false, tradesBeside = false, height = 180 }: {
+  trader: string;
+  dailyLimit: number | null | undefined;
+  showTrades?: boolean;
+  /** Wide containers (≥ 56rem) show the last trades beside the curve; narrower ones show the curve alone. */
+  tradesBeside?: boolean;
+  height?: number;
+}) {
   const q = useTraderDay(trader);
   const day = q.data;
   const beh = useBehaviorDay(trader, day?.date ?? null);
@@ -179,7 +199,16 @@ export function TraderDayBlock({ trader, dailyLimit, showTrades = false, height 
         <Link href={links.journalDay(day.date, trader)} className="ml-auto whitespace-nowrap text-primary hover:underline">{t("day.journal")}</Link>
       </p>
       <BehaviorNote flags={beh.data} />
-      <IntradayChart day={day} dailyLimit={dailyLimit} height={height} />
+      {tradesBeside && !showTrades ? (
+        <div className="@container">
+          <div className="grid grid-cols-1 gap-grid @4xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @4xl:items-start">
+            <IntradayChart day={day} dailyLimit={dailyLimit} height={height} />
+            <div className="hidden @4xl:block"><DayTradesList day={day} max={6} /></div>
+          </div>
+        </div>
+      ) : (
+        <IntradayChart day={day} dailyLimit={dailyLimit} height={height} />
+      )}
       {showTrades && <DayTradesList day={day} />}
     </div>
   );

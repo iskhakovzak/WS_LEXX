@@ -236,7 +236,7 @@ export default function ChainAdvisor({
             <Panel><EmptyState icon={Star} title={t("advisor.noStrategiesTitle")} description={t("advisor.noStrategiesDescription")} /></Panel>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {(showAllStrategies ? strategies : strategies.slice(0, TOP_STRATEGIES)).map((s, i) => (
                   <StrategyCard key={s.id} s={s} spot={chain.spot} top={i === 0} onUseInBs={handleUseBs} onToBuilder={strategyToBuilder} />
                 ))}

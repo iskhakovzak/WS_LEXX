@@ -1,33 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { BarChart3, FileDown, Microscope, Printer, RefreshCw, SearchX } from "lucide-react";
+import { replaceSearchParams } from "@/hooks/use-search-param";
+import { BarChart3, FileDown, Printer, RefreshCw, SearchX } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Page, PageHeader, Panel, Segmented, Toolbar } from "@/components/ds";
+import { ChartSkeleton, EmptyState, Page, PageHeader, Panel, emptyActions } from "@/components/ds";
+import { StatsVerdict } from "@/components/stats/verdict";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
+import { StatsScopeToolbar } from "@/components/stats/scope-toolbar";
+import { useAnalyticsScope, type AnalyticsUnit, type ScopeSource } from "@/hooks/use-analytics-scope";
 import { KpiGridSkeleton } from "@/components/stats/kpi-grid";
 import { type Dimension } from "@/components/stats/breakdown-panel";
 import { ReportPanels, useReportData, useWindowExport } from "@/components/stats/report";
+import { EquityPanel } from "@/components/stats/equity-panel";
 import { downloadReportCsv, openPrintReport } from "@/components/stats/export";
-import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
-import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
+import { StatsBrokerBlock } from "@/components/propreports/BrokerReportBlock";
 import { usePerformance } from "@/components/propreports/api";
 import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
 import { preferredMetricOfAggregate, useStaffAggregates } from "@/components/stats/staff-data";
-import { StatsFacets, facetFilteredTrades, useStatsFacets } from "@/components/stats/StatsFacets";
-import { useFacetView } from "@/components/shared/trade-facets/api";
-import { facetQuery } from "@/lib/trade-facets";
+import { useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { links } from "@/lib/links";
 import {
-  horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, horizonOf, inRange,
-  fmtDayKey, periodRanges, preferredMetric, spansYears, toKey,
-  type HorizonFilter, type Metric, type PeriodKey, type Range,
+  horizonLabel, HORIZON_OPTIONS, horizonOf, inRange,
+  fmtDayKey, periodTexts, preferredMetric, spansYears, statsRanges, toKey,
+  type HorizonFilter, type Metric, type Range,
 } from "@/components/stats/metrics";
-import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { statsScope } from "@/components/stats/staff-data";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
+import { InsightBento } from "@/components/insight-tiles/bento";
 
 /**
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
@@ -39,29 +43,48 @@ import { statsI18n } from "@/i18n/ns/stats";
  */
 
 const PREFS_KEY = "ws.stats.prefs.v2";
-type Prefs = { period: PeriodKey; metric: Metric | null; trader: string; dim: Dimension; horizon: HorizonFilter };
+/** The insight tiles of the period (no «Сегодня»: a period page has no live day). */
+const STATS_TILES = ["streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees"] as const;
 /**
- * DEV-01: the page opens on 90 days; «Всё время» (the whole book, tens of MB for staff) is on demand only.
- * `trader`: a picked person, or "all" = the default (the own book; «Вся команда» is a per-visit pick, never stored).
+ * The page's own view prefs. The period, the person and the unit are the analytics group's shared scope
+ * (hooks/use-analytics-scope: URL → ws.analyticsScope.v1 → the old period / trader of these prefs → «Квартал»).
+ * DEV-01: «Всё» and «Вся команда» are never restored from storage — every visit starts on the cheap default window.
  */
-const DEFAULT_PREFS: Prefs = { period: "90d", metric: null, trader: "all", dim: "trader", horizon: "all" };
+type Prefs = { metric: Metric | null; dim: Dimension; horizon: HorizonFilter };
+const DEFAULT_PREFS: Prefs = { metric: null, dim: "trader", horizon: "all" };
 
-function loadPrefs(): Prefs {
+function readPrefsRaw(): Record<string, unknown> | null {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return DEFAULT_PREFS;
-    const p = JSON.parse(raw) as Partial<Prefs>;
-    return {
-      // «Всё время» is never restored: every visit starts on the cheap default window.
-      period: p.period !== "all" && PERIOD_OPTIONS.some((o) => o.value === p.period) ? (p.period as PeriodKey) : DEFAULT_PREFS.period,
-      metric: p.metric === "r" || p.metric === "usd" || p.metric === "net" ? p.metric : null,
-      horizon: HORIZON_OPTIONS.some((o) => o.value === p.horizon) ? (p.horizon as HorizonFilter) : "all",
-      trader: typeof p.trader === "string" && p.trader ? p.trader : "all",
-      dim: (["trader", "setup", "sector", "ticker", "session", "conviction"] as Dimension[]).includes(p.dim as Dimension) ? (p.dim as Dimension) : "trader",
-    };
+    const v: unknown = raw ? JSON.parse(raw) : null;
+    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
   } catch {
-    return DEFAULT_PREFS;
+    return null;
   }
+}
+
+/** The old period / trader of these prefs (read once by the shared scope; "all" = no pick = the own book). */
+function legacyStatsScope(): ScopeSource | null {
+  const p = readPrefsRaw();
+  if (!p) return null;
+  return { period: p.period, from: p.from, to: p.to, trader: p.trader === "all" ? "" : p.trader };
+}
+
+function loadPrefs(): Prefs {
+  const p = readPrefsRaw();
+  if (!p) return DEFAULT_PREFS;
+  return {
+    metric: p.metric === "r" || p.metric === "usd" || p.metric === "net" ? p.metric : null,
+    horizon: HORIZON_OPTIONS.some((o) => o.value === p.horizon) ? (p.horizon as HorizonFilter) : "all",
+    dim: (["trader", "setup", "sector", "ticker", "session", "conviction"] as Dimension[]).includes(p.dim as Dimension) ? (p.dim as Dimension) : "trader",
+  };
+}
+
+/** The curve's series under the shared unit: R ↔ R; $ keeps the chosen нетто / брутто (default нетто). */
+function metricOfUnit(m: Metric | null, u: AnalyticsUnit | null): Metric | null {
+  if (u === "r") return "r";
+  if (u === "usd") return m === "usd" || m === "net" ? m : "net";
+  return m;
 }
 
 /** «22 июл — сегодня»; both ends carry the year when the range crosses a year (MAKSIM-34). */
@@ -94,38 +117,40 @@ export default function Stats() {
   const { user, isCurator } = useAuth();
   const { toast } = useToast();
   const [prefs, setPrefs] = useState<Prefs>(() => {
-    const p = loadPrefs();
-    const urlTrader = new URLSearchParams(window.location.search).get("trader");
-    return urlTrader ? { ...p, trader: urlTrader } : p;
+    // ?horizon= (the /analytics «Обзор» link card carries its slice).
+    const urlHorizon = HORIZON_OPTIONS.find((o) => o.value === new URLSearchParams(window.location.search).get("horizon"))?.value;
+    return { ...loadPrefs(), ...(urlHorizon ? { horizon: urlHorizon } : {}) };
   });
-  // «Вся команда»: an explicit pick (or a ?trader=all link) for this visit only.
-  const [team, setTeam] = useState(() => new URLSearchParams(window.location.search).get("trader") === "all");
+  // The analytics group's shared period · person · unit (?period= / ?trader= / ?unit=; ?trader=all = «Вся команда»).
+  const sc = useAnalyticsScope({ legacy: legacyStatsScope, restoreAll: false, restoreTeam: false, person: isCurator, unit: true });
   // Server-side window (DEV-01): the selected period first, the equally long previous one after it (deltas only),
   // only the picked trader. "Всё время" (on demand) still needs the whole (scoped) book.
-  const ranges = useMemo(() => periodRanges(prefs.period), [prefs.period]);
-  // Own trades only (owner rule 2026-10-21): a member never gets the trader picker or «the whole team», and a saved
-  // prefs.trader / ?trader= is ignored for them (like /analytics) — their scope is the own book, or their own name
-  // for the PropReports-only switch below.
+  const ranges = useMemo(() => statsRanges(sc.period, sc.custom), [sc.period, sc.custom]);
+  // Own trades only (owner rule 2026-10-21): a member never gets the trader picker or «the whole team», and a shared
+  // ?trader= is ignored for them (like /analytics) — their scope is the own book, or their own name for the
+  // PropReports-only switch below (soloSelf, per visit).
   const solo = !isCurator;
   const me = user?.traderName ?? null;
-  const scope = statsScope({ staff: isCurator, me, picked: prefs.trader, team });
-  const trader = solo ? (me && prefs.trader === me ? me : "all") : scope.trader ?? "all";
+  const [soloSelf, setSoloSelf] = useState(false);
+  const scope = statsScope({ staff: isCurator, me, picked: sc.trader && sc.trader !== TEAM ? sc.trader : "all", team: sc.trader === TEAM });
+  const trader = solo ? (me && soloSelf ? me : "all") : scope.trader ?? "all";
   const windowTrader = trader !== "all" ? trader : null;
   /** The desk aggregate path: staff on «Вся команда» only. Everyone else (staff on one person too) reads raw trades. */
   const staff = scope.team;
-  const pickTrader = (v: string) => { setTeam(v === TEAM); set("trader", v === TEAM ? "all" : v); };
+  const pickTrader = (v: string) => sc.setTrader(v === me ? "" : v);
   const raw = usePeriodTrades(
-    { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
+    { from: ranges.cur.from, to: ranges.cur.to, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
     !staff,
   );
-  const FV = useFacetView(); // «Фильтры» + «Исключить IMX»: x* params for staff aggregates, a filter over the own book
-  const FQ = useStatsFacets(ranges.cur, windowTrader, FV);
+  // «Разрезы» + «Исключить IMX»: x* params for staff aggregates, a filter over the own book.
+  const rf = useRangeFacets({ from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader });
   const agg = useStaffAggregates(
-    { cur: ranges.cur, prev: ranges.prev, trader: windowTrader, horizon: prefs.horizon !== "all" ? prefs.horizon : null, facets: facetQuery(FV.view) },
+    { cur: ranges.cur, prev: ranges.prev, trader: windowTrader, horizon: prefs.horizon !== "all" ? prefs.horizon : null, facets: rf.query },
     staff,
   );
   const { isLoading, isError, refetch, isFetching, prevLoading } = staff ? agg : raw;
-  const allTrades = useMemo(() => facetFilteredTrades(raw.data, FV.view, FQ.data?.deskTags), [raw.data, FV.view, FQ.data?.deskTags]);
+  const rfFilter = rf.filter;
+  const allTrades = useMemo(() => rfFilter(raw.data), [raw.data, rfFilter]);
   // Scope-wide facts (trader list, totals) without loading the whole book.
   const teamFacets = useTradesBookFacets();
   const traderFacets = useTradesBookFacets({ trader: windowTrader, enabled: !!windowTrader });
@@ -138,7 +163,10 @@ export default function Stats() {
     }
   }, [prefs]);
 
-  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs((p) => ({ ...p, [k]: v }));
+  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => {
+    setPrefs((p) => ({ ...p, [k]: v }));
+    if (k === "horizon") replaceSearchParams({ horizon: v as string }, { horizon: "all" }); // a stale ?horizon= never wins
+  };
 
   const traders = useMemo(
     () => [...new Set([
@@ -153,12 +181,14 @@ export default function Stats() {
     () => [...new Set((perf.data?.reports ?? []).map((r) => r.traderName).filter((x): x is string => !!x))].filter((t) => !traders.includes(t)),
     [perf.data, traders],
   );
-  const hasBroker = trader !== "all" && (perf.data?.reports ?? []).some((r) => r.traderName === trader);
+  // The broker block reads one person: the picked one, else the viewer's own book (never «Вся команда»).
+  const brokerTrader = trader !== "all" ? trader : !staff ? me : null;
+  const hasBroker = !!brokerTrader && (perf.data?.reports ?? []).some((r) => r.traderName === brokerTrader);
   // A trader whose results live only in PropReports opens straight onto their broker report.
   useEffect(() => {
     if (!solo || !me || trader !== "all" || isLoading || !perf.data) return;
     const hasJournal = teamFacets.data ? teamFacets.data.traders.includes(me) : allTrades.some((tr) => (tr.trader ?? "").trim() === me);
-    if (!hasJournal && perf.data.reports.some((r) => r.traderName === me)) setPrefs((p) => ({ ...p, trader: me }));
+    if (!hasJournal && perf.data.reports.some((r) => r.traderName === me)) setSoloSelf(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, perf.data, isLoading]);
 
@@ -172,7 +202,8 @@ export default function Stats() {
     [traderScoped, prefs.horizon],
   );
   const a = agg.cur;
-  const metric: Metric = prefs.metric ?? (staff ? preferredMetricOfAggregate(a) : preferredMetric(scoped));
+  const metric: Metric = metricOfUnit(prefs.metric, sc.unit) ?? (staff ? preferredMetricOfAggregate(a) : preferredMetric(scoped));
+  const pickMetric = (m: Metric) => { set("metric", m); sc.setUnit(m === "r" ? "r" : "usd"); };
   const trades = useMemo(() => inRange(scoped, ranges.cur), [scoped, ranges]);
   const prevTrades = useMemo(() => (ranges.prev && !prevLoading ? inRange(scoped, ranges.prev) : null), [scoped, ranges, prevLoading]);
 
@@ -180,10 +211,10 @@ export default function Stats() {
   const { kpis, prevKpis, days, fees, count } = d;
   const horizonBase = useMemo(() => inRange(traderScoped, ranges.cur), [traderScoped, ranges]);
   const { exporting, withTrades } = useWindowExport({
-    staff, trades, range: ranges.cur, trader: windowTrader, horizon: prefs.horizon, facets: FV.view, deskTags: FQ.data?.deskTags,
+    staff, trades, range: ranges.cur, trader: windowTrader, horizon: prefs.horizon, facets: rf.fv.view, deskTags: rf.q.data?.deskTags,
   });
 
-  const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
+  const periodOpt = periodTexts(sc.period, sc.custom);
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
   // One person's report: trade rows don't repeat the name (MAKSIM-37).
   const oneTrader = solo || trader !== "all";
@@ -199,6 +230,9 @@ export default function Stats() {
     fees,
   });
 
+  // The page header's assistant question («Как прошёл этот период?») reads the same window and person.
+  useAssistantContext({ ...(ranges.cur.from ? { from: ranges.cur.from } : {}), ...(ranges.cur.to ? { to: ranges.cur.to } : {}), ...(windowTrader ? { trader: windowTrader } : {}) });
+
   const header = (
     <PageHeader
       title={t("title")}
@@ -213,11 +247,6 @@ export default function Stats() {
       }
       actions={
         <>
-          <Button variant="outline" size="sm" className="rounded-full" asChild>
-            <Link href="/analytics">
-              <Microscope className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("deepButton")}
-            </Link>
-          </Button>
           <Button
             variant="outline" size="sm" className="hidden rounded-full md:inline-flex" disabled={!count || exporting}
             onClick={() => void withTrades((rows) => downloadReportCsv(rows, kpis, prevKpis, reportMeta()))}
@@ -236,7 +265,14 @@ export default function Stats() {
           </Button>
         </>
       }
-    />
+    >
+      {!isLoading && !isError && count > 0 && (
+        <StatsVerdict
+          k={kpis} prev={prevKpis} prevLoading={prevLoading} metric={metric} period={sc.period}
+          curRange={fmtRange(ranges.cur)} prevRange={ranges.prev ? fmtRange(ranges.prev) : null}
+        />
+      )}
+    </PageHeader>
   );
 
   if (isError) {
@@ -249,7 +285,7 @@ export default function Stats() {
             title={t("loadError")}
             description={t("loadErrorHint")}
             action={
-              <Button variant="outline" className="rounded-full" onClick={() => void refetch()} disabled={isFetching}>
+              <Button className="rounded-full" onClick={() => void refetch()} disabled={isFetching}>
                 <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}
               </Button>
             }
@@ -264,67 +300,43 @@ export default function Stats() {
       <Page>
         {header}
         <div className="skeleton h-[52px] rounded-2xl" aria-hidden="true" />
+        <ChartSkeleton className="h-[460px]" height="100%" />
         <KpiGridSkeleton />
-        <div className="grid gap-4 xl:grid-cols-5">
-          <div className="skeleton h-[360px] rounded-2xl xl:col-span-3" aria-hidden="true" />
-          <div className="skeleton h-[360px] rounded-2xl xl:col-span-2" aria-hidden="true" />
-        </div>
         <span className="sr-only" role="status">{t("loading")}</span>
       </Page>
     );
   }
 
   const windowLabel = windowLabelOf(ranges.cur, days);
+  const bookEmpty = trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && sc.period === "all"));
   const prevNote = prevNoteOf(ranges.prev, prevLoading, prevKpis);
 
   return (
     <Page>
       {header}
 
-      <Toolbar className="justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Segmented<PeriodKey>
-            ariaLabel={t("periodAria")}
-            value={prefs.period}
-            onChange={(v) => set("period", v)}
-            options={PERIOD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-          />
-          <Segmented<Metric>
-            ariaLabel={t("metricAria")}
-            value={metric}
-            onChange={(v) => set("metric", v)}
-            options={[{ value: "r", label: t("metric.r") }, { value: "net", label: t("metric.net") }, { value: "usd", label: t("metric.usd") }]}
-          />
-          <Segmented<HorizonFilter>
-            ariaLabel={t("horizonAria")}
-            value={prefs.horizon}
-            onChange={(v) => set("horizon", v)}
-            options={HORIZON_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-          />
-        </div>
-        {!solo && (
-          <StaffTraderPicker
-            value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={[...traders, ...reportTraders]} teamLabel={t("wholeTeam")}
-            className="h-9 w-full sm:w-[220px]" ariaLabel={t("traderAria")}
-          />
-        )}
-      </Toolbar>
+      <StatsScopeToolbar
+        sc={sc} presetRange={ranges.cur} rf={rf} horizon={prefs.horizon} onHorizon={(h) => set("horizon", h)}
+        picker={solo ? null : { value: scopePickerValue(scope), onChange: pickTrader, me, names: [...traders, ...reportTraders] }}
+      />
 
-      <StatsFacets fv={FV} data={FQ.data} loading={FQ.isFetching} error={FQ.isError} />
-
-      {hasBroker && (
-        <div className="space-y-4">
-          <PerformanceReportPanel trader={trader} />
-          <ReconcilePanel trader={trader} compact />
-        </div>
+      {/* The result curve right under the scope row, full width (owner: the first thing after the filters). */}
+      {!bookEmpty && count > 0 && (
+        <EquityPanel
+          equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff}
+          onMetric={pickMetric}
+        />
       )}
 
-      {trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && prefs.period === "all")) ? (
+      {hasBroker && brokerTrader && <StatsBrokerBlock trader={brokerTrader} />}
+
+      {bookEmpty ? (
         <Panel>
           <EmptyState
             icon={BarChart3}
             title={t("bookEmpty")}
             description={t("bookEmptyHint")}
+            action={<Button asChild><Link href={links.myPlan()}>{commonI18n.t("emptyActions.toPlan")}</Link></Button>}
           />
         </Panel>
       ) : count === 0 && hasBroker ? null : count === 0 ? (
@@ -340,20 +352,11 @@ export default function Stats() {
                 : "",
               trader !== "all" || prefs.horizon !== "all" ? t("pickLongerOrClear") : t("pickLonger"),
             ].filter(Boolean).join(" ")}
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                {prefs.period !== "all" && (
-                  <Button className="rounded-full" onClick={() => set("period", "all")}>{t("showAll")}</Button>
-                )}
-                {!solo && trader !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => pickTrader(TEAM)}>{t("wholeTeam")}</Button>
-                )}
-                {prefs.horizon !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => set("horizon", "all")}>{t("allHorizons")}</Button>
-
-                )}
-              </div>
-            }
+            {...emptyActions([
+              sc.period !== "all" && { label: t("showAll"), run: () => sc.setPreset("all") },
+              !solo && trader !== "all" && { label: t("wholeTeam"), run: () => pickTrader(TEAM) },
+              prefs.horizon !== "all" && { label: t("allHorizons"), run: () => set("horizon", "all") },
+            ])}
           />
         </Panel>
       ) : (
@@ -371,6 +374,14 @@ export default function Stats() {
             trader={trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={oneTrader}
             onHorizon={(h) => set("horizon", h)} onDim={(x) => set("dim", x)}
             onPickTrader={!solo && trader === "all" ? pickTrader : undefined}
+            insights={staff ? undefined : (
+              <InsightBento
+                ids={STATS_TILES}
+                trades={trades}
+                prev={prevTrades}
+                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, periodLong: periodOpt.long, periodShort: periodOpt.short }}
+              />
+            )}
           />
         </>
       )}

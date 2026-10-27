@@ -49,7 +49,7 @@ export function CheatLines({ setup }: { setup: TodaySetup }) {
     <dl className="flex flex-col gap-1.5">
       {rows.map((r) => (
         <div key={r.k} className={cn("grid gap-x-3 gap-y-0.5 rounded-xl border-l-[3px] bg-[var(--glass-bg)] px-3 py-2 @md:grid-cols-[5.5rem_minmax(0,1fr)]", LINE_BORDER[r.k])}>
-          <dt className={cn("pt-0.5 text-xs font-semibold uppercase tracking-wide", LINE_TEXT[r.k])}>{r.label}</dt>
+          <dt className={cn("pt-0.5 text-xs font-semibold", LINE_TEXT[r.k])}>{r.label}</dt>
           <dd className="min-w-0 whitespace-pre-line text-[15px] leading-snug text-foreground [overflow-wrap:anywhere] sm:text-base">{r.value}</dd>
         </div>
       ))}
@@ -62,7 +62,7 @@ export function GradeABullets({ items }: { items: string[] }) {
   if (!items.length) return null;
   return (
     <div>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-up">{t("card.gradeA")}</h3>
+      <h3 className="text-xs font-semibold text-up">{t("card.gradeA")}</h3>
       <ul className="mt-1 flex list-disc flex-col gap-1 pl-5 text-[15px] leading-snug text-foreground marker:text-up">
         {items.map((g) => <li key={g} className="[overflow-wrap:anywhere]">{g}</li>)}
       </ul>
@@ -95,7 +95,7 @@ export function LiveChecklist({ setup, date, onGrade }: { setup: TodaySetup; dat
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("card.checklist")}</h3>
+        <h3 className="text-xs font-semibold text-muted-foreground">{t("card.checklist")}</h3>
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">{done}/{items.length}</span>
         {done > 0 && (
           <button type="button" onClick={() => setTicked([])} title={t("card.reset")} aria-label={t("card.reset")} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

@@ -59,7 +59,9 @@ function parseSections(v: unknown): Sections | null {
   const out: Sections = {};
   for (const k of SECTION_KEYS) {
     const raw = (v as Record<string, unknown>)[k];
-    if (typeof raw === "string" && raw.trim()) out[k] = raw.slice(0, MAX_SECTION_LEN);
+    // Refused, never cut: a silent slice showed the full text until the next reload.
+    if (typeof raw === "string" && raw.length > MAX_SECTION_LEN) throw new AppError("TEXT_TOO_LONG", 400, { field: k, max: MAX_SECTION_LEN });
+    if (typeof raw === "string" && raw.trim()) out[k] = raw;
   }
   return out;
 }
@@ -471,7 +473,9 @@ router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): 
   if (!trader) throw badRequest("TRADER_REQUIRED");
   if (!(await requireNotesReader(req, res, trader))) return;
   const params: unknown[] = [trader, limit];
-  let where = `trader = $1`;
+  // Rows written by the security test suite («[sec-test] …», mojibake from a non-UTF-8 shell) are test data, not notes:
+  // hidden from the archive, kept in the table (design audit wave 2).
+  let where = `trader = $1 AND raw_text NOT LIKE '[sec-test]%'`;
   if (q) {
     params.push(`%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
     where += ` AND (raw_text ILIKE $3 OR COALESCE(curator_feedback, '') ILIKE $3)`;

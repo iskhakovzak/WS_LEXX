@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
@@ -250,6 +251,8 @@ export function MorningCheckin() {
   useEffect(() => {
     if (saved) setDraft(rowToDraft(saved));
   }, [saved]);
+  // The half-filled check-in (the plan text above all) survives a reload; it waits for the saved row so it can win.
+  const localDraft = useTextDraft(todayQ.isSuccess && userId ? `checkin:${today}` : null, draft, setDraft, { base: saved ? rowToDraft(saved) : EMPTY });
 
   const flags = draftToFlags(draft);
   const score = readiness(flags);
@@ -274,6 +277,7 @@ export function MorningCheckin() {
       qc.setQueryData(["emotional-state-today", userId, today], row);
       qc.invalidateQueries({ queryKey: ["emotional-insights", userId] });
       setEditing(false);
+      localDraft.clear();
       toast({ title: eodI18n.t("checkin.saved"), description: eodI18n.t("checkin.savedDesc", { score, label: readinessLabel(score) }) });
     } catch (e) {
       toast({ title: eodI18n.t("checkin.failed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -316,7 +320,7 @@ export function MorningCheckin() {
         accent={tone}
         actions={<IconAction icon={Pencil} label={t("checkin.edit")} onClick={() => setEditing(true)} />}
       >
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 items-start gap-3">
             <ReadinessRing score={savedScore} />
             <div className="min-w-0 space-y-1.5">

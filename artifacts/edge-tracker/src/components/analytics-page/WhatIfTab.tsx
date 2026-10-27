@@ -1,51 +1,24 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
-import { ArrowRight, Check, FlaskConical, Receipt } from "lucide-react";
+import { Check, FlaskConical } from "lucide-react";
 import { Panel, EmptyState, Pill, toneOf } from "@/components/ds";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, type Unit, NONE } from "./metrics";
+import { type Unit, NONE } from "./metrics";
 import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
-import { encodeRules, type Rule } from "@/components/shared/what-if-rules";
 import { toSimTrades } from "./edge-api";
 import { applyWhatIf, kpisOf, WHAT_IF_RULE_IDS, type WhatIfRuleId, type ValueKpis } from "./edge-stats";
-import { CostsSummary } from "./CostsTab";
 
 /**
- * Compact «Что если» tab of /analytics. The full simulator (server engine, own rules, suggestions, saved scenarios,
- * tariffs) is /what-if; this tab keeps what only the analytics page can do — quick discipline rules on the trades
- * under the page filters, in R or $ — plus the gross → net fee strip, and links into /what-if with the same scope.
+ * «Что если» of /analytics (under «Ещё»): the full simulator is /what-if — the page shows a link card with the same
+ * slice above this block (design audit wave 2B: no second copy). What stays here is only what /what-if cannot run:
+ * the rules that exist only on this page (loss capped at −1R, no overnight), on the trades under the page filters.
  */
 
-/** Analytics rule → the equivalent /what-if rule (null: the rule exists only here). */
-function toWhatIfRule(id: WhatIfRuleId, worstSetup: string | null): Rule | null {
-  switch (id) {
-    case "dropWorstSetup": return worstSetup && worstSetup !== NONE ? { type: "excludeSetups", setups: [worstSetup] } : null;
-    case "onlyAGrade": return { type: "minGrade", grade: "A" };
-    case "noEarly": return { type: "timeWindow", from: "09:45", to: null };
-    case "stopAfter2Losses": return { type: "stopAfterLosses", n: 2 };
-    default: return null;
-  }
-}
-const ONLY_HERE: ReadonlySet<WhatIfRuleId> = new Set(["capLoss1R", "noOvernight"]);
+const ONLY_HERE: readonly WhatIfRuleId[] = WHAT_IF_RULE_IDS.filter((id) => id === "capLoss1R" || id === "noOvernight");
 
-/** /what-if link with the same trader and period (7 days has no twin there → 30 days). */
-export function whatIfHref(filters: AnalyticsFilters, rules: Rule[] = [], hash = ""): string {
-  const sp = new URLSearchParams();
-  const r = encodeRules(rules);
-  if (r) sp.set("r", r);
-  const p = filters.period === "7d" ? "30d" : filters.period;
-  if (p !== "all") sp.set("p", p);
-  // No trader picked here = the whole scope; /what-if reads "__all__" as «Вся команда» (ignored for traders).
-  sp.set("trader", filters.trader || "__all__");
-  const q = sp.toString();
-  return `/what-if${q ? `?${q}` : ""}${hash}`;
-}
-
-export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Unit | null; filters: AnalyticsFilters }) {
+export function WhatIfTab({ trades, unit }: { trades: Trade[]; unit: Unit | null }) {
   const { t } = analyticsI18n.useT();
   const u: Unit = unit ?? "r";
   const [rules, setRules] = useState<Set<WhatIfRuleId>>(new Set());
@@ -63,7 +36,7 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
   /** Each rule on its own: Δ total and why it could not apply. */
   const single = useMemo(() => {
     const out = new Map<WhatIfRuleId, { delta: number | null; skip: string | null; worstSetup: string | null }>();
-    for (const id of WHAT_IF_RULE_IDS) {
+    for (const id of ONLY_HERE) {
       const r = applyWhatIf(sim, new Set([id]), u);
       const skip = r.skipped[0]?.reason ?? null;
       out.set(id, { delta: skip ? null : kpisOf(r.values).total - base.kpis.total, skip, worstSetup: r.worstSetup });
@@ -74,8 +47,6 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
   const fmt = (v: number | null | undefined, digits = 2) => (u === "r" ? fmtR(v, digits) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const toggle = (id: WhatIfRuleId) => setRules((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const mapped = [...rules].map((id) => toWhatIfRule(id, single.get(id)?.worstSetup ?? null)).filter((r): r is Rule => r != null);
-  const openHref = whatIfHref(filters, mapped);
   const setupLabel = (s: string) => (s === NONE ? t("bucket.noSetup") : s);
 
   const rows: { id: string; label: string; a: number | null; b: number | null; fmt: (v: number | null) => string; delta: (d: number) => string; invert?: boolean }[] = [
@@ -89,23 +60,16 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title={t("whatIf.quickTitle")}
+        title={t("whatIf.onlyHereTitle")}
         description={t("whatIf.quickHint", { unit: u === "r" ? t("unit.r") : t("unit.usd") })}
         icon={FlaskConical}
-        actions={
-          <Button asChild size="sm" className="rounded-full">
-            <Link href={openHref}>
-              {mapped.length ? t("whatIf.openWithRules", { count: mapped.length }) : t("whatIf.open")} <ArrowRight aria-hidden="true" />
-            </Link>
-          </Button>
-        }
       >
         {base.values.length === 0 ? (
           <EmptyState icon={FlaskConical} title={t("whatIf.nothing")} description={u === "r" ? t("whatIf.nothingR") : t("whatIf.nothingUsd")} className="py-6" />
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
             <ul className="flex flex-col gap-1.5 lg:col-span-3">
-              {WHAT_IF_RULE_IDS.map((id) => {
+              {ONLY_HERE.map((id) => {
                 const on = rules.has(id);
                 const one = single.get(id);
                 const skipped = alt.skipped.find((s) => s.rule === id);
@@ -135,7 +99,6 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
                             {fmt(one.delta)}
                           </span>
                         )}
-                        {ONLY_HERE.has(id) && <span className="text-2xs text-muted-foreground" title={t("whatIf.onlyHereHint")}>{t("whatIf.onlyHere")}</span>}
                       </span>
                     </button>
                   </li>
@@ -154,23 +117,8 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
             </div>
           </div>
         )}
-        <p className="mt-3 border-t border-border/50 pt-3 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{t("whatIf.bridgeTitle")}.</span> {t("whatIf.bridgeText")}
-        </p>
       </Panel>
 
-      <Panel
-        title={t("whatIf.feesTitle")}
-        description={t("whatIf.feesHint")}
-        icon={Receipt}
-        actions={
-          <Link href={whatIfHref(filters, [], "#fees")} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-            {t("whatIf.feesLink")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </Link>
-        }
-      >
-        <CostsSummary filters={filters} />
-      </Panel>
     </div>
   );
 }

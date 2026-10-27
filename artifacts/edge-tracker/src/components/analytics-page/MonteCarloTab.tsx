@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import {
+  ACTIVE_DOT, CHART, GRID, GlassTooltip, MARGIN, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps, useChartMotion,
+} from "@/components/shared/charts";
 import { Dices, RefreshCw } from "lucide-react";
-import { Panel, StatCard, StatGrid, Segmented, EmptyState, Pill, toneOf } from "@/components/ds";
+import { Panel, StatCard, StatGrid, Segmented, EmptyState, Pill, toneOf, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Unit, type AnalyticsFilters, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { type Unit, type AnalyticsFilters } from "./metrics";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 import { commonI18n } from "@/i18n/ns/common";
@@ -65,8 +68,9 @@ function useMonteCarlo(input: MonteCarloInput | null) {
 
 export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit: Unit | null; filters: AnalyticsFilters }) {
   const { t } = analyticsI18n.useT();
+  const motion = useChartMotion();
   const u: Unit = unit ?? "r";
-  const [horizon, setHorizon] = useState<(typeof HORIZONS)[number]>(100);
+  const [horizon, setHorizon] = usePersistentState<(typeof HORIZONS)[number]>("analytics.montecarlo.horizon", 100);
   const [runs, setRuns] = useState<1000 | 5000>(1000);
   const [tpdMode, setTpdMode] = useState<"auto" | "1" | "2" | "3" | "5">("auto");
   const [rDaily, setRDaily] = useState<(typeof R_DAILY)[number]>("3");
@@ -148,20 +152,21 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
           <div className={busy ? "opacity-60 transition-opacity" : "transition-opacity"} aria-busy={busy}>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis dataKey="i" {...AXIS} />
-                  <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v, { signed: true, decimals: "auto" }))} width={64} />
+                <ComposedChart data={chart} margin={MARGIN}>
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="i" {...X_AXIS} minTickGap={28} />
+                  <YAxis {...Y_AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v, { signed: true, decimals: "auto" }))} width={64} />
                   <Tooltip
-                    contentStyle={CHART_TOOLTIP_STYLE}
+                    {...tooltipProps("line")}
+                    content={<GlassTooltip />}
                     labelFormatter={(i) => t("mc.after", { count: Number(i) })}
                     formatter={(v: number | number[], name: string) => [Array.isArray(v) ? `${fmt(v[0])} … ${fmt(v[1])}` : fmt(v), name === "outer" ? "5–95%" : name === "inner" ? "25–75%" : t("mc.median")]}
                   />
-                  <ReferenceLine y={0} stroke={GRID} />
-                  {ruinLevel != null && <ReferenceLine y={-ruinLevel} stroke="hsl(var(--down))" strokeDasharray="4 4" label={{ value: t("mc.ruinLine"), fill: "hsl(var(--down))", fontSize: 10, position: "insideBottomRight" }} />}
-                  <Area type="monotone" dataKey="outer" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.12} isAnimationActive={false} />
-                  <Area type="monotone" dataKey="inner" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.22} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="p50" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} isAnimationActive={false} />
+                  <ReferenceLine {...ZERO_LINE} />
+                  {ruinLevel != null && <ReferenceLine y={-ruinLevel} {...REF_LINE} stroke={CHART.down} label={{ value: t("mc.ruinLine"), fill: CHART.down, fontSize: 12, position: "insideBottomRight" }} />}
+                  <Area type="monotone" dataKey="outer" stroke="none" fill={CHART.accent} fillOpacity={0.1} activeDot={false} {...motion} />
+                  <Area type="monotone" dataKey="inner" stroke="none" fill={CHART.accent} fillOpacity={0.2} activeDot={false} {...motion} />
+                  <Line type="monotone" dataKey="p50" stroke={CHART.accent} dot={false} strokeWidth={STROKE} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>

@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -302,7 +303,7 @@ export function SetupFormDialog({
   return (
     <Dialog open={!!mode} onOpenChange={(v) => { if (!v) closeKeepingDraft(); }}>
       <DialogContent
-        className="flex max-h-[min(92dvh,960px)] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[min(92dvh,960px)] max-w-4xl flex-col gap-0 overflow-hidden p-0"
         onKeyDown={(e) => {
           if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
           const k = e.key.toLowerCase();
@@ -327,7 +328,7 @@ export function SetupFormDialog({
 
         <form
           id="pb-form"
-          className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-6 py-5"
+          className="min-h-0 flex-1 space-y-field overflow-y-auto overscroll-contain px-6 py-5"
           onSubmit={(e) => { e.preventDefault(); save(); }}
           noValidate
         >
@@ -377,7 +378,7 @@ export function SetupFormDialog({
                 <div className="flex gap-2">
                   <Select value={form.folder || "__none"} onValueChange={(v) => set("folder", v === "__none" ? "" : v)}>
                     <SelectTrigger id="pb-folder" className="min-w-0 flex-1"><SelectValue placeholder={commonI18n.t("fields.noFolder")} /></SelectTrigger>
-                    <SelectContent className="max-h-[min(60dvh,420px)]">
+                    <SelectContent className="max-h-[min(60dvh,420px,var(--radix-select-content-available-height))]">
                       <SelectItem value="__none">{commonI18n.t("fields.noFolder")}</SelectItem>
                       {folderGroups.primary.length > 0 && (
                         <SelectGroup>
@@ -497,7 +498,10 @@ export function SetupFormDialog({
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
                   <Label htmlFor="pb-conditions" className="text-xs text-muted-foreground">{live ? t("form.oneTextLabel") : t("form.conditions")}</Label>
-                  <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("conditions")} /></React.Suspense>
+                  <div className="flex items-center gap-1">
+                    <AssistHelp field="playbook" value={form.conditions} onAccept={(v) => set("conditions", v)} context={editId ? { playbookId: editId } : undefined} />
+                    <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("conditions")} /></React.Suspense>
+                  </div>
                 </div>
                 <Textarea id="pb-conditions" value={form.conditions} onChange={(e) => set("conditions", e.target.value)} rows={5} placeholder={t("form.conditionsPlaceholder")} className="resize-y text-sm" />
               </div>
@@ -522,7 +526,10 @@ export function SetupFormDialog({
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
                   <Label htmlFor="pb-notes" className="text-xs text-muted-foreground">{t("form.notes")}</Label>
-                  <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("notes")} /></React.Suspense>
+                  <div className="flex items-center gap-1">
+                    <AssistHelp field="playbook" value={form.notes} onAccept={(v) => set("notes", v)} context={editId ? { playbookId: editId } : undefined} actions={["improve", "fill"]} />
+                    <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("notes")} /></React.Suspense>
+                  </div>
                 </div>
                 <Textarea id="pb-notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={5} className="resize-y text-sm" placeholder={t("form.notesPlaceholder")} />
               </div>

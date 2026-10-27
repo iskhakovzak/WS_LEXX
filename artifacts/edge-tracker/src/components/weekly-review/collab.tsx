@@ -16,6 +16,7 @@ import {
 } from "./api";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { personName } from "@/i18n";
+import { useTextDraft } from "@/hooks/use-text-draft";
 
 const STATUS_TONE: Record<ReviewStatus | "none", Tone> = { none: "neutral", draft: "neutral", submitted: "accent", reviewed: "up" };
 const GOAL_TONE: Record<GoalStatus, Tone> = { open: "neutral", done: "up", partial: "warn", missed: "down" };
@@ -103,6 +104,10 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
     if (!dirty) { setWell(s.well ?? ""); setBadly(s.badly ?? ""); setLessons(s.lessons ?? ""); setFocus(s.focus ?? ""); }
   }, [key, dirty, s.well, s.badly, s.lessons, s.focus]);
 
+  // Unsaved text survives a reload / a week switch (local draft until it is saved).
+  const draft = useTextDraft(editable ? `weekly-self:${doc.trader}:${doc.week.key}` : null, { well, badly, lessons, focus },
+    (d) => { setWell(d.well); setBadly(d.badly); setLessons(d.lessons); setFocus(d.focus); setDirty(true); },
+    { base: { well: s.well ?? "", badly: s.badly ?? "", lessons: s.lessons ?? "", focus: s.focus ?? "" } });
   const filled = !!(s.well || s.badly || (!hideFocus && s.focus) || s.lessons);
   const save = (submit: boolean) => {
     saveMut.mutate(
@@ -110,6 +115,7 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
       {
         onSuccess: (r: Review) => {
           setDirty(false);
+          draft.clear();
           toast({ title: submit ? t("collab.selfSent") : t("collab.draftSaved"), description: submit ? t("collab.statusIs", { status: STATUS_LABEL[r.status] }) : undefined });
         },
         onError: (e) => toast({ title: t("collab.saveFailed"), description: errMsg(e), variant: "destructive" }),
@@ -139,7 +145,7 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
 
   return (
     <Panel title={t("collab.mySelf")} description={t("collab.mySelfDesc")} icon={UserRound} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           <span className="text-up">{t("collab.well")}</span>
           <Textarea value={well} onChange={bind(setWell)} rows={3} maxLength={6000} placeholder={t("collab.wellPlaceholder")} />
@@ -202,6 +208,9 @@ export function CuratorReviewPanel({ doc, className, readOnly = false, next }: {
     }
   }, [key, dirty, c.comment, c.score, review?.goals]);
 
+  const draft = useTextDraft(editable ? `weekly-curator:${doc.trader}:${doc.week.key}` : null, { comment, score, goals },
+    (d) => { setComment(d.comment); setScore(d.score); setGoals(d.goals); setDirty(true); },
+    { base: { comment: c.comment ?? "", score: c.score ?? null, goals: review?.goals.map((g) => ({ id: g.id, text: g.text })) ?? [] } });
   const status = review?.status ?? "none";
   const cleanGoals = goals.map((g) => ({ ...g, text: g.text.trim() })).filter((g) => g.text);
   const save = (finalize: boolean, goNext = false) => {
@@ -210,6 +219,7 @@ export function CuratorReviewPanel({ doc, className, readOnly = false, next }: {
       {
         onSuccess: () => {
           setDirty(false);
+          draft.clear();
           toast({ title: finalize ? t("collab.reviewSaved", { trader: personName(doc.trader) }) : t("collab.reviewDraftSaved"), description: finalize ? t("collab.goalsForNext", { count: cleanGoals.length }) : undefined });
           if (goNext && next) next.open();
         },

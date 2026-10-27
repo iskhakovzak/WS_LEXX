@@ -6,7 +6,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { BellRing, Pencil, Plus, Trash2, X } from "lucide-react";
-import { EmptyState, ErrorState, ListSkeleton, Pill, Tile, toneOf, toneText } from "@/components/ds";
+import { EmptyState, ErrorState, ListSkeleton, Pill, RowActions, Tile, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -171,16 +171,16 @@ const TriggerRow = React.memo(function TriggerRow({
             {t.note && t.note !== t.name && <p className="mt-0.5 text-xs text-muted-foreground">{t.note}</p>}
           </div>
           {canEdit && (
-            <div className="flex shrink-0 items-center gap-1">
+            <RowActions
+              menuLabel={tb("trig.moreAria", { name: t.name })}
+              more={[{ label: tb("trig.delete"), icon: Trash2, onSelect: () => setConfirm(true) }]}
+            >
               {def && def.fields.length > 0 && (
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setDraft(t.params); setEditing((v) => !v); }} aria-label={tb("trig.editAria", { name: t.name })} aria-expanded={editing}>
                   {editing ? <X className="h-3.5 w-3.5" aria-hidden="true" /> : <Pencil className="h-3.5 w-3.5" aria-hidden="true" />}
                 </Button>
               )}
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setConfirm(true)} aria-label={tb("trig.deleteAria", { name: t.name })}>
-                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-              </Button>
-            </div>
+            </RowActions>
           )}
         </div>
 
@@ -299,7 +299,7 @@ export function TriggersPanel({ trader, range, onPickDay }: { trader: string | n
           />
         )
       ) : (
-        <ul className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2" aria-label={tb("trig.listAria")}>
+        <ul className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-2" aria-label={tb("trig.listAria")}>
 
           {d.items.map((t) => <TriggerRow key={t.id} t={t} def={kindMap.get(t.kind)} canEdit={canEdit} onPickDay={onPickDay} />)}
         </ul>

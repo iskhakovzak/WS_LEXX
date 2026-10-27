@@ -1,6 +1,6 @@
 /**
  * Money in the trading format, the same in every UI language: `$1,234.56`, `+$1,234.56` / `−$1,234.56`,
- * compact `$1.2K` / `$3.4M`. Minus is U+2212.
+ * compact `$1.2K` / `$3.4M`. Minus is U+2212. A zero (or an amount that rounds to zero) is `$0`; no data is `—`.
  */
 import { compactAbs, DASH, en, roundsToZero, signOf, toNum, type NumLike } from "./internal";
 
@@ -39,5 +39,7 @@ export function fmtUsd(v: NumLike, opts: MoneyOptions = {}): string {
     return `${signOf(n, body === "0", opts.signed)}$${body}`;
   }
   const d = decimalsFor(opts.decimals ?? (opts.compact ? 0 : 2), abs);
-  return `${signOf(n, roundsToZero(abs, d), opts.signed)}$${en(abs, d)}`;
+  // A real zero is «$0» everywhere (design audit: one empty-value rule — no data «—», zero «$0»), never «$0.00».
+  if (roundsToZero(abs, d)) return "$0";
+  return `${signOf(n, false, opts.signed)}$${en(abs, d)}`;
 }

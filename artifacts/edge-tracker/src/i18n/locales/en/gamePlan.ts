@@ -5,7 +5,6 @@ export default {
   page: {
     description: "Desk premarket briefing · {ago}",
     timeEt: "ET time",
-    updatedAgo: "updated {ago}",
     dayNav: "Pick a day",
     prevDay: "Previous trading day",
     prevDayKey: "Previous trading day (←)",

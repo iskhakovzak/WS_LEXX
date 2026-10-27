@@ -1,5 +1,10 @@
 /** Sign-in screen and the forced password change (pages/login.tsx, components/auth/*). */
 export default {
+  greeting: {
+    first: "Добро пожаловать",
+    back: "С возвращением",
+    backName: "С возвращением, {name}",
+  },
   tagline: "Журнал проп-трейдинг деска",
   steps: {
     aria: "Шаги входа",
@@ -63,6 +68,7 @@ export default {
     failedPin: "Не удалось сохранить PIN",
   },
   clock: {
+    ny: "Нью-Йорк {time} · {phase}",
     weekend: "Выходной",
     premarket: "Премаркет",
     regular: "Основная сессия",

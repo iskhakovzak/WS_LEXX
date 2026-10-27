@@ -8,6 +8,7 @@ import rateLimit, { ipKeyGenerator, type Options } from "express-rate-limit";
 import type { Request } from "express";
 import { langOf } from "../i18n";
 import { AppError, errorBody } from "./http/errors";
+import { setting } from "./settings/registry";
 
 export function rateLimitKey(req: Request): string {
   const u = req.authUser;
@@ -36,6 +37,12 @@ export const transcribeLimiter = perUser(10 * 60 * 1000, 30);
 export const voiceNoteLimiter = perUser(10 * 60 * 1000, 30);
 /** AI text endpoints (author-notes improve / weekly-summary / team-summary, junior-notes improve) — one shared bucket. */
 export const aiTextLimiter = perUser(10 * 60 * 1000, 20);
+/**
+ * «Ассистент WS» (POST /ai/assistant/chat and /assist): one bucket per user, the size is the desk setting
+ * assistant.requestsPer10Min (read on every request, so an admin change applies at once). Daily token budgets are
+ * separate (lib/assistant/store budgetOf).
+ */
+export const assistantLimiter = perUser(10 * 60 * 1000, 20, { limit: () => setting("assistant.requestsPer10Min") });
 /** POST /usage/batch — the web tracker flushes every ~15 s and on page hide; 30 a minute leaves room for tab hops. */
 export const usageLimiter = perUser(60 * 1000, 30);
 

@@ -6,6 +6,8 @@ import { isNotFound, nullIfMissing } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
 import { useAuth } from "@/contexts/auth-context";
 import { playbookI18n } from "@/i18n/ns/playbook";
+/** Today's desk market regime: the «Подходит сегодня» filter matches setups tagged with it. */
+export { useRegimeToday } from "@/components/shared/regime/api";
 import type {
   ActivityItem, FolderSetting, PickerTrade, PlaybookEntry, SetupExample, SetupStats, SetupSummary, ViewerLike,
 } from "./model";

@@ -1,23 +1,25 @@
 /**
  * «Фильтры» — the PropReports-style filter panel (lib/trade-facets). The dimensions come in four groups (FACET_GROUPS:
- * when · how · what · result and tags), each a small uppercase heading over a grid that wraps into rows (no horizontal
+ * when · how · what · result and tags), each a small heading over a grid that wraps into rows (no horizontal
  * scroll at any width, one column on a phone); a group without a visible column is left out. A long column (tickers,
  * times) scrolls inside itself. Each value is a row with a profit bar behind it (green / red,
  * length = |net| relative to the column's largest; trade count when money is hidden); a click excludes the value
  * (struck through, dimmed), a second click brings it back. Columns with a single value and nothing excluded carry no
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
- * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
+ * user (useFacetView). Used by /trades, /stats and the period pages inside «Фильтры (n)» (design audit wave 3: the
+ * grid no longer sits on the page between the toolbar and the answer); the hidden values are chips under the toolbar
+ * and «Исключить IMX» is a switch next to the grid (./facet-filters).
+ * «Найти тикер» next to the tabs: while it holds text, the matching tickers (from any tab) show above the tab's columns,
+ * which stay visible, with «Только найденные» to keep just them.
  */
 import { useRef, useState } from "react";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronDown, Filter, RotateCcw } from "lucide-react";
+import { RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toneBg, toneOf, toneText } from "@/components/ds";
 import { fmtCount, fmtUsd } from "@/lib/format";
 import { tradeFacetsI18n } from "@/i18n/ns/tradeFacets";
-import { ImxLine, ImxToggle } from "./FacetSummary";
 import {
   AGGRESSIVE_ADDS_MIN, AGGRESSIVE_GAP_SEC, AGGRESSIVE_SIZE_MULT, AGGRESSIVE_WINDOW_SEC, FACET_DIMS, FACET_GROUPS,
   SIZE_REL_DAYS, SIZE_REL_MIN_TRADES, UNKNOWN_KEY, activeCount, isChecked, resetFacets, setColumn, toggleKey,
@@ -46,10 +48,14 @@ type Props = {
   data: FacetsResponse | undefined;
   loading: boolean;
   error: boolean;
-  className?: string;
+  /** «Найти тикер» inside the grid (off where the page's own search already finds tickers, e.g. /trades). */
+  tickerSearch?: boolean;
 };
 
-const GRID = "grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]";
+// Wrapping columns that share the free width (≥ 10.5rem each, at most 18rem from md): a tab with fewer dimensions
+// widens its columns instead of leaving empty tracks on the right while long headings («Trade of the day», «Before
+// the trade») and labels ellipsize; a 2-dimension tab stays packed on the left. Phones: full-width columns.
+const GRID = "flex flex-wrap gap-x-5 gap-y-4 [&>*]:min-w-0 [&>*]:flex-[1_1_10.5rem] md:[&>*]:max-w-[18rem]";
 const LINK = "inline-flex min-h-6 min-w-6 items-center justify-center rounded px-1.5 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** A column offers a choice only with 2+ values, or when something in it is already excluded (so it can come back). */
@@ -106,7 +112,7 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
   return (
     <section className="flex min-w-0 flex-col gap-1" aria-label={title}>
       <header className="flex items-center justify-between gap-2 border-b border-border pb-1">
-        <h4 title={title} className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 title={title} className="truncate text-xs font-semibold text-muted-foreground">
           {title}{excluded > 0 && <span className="ml-1 text-primary">−{excluded}</span>}
         </h4>
         <span className="flex shrink-0 gap-0.5 text-2xs">
@@ -178,15 +184,68 @@ function GroupTabs({ groups, active, onPick, view }: { groups: Group[]; active: 
   );
 }
 
-export function FacetPanel({ view, onChange, data, loading, error, className }: Props) {
+/** «Найти тикер» next to the tabs; Escape clears. */
+function TickerSearch({ q, onQ }: { q: string; onQ: (v: string) => void }) {
+  const t = tradeFacetsI18n.t;
+  return (
+    <div className="relative w-full sm:w-56">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => onQ(e.target.value.toUpperCase().replace(/[^A-Z0-9.\-]/g, ""))}
+        onKeyDown={(e) => { if (e.key === "Escape" && q) { e.preventDefault(); onQ(""); } }}
+        placeholder={t("tickerSearchPlaceholder")}
+        aria-label={t("tickerSearch")}
+        autoComplete="off"
+        spellCheck={false}
+        className="h-9 w-full rounded-xl border border-border bg-background/60 pl-8 pr-8 text-sm uppercase placeholder:normal-case placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-search-cancel-button]:hidden"
+      />
+      {q && (
+        <button
+          type="button"
+          onClick={() => onQ("")}
+          aria-label={t("tickerClear")}
+          title={t("tickerClear")}
+          className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Tickers matching the search (prefix first, then the rest containing it) as an ordinary column, plus «Только найденные». */
+function TickerResults({ q, buckets, view, onChange, money }: { q: string; buckets: FacetBucket[]; view: FacetView; onChange: (v: FacetView) => void; money: boolean }) {
+  const t = tradeFacetsI18n.t;
+  const hits = buckets
+    .filter((b) => b.key !== UNKNOWN_KEY && b.label.toUpperCase().includes(q))
+    .sort((a, b) => Number(!a.label.toUpperCase().startsWith(q)) - Number(!b.label.toUpperCase().startsWith(q)));
+  if (hits.length === 0) return <p role="status" className="mt-3 text-sm text-muted-foreground">{t("tickerNotFound", { q })}</p>;
+  const hitKeys = new Set(hits.map((b) => b.key));
+  const onlyThese = () => onChange({ ...view, off: { ...view.off, tickers: buckets.filter((b) => !hitKeys.has(b.key)).map((b) => b.key) } });
+  return (
+    <div className="mt-3 animate-in fade-in-0 duration-150 motion-reduce:animate-none">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span role="status">{t("tickerFound", { n: hits.length })}</span>
+        <Button variant="outline" size="sm" onClick={onlyThese} title={t("tickerOnlyHint")}>{t("tickerOnly")}</Button>
+      </div>
+      <div className={GRID}>
+        <Column dim="tickers" buckets={hits} view={view} onChange={onChange} money={money} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The grid of the «Разрезы»: group tabs, the columns of the current group, «Найти тикер» (only where the page has no
+ * search of its own) and the folded one-value columns. Lives inside «Фильтры (n)» (components/shared/filters) — the
+ * hidden values show as chips under the toolbar (./facet-filters facetChips).
+ */
+export function FacetGrid({ view, onChange, data, loading, error, tickerSearch = true }: Props) {
   const t = tradeFacetsI18n.t;
   const hidden = activeCount(view);
-  // On a phone the panel starts folded each visit (open it pushes the trade list a screen down); the saved
-  // open/closed state is the desktop one.
-  const isMobile = !!useIsMobile();
-  const [phoneOpen, setPhoneOpen] = useState(false);
-  const open = isMobile ? phoneOpen : view.open;
-  const toggle = () => (isMobile ? setPhoneOpen((v) => !v) : onChange({ ...view, open: !view.open }));
   const money = data?.money !== false;
   // Last non-empty values of every column: when the exclusions leave no trades, the other columns come back empty —
   // keep showing their values (count 0) so the panel never collapses to one column and every choice stays reachable.
@@ -204,87 +263,55 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
   const folded = dims.filter((x) => x.buckets.length === 1 && !hasChoice(x.d, x.buckets, view));
   // Groups «when / how / what / result and tags»; a group without a visible column is left out.
   const groups = FACET_GROUPS.map((g) => ({ id: g.id, cols: shown.filter((x) => g.dims.includes(x.d)) })).filter((g) => g.cols.length > 0);
-  // One group at a time (tabs): the panel stays one row of columns high instead of four stacked rows.
+  // One group at a time (tabs): the grid stays one row of columns high instead of four stacked rows.
   const [tab, setTab] = useState<GroupId>(readTab);
   const pickTab = (id: GroupId) => { setTab(id); writeTab(id); };
   const current = groups.find((g) => g.id === tab) ?? groups[0];
+  const [q, setQ] = useState("");
+  const tickerBuckets = dims.find((x) => x.d === "tickers")?.buckets ?? [];
+  if (error && !data) return <p className="text-sm text-muted-foreground">{t("loadFailed")}</p>;
+  if (loading && !data) return <div className={GRID}>{FACET_DIMS.slice(0, 6).map((d) => <Skeleton key={d} className="h-36" />)}</div>;
+  if (shown.length === 0 && folded.length === 0) return <p className="text-sm text-muted-foreground">{t("empty")}</p>;
   return (
-    <div className={cn("glass-panel rounded-2xl", className)} role="region" aria-label={t("aria")}>
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={toggle}
-          title={open ? t("close") : t("open")}
-          className="inline-flex min-h-9 items-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Filter className="h-4 w-4" aria-hidden="true" />
-          {t("title")}
-          {hidden > 0 && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs font-semibold text-primary">{t("hidden", { count: hidden })}</span>}
-          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
-        </button>
-        {hidden > 0 && (
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => onChange(resetFacets(view))}>
-            <RotateCcw aria-hidden="true" />{t("reset")}
-          </Button>
-        )}
-        {/* «Исключить IMX» lives in the header: visible with the panel folded, never pushed below a tall grid. */}
-        <ImxToggle
-          value={view.excludeImx}
-          onChange={(v) => onChange({ ...view, excludeImx: v })}
-          className={cn("rounded-xl border px-2.5", view.excludeImx ? "border-primary/40 bg-primary/10" : "border-border")}
-        />
-        {data && money && <ImxLine total={data.total.net} imx={data.imx} excluded={view.excludeImx} />}
-        {open && <span className="hidden text-2xs text-muted-foreground xl:inline">{t("clickHint")}</span>}
-      </div>
-      {open && (
-        <div className="border-t border-border px-3 pb-3 pt-3">
-          {error && !data ? (
-            <p className="text-sm text-muted-foreground">{t("loadFailed")}</p>
-          ) : loading && !data ? (
-            <div className={GRID}>{FACET_DIMS.slice(0, 6).map((d) => <Skeleton key={d} className="h-36" />)}</div>
-          ) : shown.length === 0 && folded.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("empty")}</p>
-          ) : (
-            <>
-              {nothingLeft && (
-                <div role="status" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
-                  <span className="min-w-0 flex-1">
-                    {t("emptyAll")}
-                    {emptied.length > 0 && <> {t("emptyFully", { dims: emptied.map((x) => t(`dims.${x.d}`)).join(", ") })}</>}
-                  </span>
-                  {emptied.slice(0, 3).map((x) => (
-                    <Button key={x.d} variant="outline" size="sm" onClick={() => onChange({ ...view, off: { ...view.off, [x.d]: [] } })}>
-                      {t("restoreDim", { dim: t(`dims.${x.d}`) })}
-                    </Button>
-                  ))}
-                  <Button variant="outline" size="sm" onClick={() => onChange(resetFacets(view))}><RotateCcw aria-hidden="true" />{t("resetAll")}</Button>
-                </div>
-              )}
-              <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
-              {current && (
-                <div
-                  key={current.id}
-                  role="tabpanel"
-                  id={`facet-panel-${current.id}`}
-                  aria-labelledby={`facet-tab-${current.id}`}
-                  aria-busy={loading || undefined}
-                  className={cn(GRID, "mt-3 animate-in fade-in-0 duration-150 motion-reduce:animate-none")}
-                >
-                  {current.cols.map((x) => <Column key={x.d} dim={x.d} buckets={x.buckets} view={view} onChange={onChange} money={money} />)}
-                </div>
-              )}
-              {folded.length > 0 && (
-                <p className="mt-3 text-2xs text-muted-foreground">
-                  {t("single")}{" "}
-                  {folded.map((x, i) => (
-                    <span key={x.d}>{i > 0 && " · "}<span className="font-medium text-foreground/80">{t(`dims.${x.d}`)}</span> {x.buckets[0].label}</span>
-                  ))}
-                </p>
-              )}
-            </>
-          )}
+    <div role="region" aria-label={t("aria")}>
+      {nothingLeft && (
+        <div role="status" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1">
+            {t("emptyAll")}
+            {emptied.length > 0 && <> {t("emptyFully", { dims: emptied.map((x) => t(`dims.${x.d}`)).join(", ") })}</>}
+          </span>
+          {emptied.slice(0, 3).map((x) => (
+            <Button key={x.d} variant="outline" size="sm" onClick={() => onChange({ ...view, off: { ...view.off, [x.d]: [] } })}>
+              {t("restoreDim", { dim: t(`dims.${x.d}`) })}
+            </Button>
+          ))}
+          <Button variant="outline" size="sm" onClick={() => onChange(resetFacets(view))}><RotateCcw aria-hidden="true" />{t("resetAll")}</Button>
         </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
+        {tickerSearch && <TickerSearch q={q} onQ={setQ} />}
+      </div>
+      {tickerSearch && q.trim() && <TickerResults q={q.trim()} buckets={tickerBuckets} view={view} onChange={onChange} money={money} />}
+      {current && (
+        <div
+          key={current.id}
+          role="tabpanel"
+          id={`facet-panel-${current.id}`}
+          aria-labelledby={`facet-tab-${current.id}`}
+          aria-busy={loading || undefined}
+          className={cn(GRID, "mt-3 animate-in fade-in-0 duration-150 motion-reduce:animate-none")}
+        >
+          {current.cols.map((x) => <Column key={x.d} dim={x.d} buckets={x.buckets} view={view} onChange={onChange} money={money} />)}
+        </div>
+      )}
+      {folded.length > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          {t("single")}{" "}
+          {folded.map((x, i) => (
+            <span key={x.d}>{i > 0 && " · "}<span className="font-medium text-foreground/80">{t(`dims.${x.d}`)}</span> {x.buckets[0].label}</span>
+          ))}
+        </p>
       )}
     </div>
   );

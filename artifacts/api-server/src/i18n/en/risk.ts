@@ -33,6 +33,18 @@ export default {
       drawdown: "{left} to max drawdown.",
     },
   },
+  mentorStop: {
+    headline: {
+      drawdown: "Trading is stopped until your curator decides",
+      weekly: "Weekly limit used up — no trades until Monday",
+      stop: "Daily stop — no more trades today",
+    },
+    rule: {
+      drawdown: "Don't trade until your curator decides — write to your curator.",
+      weekly: "Don't trade until Monday — write to your curator.",
+      stop: "No more trades today — write to your curator.",
+    },
+  },
   alerts: {
     daily: "Daily loss limit",
     weekly: "Weekly loss limit",
@@ -92,6 +104,10 @@ export default {
     breach_review_n: "Review the breach ({count})",
     stopped: "On stop — get in touch and check the book",
     near_stop: "Close to stop — warn them",
+    plateau_review: "Pace below the stage target — schedule a 1:1 review",
+    at_stake: "Money at stake: red 20 days and leaks — take a look",
+    dropout_risk: "Dropout risk: trades and closes days less — talk",
+    trial_review: "A rule trial is ending — decide on the result",
     eod_review: "Review the closed day",
     eod_review_n: "Review the closed day ({count})",
     weekly_review: "Reply to the weekly report",

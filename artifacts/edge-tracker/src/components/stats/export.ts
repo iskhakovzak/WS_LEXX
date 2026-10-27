@@ -69,7 +69,7 @@ export function downloadReportCsv(trades: Trade[], k: Kpis, prev: Kpis | null, m
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `ws-lexx-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `ws-desk-report-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();

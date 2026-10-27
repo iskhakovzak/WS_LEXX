@@ -5,7 +5,6 @@ export default {
   page: {
     description: "Deskning premarket brifingi · {ago}",
     timeEt: "ET vaqti",
-    updatedAgo: "yangilandi: {ago}",
     dayNav: "Kunni tanlash",
     prevDay: "Oldingi savdo kuni",
     prevDayKey: "Oldingi savdo kuni (←)",

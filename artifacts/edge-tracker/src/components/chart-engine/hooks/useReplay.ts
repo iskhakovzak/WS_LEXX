@@ -1,7 +1,7 @@
 /**
  * Replay state of WS Chart, kept out of the component: the cursor (as a bar time, so a timeframe switch keeps the
  * moment), play / pause on a ~60 Hz timer with an exact pace, steps both ways, seeking, the start preset, the speed and
- * «пауза на исполнениях» (remembered in localStorage), jumps to the 9:30 open / the entry / the exit / the next fill.
+ * «пауза на исполнениях» (remembered in localStorage), jumps to the 9:30 open / the entry / the exit / the next or previous fill.
  * The chart itself is pushed from the cursor by WsChart — this hook never touches lightweight-charts.
  */
 import * as React from "react";
@@ -139,6 +139,9 @@ export function useReplay(o: ReplayInput) {
   const seek = React.useCallback((idx: number) => { setPlaying(false); setCursor(idx); }, [setCursor]);
   const nextFill = cursorIdx != null ? fills.find((f) => f.idx > cursorIdx) ?? null : null;
   const toNextFill = React.useCallback(() => { setPlaying(false); if (nextFill) setCursor(nextFill.idx); }, [nextFill, setCursor]);
+  // Step by fill backwards: the last fill strictly before the cursor.
+  const prevFill = cursorIdx != null ? [...fills].reverse().find((f) => f.idx < cursorIdx) ?? null : null;
+  const toPrevFill = React.useCallback(() => { setPlaying(false); if (prevFill) setCursor(prevFill.idx); }, [prevFill, setCursor]);
   const toEntry = React.useCallback(() => { setPlaying(false); if (entryIdx != null) setCursor(entryIdx); }, [entryIdx, setCursor]);
   const toExit = React.useCallback(() => { setPlaying(false); if (exitIdx != null) setCursor(exitIdx); }, [exitIdx, setCursor]);
   const toOpen = React.useCallback(() => { setPlaying(false); setCursor(openIdx); }, [openIdx, setCursor]);
@@ -146,6 +149,6 @@ export function useReplay(o: ReplayInput) {
 
   return {
     prefs, updatePrefs, cursorIdx, setCursor, playing, setPlaying, togglePlay, step, seek, atEnd,
-    floorIdx, openIdx, startIdx, dockEnd, nextFill, toNextFill, toEntry, toExit, toOpen, restart, chooseStart,
+    floorIdx, openIdx, startIdx, dockEnd, nextFill, toNextFill, prevFill, toPrevFill, toEntry, toExit, toOpen, restart, chooseStart,
   };
 }

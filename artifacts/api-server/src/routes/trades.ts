@@ -28,7 +28,6 @@ import { tradesListWindow } from "../lib/tradesListWindow";
 import { rowIsImx } from "../lib/imx";
 import { selectTradesList } from "../lib/tradesListQuery";
 import { captureAndAttach } from "../lib/marketContext";
-import { maybeAutoGenerateReview } from "../lib/aiReview";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { invalidateTradesPageCache } from "../lib/tradesPageCache";
@@ -52,6 +51,7 @@ import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { resolveSetupLink, setupTagged, touchesSetup } from "../lib/tradesSetupLink";
 import { bulkTags, syncMarkerErrors, syncTagMarkersBulk } from "../lib/tradingErrors";
 import tradeFacetsRouter from "./trade-facets";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 router.use(tradeFacetsRouter); // GET /trades/facets, GET|PUT /trades/facets/view — before /trades/:id
@@ -337,7 +337,7 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
 
   const summary = {
     total, wins, losses, be, open, decided,
-    winRate: decided ? wins / decided : null,
+    winRate: winRateOf(wins, losses),
     gross: pnlCount ? num(s.gross) : null,
     fees: pnlCount ? (num(s.fees) ?? 0) : null,
     net: pnlCount ? num(s.net) : null,
@@ -413,7 +413,7 @@ router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
       wins, losses,
       be: Number(r.be ?? 0),
       open: Number(r.open ?? 0),
-      winRate: wins + losses ? wins / (wins + losses) : null,
+      winRate: winRateOf(wins, losses),
       gross: pnlCount ? num(r.gross) : null,
       fees: pnlCount ? (num(r.fees) ?? 0) : null,
       net: pnlCount ? num(r.net) : null,
@@ -463,7 +463,6 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
     ticker: trade.ticker,
     session: trade.session ?? null,
   }).catch(() => {});
-  maybeAutoGenerateReview({ tradeId: trade.id, result: trade.result, trader: trade.trader });
   logActivity({ action: "created", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined, details: `${trade.side ?? ""} ${trade.result} ${trade.pnl ? "$" + trade.pnl : ""}`.trim() });
   if (trade.trader) {
     scanRulesForTrader(trade.trader).catch((e) => req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "rules engine scan failed"));
@@ -538,10 +537,6 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
       ticker: trade.ticker,
       session: trade.session ?? null,
     }).catch(() => {});
-  }
-  const resultChanged = Object.prototype.hasOwnProperty.call(req.body ?? {}, "result");
-  if (resultChanged) {
-    maybeAutoGenerateReview({ tradeId: trade.id, result: trade.result, trader: trade.trader });
   }
   // Stop / risk / side / symbol / day feed the fill roles (Стоп, Перезаход …) — recompute in the background.
   if (["stop", "riskUsd", "side", "ticker", "date", "qty"].some((f) => Object.prototype.hasOwnProperty.call(req.body ?? {}, f))) {

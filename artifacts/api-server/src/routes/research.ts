@@ -7,6 +7,7 @@ import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../l
 import { loadViewer, visibleSql } from "../lib/playbookAccess";
 import { GetResearchParams, ListResearchResponse, GetResearchResponse } from "@workspace/api-zod";
 import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * Research notes («Исследования») — a read-only archive since Волна 2 п. 2.15 (nothing new is written: earnings and
@@ -69,7 +70,7 @@ function serializeResearch(r: ResearchRow, viewer: string | null) {
   const decided = wins + losses;
   const evidence = {
     tradeCount: n, wins, losses, be,
-    winRate: decided ? r2((wins / decided) * 100) : null,
+    winRate: decided ? r2(((winRateOf(wins, losses) ?? 0)) * 100) : null,
     sumR: strToNum(r.sum_r) == null ? null : r2(strToNum(r.sum_r)!),
     grossPnl: gross == null ? null : r2(gross), fees: gross == null ? null : r2(fees ?? 0), netPnl: gross == null ? null : r2(gross - (fees ?? 0)),
   };
@@ -204,7 +205,7 @@ router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> 
   res.json({
     scope, trades,
     stats: {
-      n: rows.length, wins, losses, be, open, winRate: decided ? r2((wins / decided) * 100) : null, sumR: hasR ? r2(sumR) : null,
+      n: rows.length, wins, losses, be, open, winRate: decided ? r2(((winRateOf(wins, losses) ?? 0)) * 100) : null, sumR: hasR ? r2(sumR) : null,
       grossPnl: hasPnl ? r2(gross) : null, fees: hasPnl ? r2(fees) : null, netPnl: hasPnl ? r2(gross - fees) : null,
     },
   });

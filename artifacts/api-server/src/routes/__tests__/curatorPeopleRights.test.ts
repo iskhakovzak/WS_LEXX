@@ -24,7 +24,8 @@ const USERS = () => [ADMIN, CURATOR, OTHER_CURATOR, TRADER].map((u) => ({ ...u, 
 function answer(sql: string, params: unknown[] = []) {
   st.sql.push({ sql, params });
   const byId = (id: unknown) => USERS().find((u) => u.id === Number(id));
-  if (/FROM users u WHERE u\.id = \$1/.test(sql) || /SELECT role, name(, active)? FROM users WHERE id = \$1/.test(sql)) {
+  // The rename (lib/people/renameUser) locks the row by id; with no information_schema here it renames users only.
+  if (/FROM users u WHERE u\.id = \$1/.test(sql) || /SELECT role, name(, active)? FROM users WHERE id = \$1/.test(sql) || /SELECT id, name, name_latin FROM users WHERE id = \$1/.test(sql)) {
     const u = byId(params[0]);
     return { rows: u ? [u] : [], rowCount: u ? 1 : 0 };
   }

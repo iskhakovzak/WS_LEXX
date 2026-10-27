@@ -1,5 +1,6 @@
 import { Link } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { ArrowUpRight, CalendarClock, Compass, Crosshair, Eye, ShieldAlert, ShieldX, Target, Zap } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";
@@ -101,7 +102,7 @@ export function PlanHero({ plan, readSlot }: { plan: GamePlan; readSlot?: React.
           <p className="text-sm text-muted-foreground">{t("briefing.noMarketView")}</p>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <IndexLevels symbol="SPY" set={plan.keyLevels?.SPY} />
           <IndexLevels symbol="QQQ" set={plan.keyLevels?.QQQ} />
         </div>

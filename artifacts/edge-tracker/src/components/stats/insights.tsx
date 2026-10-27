@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowRight, Flame, Lightbulb, Target, TrendingDown, Tren
 import type { LucideIcon } from "lucide-react";
 import { EmptyState, Panel, type Tone, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { breakevenOfPayoff } from "@/lib/trade-math";
 import { TradeLinkRow } from "./trade-link-row";
 import { dayKey, fmtValue, groupBy, isClosed, valueOf, weekdayIdx, weekdayLabel, type GroupStat, type Kpis, type Metric } from "./metrics";
 import { fmtNum, fmtRate } from "@/lib/format";
@@ -39,7 +40,7 @@ export function insightsFrom(k: Kpis, metric: Metric, byWeekday: GroupStat[], by
   }
 
   if (k.payoff != null && k.winRate != null) {
-    const need = 1 / (1 + k.payoff);
+    const need = breakevenOfPayoff(k.payoff) ?? 1;
     out.push({
       id: "edge",
       tone: k.winRate >= need ? "up" : "down",
@@ -147,7 +148,7 @@ export function ExtremesPanel({ trades, lists, metric, hideTrader }: {
       {valued.length === 0 ? (
         <EmptyState icon={Trophy} title={t("extremes.empty", { unit })} description={t("extremes.emptyHint")} />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <List title={t("extremes.best")} icon={Trophy} tone="up" items={best} empty={t("extremes.noBest")} />
           <List title={t("extremes.worst")} icon={AlertTriangle} tone="down" items={worst} empty={t("extremes.noWorst")} />
 

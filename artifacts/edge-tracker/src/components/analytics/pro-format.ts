@@ -57,12 +57,3 @@ export function savePref(key: string, value: string) {
   try { window.localStorage.setItem(key, value); } catch { /* storage unavailable */ }
 }
 
-/** Heat-cell background by sign and relative magnitude (0..1). Static class names for Tailwind. */
-const UP_STEPS = ["bg-up/10", "bg-up/20", "bg-up/30", "bg-up/45"];
-const DOWN_STEPS = ["bg-down/10", "bg-down/20", "bg-down/30", "bg-down/45"];
-export function heatClass(net: number, max: number): string {
-  if (!net || !max) return "";
-  const ratio = Math.min(1, Math.abs(net) / max);
-  const idx = ratio > 0.75 ? 3 : ratio > 0.45 ? 2 : ratio > 0.18 ? 1 : 0;
-  return net > 0 ? UP_STEPS[idx] : DOWN_STEPS[idx];
-}

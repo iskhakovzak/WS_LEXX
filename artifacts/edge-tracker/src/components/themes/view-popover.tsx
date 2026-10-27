@@ -33,7 +33,7 @@ export function ViewPopover<C extends BoardColumn>({
           <SlidersHorizontal aria-hidden="true" /> {t("view.open")}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex max-h-[min(80vh,40rem)] w-64 flex-col gap-3 overflow-y-auto">
+      <PopoverContent align="end" className="flex max-h-[min(40rem,var(--radix-popover-content-available-height))] w-64 flex-col gap-3 overflow-y-auto">
         <fieldset className="flex flex-col gap-1.5">
           <legend className="mb-1 text-xs font-medium text-muted-foreground">{t("view.columns")}</legend>
           {all.map((c) => {

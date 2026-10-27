@@ -23,6 +23,7 @@ import { nyDate } from "../lib/tradingDate";
 import { langOf } from "../i18n";
 import { isMistakeId } from "../lib/daily/engine";
 import { dailyMe, eveningFor, markReviewed, setFocusOverride } from "../lib/daily/service";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 const router: IRouter = Router();
 
@@ -74,7 +75,14 @@ router.put("/daily/focus/:trader/:date", route({
 }, async ({ req, params, body }) => {
   const actor = await assertCap(req, "journal.review", { trader: params.trader });
   if (!(await traderExists(params.trader))) throw notFound("TRADER_NOT_FOUND");
-  return setFocusOverride(params.trader, params.date, body.mistake, actor.name);
+  const out = await setFocusOverride(params.trader, params.date, body.mistake, actor.name);
+  if (body.mistake) {
+    await logInterventionSafe({
+      trader: params.trader, kind: "focus_set", author: actor.name, params: { mistake: body.mistake, date: params.date }, targetSlice: `mistake:${body.mistake}`,
+      startedOn: params.date, sourceTable: "daily_focus", sourceId: `${params.trader}:${params.date}:${body.mistake}`,
+    });
+  }
+  return out;
 }));
 
 export default router;

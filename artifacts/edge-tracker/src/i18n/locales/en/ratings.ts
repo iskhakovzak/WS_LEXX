@@ -60,8 +60,7 @@ export default {
   overall: "Overall score",
   legacyTier: { starter: "Starter", standard: "Standard", lead: "Lead" },
   leaderboard: {
-    periods: { p7: "7 days", p30: "30 days", p90: "90 days", all: "All" },
-    periodFor: { p7: "in the last 7 days", p30: "in the last 30 days", p90: "in the last 90 days", all: "all time" },
+    periodFor: { today: "today", week: "in the last 7 days", month: "in the last 30 days", quarter: "in the last 90 days", year: "in the last 365 days", all: "all time", custom: "for {range}" },
     metrics: { r: "Total R", winrate: "Win rate", expR: "Expectancy R" },
     prevAll: "the standings a week ago",
     prevPeriod: "the previous period",
@@ -250,7 +249,7 @@ export default {
     current: "current",
     by: "by {curator}",
     editAria: "Edit {name}’s score",
-    deleteAria: "Delete {name}’s score",
+    moreAria: "More actions: {name}’s score",
     showMore: "Show more ({count} wk)",
   },
   page: {
@@ -270,8 +269,13 @@ export default {
     deleting: "Deleting…",
   },
   top: {
-    periods: { week: "Week", month: "Month", quarter: "Quarter", all: "All time" },
-    prev: { week: "vs prev. week", month: "vs prev. month", quarter: "vs prev. quarter" },
+    /** Hints of the calendar periods (the desk leaderboard is anchored on a date, not a rolling window). */
+    periodHints: { week: "Mon–Fri of one week", month: "Calendar month", quarter: "Calendar quarter", all: "All history" },
+    prev: { week: "vs prev. week", month: "vs prev. month", quarter: "vs prev. quarter", custom: "vs the same span before it" },
+    anchorAria: "Ranking period: {range}",
+    rankFilters: "Ranking",
+    metricChip: "Metric: {metric}",
+    minTradesChip: "{count}+ trades",
     csv: {
       place: "Place",
       trader: "Trader",

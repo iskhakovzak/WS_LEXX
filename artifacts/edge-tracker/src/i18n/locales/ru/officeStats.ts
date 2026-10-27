@@ -28,13 +28,12 @@ export default {
     ytd: "С начала года",
     quarter: "Квартал",
     month: "Месяц",
-    custom: "Свой",
     quarterShort: "{q} кв.",
     quarterOfYear: "{q} кв. {year}",
     monthOfYear: "{month} {year}",
     ytdOf: "С начала {year}",
-    from: "С",
-    to: "По",
+    /** Option hints of the calendar period picker (the words are the shared vocabulary: Год / Квартал / Месяц). */
+    hints: { ytd: "Календарный год: с 1 января выбранного года", quarter: "Квартал выбранного года: Q1–Q4", month: "Месяц выбранного года" },
   },
   filters: {
     years: "Годы",

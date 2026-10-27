@@ -4,7 +4,7 @@
  * components/calculator/ but are not rendered.) Sections live in src/components/calculator/*.
  * ?ticker=XYZ prefills the ticker in every options view.
  */
-import { BarChart3 } from "lucide-react";
+import { Calculator } from "lucide-react";
 import { Page, PageHeader } from "@/components/ds";
 import OptionsSection from "@/components/calculator/OptionsSection";
 import { calculatorI18n } from "@/i18n/ns/calculator";
@@ -24,7 +24,7 @@ export default function CalculatorPage() {
     <Page>
       <PageHeader
         title={t("page.title")}
-        icon={BarChart3}
+        icon={Calculator}
         description={t("page.description")}
       />
       <OptionsSection initialTicker={tickerParam()} />

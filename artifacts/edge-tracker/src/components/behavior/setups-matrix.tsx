@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { Grid3x3 } from "lucide-react";
-import { EmptyState, Segmented } from "@/components/ds";
+import { EmptyState, Segmented, usePersistentState } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { type MatrixCell, type SetupAggregatesResponse } from "./api";
 import { fmtRate, fmtUsd } from "@/lib/format";
@@ -29,7 +29,7 @@ function fmtCell(c: MatrixCell, m: Metric): string {
 
 export const SetupsMatrix = React.memo(function SetupsMatrix({ data }: { data: SetupAggregatesResponse }) {
   const [axis, setAxis] = React.useState<Axis>("hour");
-  const [metric, setMetric] = React.useState<Metric>("avg");
+  const [metric, setMetric] = usePersistentState<Metric>("behavior.matrix.metric", "avg");
   const matrix = data.matrix?.[axis];
 
   const model = React.useMemo(() => {
@@ -61,7 +61,7 @@ export const SetupsMatrix = React.memo(function SetupsMatrix({ data }: { data: S
         <Segmented size="sm" ariaLabel={tb("matrix.metricAria")} value={metric} onChange={setMetric} options={[{ value: "avg", label: tb("matrix.avg") }, { value: "net", label: tb("matrix.net") }, { value: "wr", label: tb("matrix.wr") }]} />
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full border-separate border-spacing-1 text-xs" aria-label={axis === "hour" ? tb("matrix.axisHour") : tb("matrix.axisHoldLong")}>
+        <table data-density="fixed" className="w-full border-separate border-spacing-1 text-xs" aria-label={axis === "hour" ? tb("matrix.axisHour") : tb("matrix.axisHoldLong")}>
           <thead>
             <tr>
               <th scope="col" className="sticky left-0 z-raised bg-[var(--sticky-bg)] px-2 text-left font-medium text-muted-foreground">{tb("matrix.setup")}</th>

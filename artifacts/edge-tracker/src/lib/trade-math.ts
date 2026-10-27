@@ -220,6 +220,20 @@ export function winRateOf(wins: number, losses: number): number | null {
   return wins + losses > 0 ? wins / (wins + losses) : null;
 }
 
+/**
+ * Canonical breakeven win rate (share 0…1) of a payoff: 1 / (1 + avgWin / |avgLoss|) — the win rate at which this
+ * average win and loss net to zero. null without a win and a loss. Server twin: lib/coreMetrics breakevenWinRate.
+ */
+export function breakevenWinRate(avgWin: number | null, avgLoss: number | null): number | null {
+  if (avgWin == null || avgLoss == null || !(avgWin > 0) || !(avgLoss < 0)) return null;
+  return 1 / (1 + avgWin / Math.abs(avgLoss));
+}
+
+/** The same from the payoff ratio (avgWin / |avgLoss|). */
+export function breakevenOfPayoff(payoff: number | null): number | null {
+  return payoff != null && payoff > 0 ? 1 / (1 + payoff) : null;
+}
+
 /** Canonical payoff: mean positive / |mean negative| of the values; null without a win or a loss. */
 export function payoffOf(values: number[]): number | null {
   let pos = 0, posN = 0, neg = 0, negN = 0;

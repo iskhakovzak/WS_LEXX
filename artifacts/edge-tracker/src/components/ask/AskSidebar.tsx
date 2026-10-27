@@ -16,7 +16,7 @@ function QuestionRow({ text, active, onAsk, onRemove, removeLabel }: { text: str
         type="button"
         onClick={onAsk}
         className={cn(
-          "min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]",
+          "line-clamp-2 min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-sm leading-ui transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]",
           active ? "bg-primary/10 text-foreground" : "text-foreground/90",
         )}
         title={text}

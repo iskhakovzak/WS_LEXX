@@ -6,21 +6,33 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#111214" />
+    <meta name="theme-color" content="#0a0a0a" />
     <meta name="color-scheme" content="dark light" />
-    <title>WS_LEXX</title>
+    <meta name="application-name" content="WS_Desk" />
+    <meta name="apple-mobile-web-app-title" content="WS_Desk" />
+    <title>WS_Desk</title>
     <script>
-      // Apply the saved theme before first paint to avoid a dark flash for light-theme users.
+      // Apply the saved theme and the «Вид» look (lib/appearance/apply.ts: ws_lexx_look) before first paint,
+      // so a light-theme or customised user never sees a flash of the default dark look.
       try {
-        var t = localStorage.getItem("ws_lexx_theme");
+        var d = document.documentElement, c = d.classList, t = localStorage.getItem("ws_lexx_theme");
         if (t === "sepia") t = "light";
-        var c = document.documentElement.classList;
-        if (t === "light") { c.remove("dark"); document.documentElement.style.colorScheme = "light"; }
+        if (t === "light" || t === "platinum") { c.remove("dark"); d.style.colorScheme = "light"; if (t === "platinum") c.add("platinum"); }
         else if (t === "dim") { c.add("dark", "dim"); }
+        d.setAttribute("data-theme", t === "light" || t === "dim" || t === "platinum" ? t : "dark");
+        var l = JSON.parse(localStorage.getItem("ws_lexx_look") || "null");
+        if (l && l.theme === d.getAttribute("data-theme")) {
+          for (var k in l.vars) if (k.indexOf("--") === 0) d.style.setProperty(k, String(l.vars[k]));
+          for (var a in l.attrs) if (a.indexOf("data-") === 0) d.setAttribute(a, String(l.attrs[a]));
+        }
       } catch (e) {}
     </script>
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <!-- Brand icons (mark «One line», components/ds/brand.tsx). ?v= busts the browsers' sticky favicon cache when the mark changes. -->
+    <link rel="icon" href="/favicon.ico?v=line" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=line" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=line" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=line" />
+    <link rel="manifest" href="/manifest.webmanifest?v=line" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">

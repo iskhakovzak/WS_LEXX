@@ -139,6 +139,12 @@ export default {
     removeView: "«{name}» koʻrinishini olib tashlash",
     viewsHint: "Joriy filtrlar toʻplamini bir bosishda yoqish uchun saqlang. Shu brauzerda saqlanadi.",
     viewName: "Koʻrinish nomi",
+    showSection: "Nimani koʻrsatish",
+    chipTier: "Firmalar: {value}",
+    chipPt: "Maqsad ≥ {value}%",
+    chipSector: "Sektor: {name}",
+    chipCap: "Kapitalizatsiya ${value}B dan",
+    chipSort: "Avval muhimlari",
   },
   firms: {
     reliability: "Firmalar ishonchliligi",

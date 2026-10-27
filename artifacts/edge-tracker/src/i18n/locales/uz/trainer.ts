@@ -14,6 +14,7 @@ export default {
   },
   daily: {
     title: "Kun vazifasi",
+    noDay: "Bugun katta gepli va katalizatorli kun yoʻq — vazifa bozor yopilgandan keyin paydo boʻladi",
     pill: "Kun vazifasi",
     hint: "Butun desk uchun bir xil kun. Tiker va sana oʻyin oxirigacha yashirin, desk reytingi R boʻyicha",
     closedHint: "Bu vazifa reytingi yopildi. Yangisi kechqurun, bozor yopilgandan keyin ({time} NY)",
@@ -83,7 +84,7 @@ export default {
     loading: "Vazifa yuklanmoqda…",
     loadError: "Vazifani yuklab boʻlmadi",
     answerError: "Javobni tekshirib boʻlmadi",
-    empty: "Bu setap uchun hozircha vazifa yoʻq",
+    empty: "Bu setap uchun katta gepli va katalizatorli kunlardagi vazifalar tugadi — yangilari bozor yopilgandan keyin paydo boʻladi",
     retry: "Yana urinish",
     toHome: "Trenajyorga",
     exit: "Chiqish",

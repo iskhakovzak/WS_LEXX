@@ -54,6 +54,8 @@ export type ThemesResponse = {
   source: ThemeSource | null;
   stale: boolean;
   themes: ThemeOut[];
+  /** Cold start: the first quote refresh is still running (no numbers yet); ask again in a few seconds. */
+  warming?: boolean;
 };
 
 export const TTL_OPEN_MS = 30_000;

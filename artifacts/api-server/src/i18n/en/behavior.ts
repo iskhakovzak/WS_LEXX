@@ -19,7 +19,7 @@ export default {
   },
   patterns: {
     revenge: {
-      title: "Revenge trading",
+      title: "Quick re-entry after a loss",
       description: "A new trade less than {min} min after a losing one.",
       rule: "Entry < {min} min after exiting a losing trade the same day. Amplifiers: same ticker, size ≥ ×1.25.",
       baseline: "other trades",

@@ -28,7 +28,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
   if (ev.isError) return <Panel><QueryError error={ev.error} onRetry={() => ev.refetch()} title={t("me.loadFailed")} /></Panel>;
   if (ev.isLoading || !ev.data) {
     return (
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Skeleton className="h-56 rounded-2xl lg:col-span-2" />
         <Skeleton className="h-56 rounded-2xl" />
         <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
@@ -55,7 +55,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
   const showPromote = !showDemote && action === "promote" && pendingList.length === 0;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3 sm:gap-5">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 sm:gap-5">
       {/* Hero: current tier + progress ring */}
       <Panel className="lg:col-span-2" bodyClassName="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -69,7 +69,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
             {tierDescription(me.tier) && <p className="text-xs text-muted-foreground">{tierDescription(me.tier)}</p>}
           </div>
           <div className="flex items-center gap-3">
-            <ProgressRing value={pct} size={72} stroke={6} tone={pct >= 100 ? "up" : "accent"} ariaLabel={t("progress.aria")} label={<span className="text-sm">{fmtRate(me.progress ?? 0)}</span>} />
+            <ProgressRing value={pct} size={72} stroke={6} tone={pct >= 100 ? "up" : "accent"} ariaLabel={t("progress.aria")} label={me.progress != null ? <span className="text-sm">{fmtRate(me.progress)}</span> : <span className="text-sm text-muted-foreground">—</span>} />
             <div className="min-w-0 max-w-[16rem] text-sm">
               <div className="font-medium text-foreground">{me.nextTier ? t("progress.toTier", { name: tierLabel(me.nextTier) }) : t("progress.topMine")}</div>
               <div className="text-xs text-muted-foreground">{t("progress.passedOf", { count: me.promoteTotal, passed: me.promotePassed })}</div>

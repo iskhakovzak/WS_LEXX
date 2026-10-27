@@ -95,8 +95,6 @@ export default {
     net: "sof",
     noTrades: "Bu davrda savdolar yoʻq",
     periodAria: "Davr",
-    days90: "90 kun",
-    allTime: "Butun davr",
     tableAria: "Tikerlar boʻyicha natijalarim",
     ticker: "Tiker",
     trades: "Savdolar",

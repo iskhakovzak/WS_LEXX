@@ -5,7 +5,8 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { fmtStrike, pnlAtExpiry, pnlNow, TOOLTIP_STYLE, type Leg } from "./lib";
+import { fmtStrike, pnlAtExpiry, pnlNow, type Leg } from "./lib";
+import { CHART, GRID, GlassTooltip, REF_LINE, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps } from "@/components/shared/charts";
 import { fmtNum, fmtUsd } from "@/lib/format";
 import { calculatorI18n } from "@/i18n/ns/calculator";
 
@@ -94,51 +95,48 @@ export function PayoffChart({
           <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={`fill-${gid}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset={0} stopColor="hsl(var(--up))" stopOpacity={0.35} />
-                <stop offset={fillOffset} stopColor="hsl(var(--up))" stopOpacity={0.08} />
-                <stop offset={fillOffset} stopColor="hsl(var(--down))" stopOpacity={0.08} />
-                <stop offset={1} stopColor="hsl(var(--down))" stopOpacity={0.35} />
+                <stop offset={0} stopColor={CHART.up} stopOpacity={0.26} />
+                <stop offset={fillOffset} stopColor={CHART.up} stopOpacity={0.03} />
+                <stop offset={fillOffset} stopColor={CHART.down} stopOpacity={0.03} />
+                <stop offset={1} stopColor={CHART.down} stopOpacity={0.26} />
               </linearGradient>
               <linearGradient id={`line-${gid}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset={lineOffset} stopColor="hsl(var(--up))" />
-                <stop offset={lineOffset} stopColor="hsl(var(--down))" />
+                <stop offset={lineOffset} stopColor={CHART.up} />
+                <stop offset={lineOffset} stopColor={CHART.down} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid {...GRID} />
             <XAxis
               dataKey="x"
               type="number"
               domain={[lo, hi]}
               tickFormatter={(v: number) => `$${fmtStrike(v, v < 20 ? 1 : 0)}`}
-              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-              tickLine={false}
-              axisLine={{ stroke: "hsl(var(--border))" }}
+              {...X_AXIS}
               minTickGap={24}
             />
             <YAxis
               tickFormatter={(v: number) => fmtUsd(v, { compact: true, decimals: Math.abs(v) < 10 ? "trim" : 0, fallback: "" })}
-              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-              tickLine={false}
-              axisLine={false}
+              {...Y_AXIS}
               width={52}
               domain={[minY - range * 0.05, maxY + range * 0.05]}
             />
             <Tooltip
-              contentStyle={TOOLTIP_STYLE}
+              {...tooltipProps("line")}
+              content={<GlassTooltip tone="pnl" />}
               labelFormatter={(v) => t("payoff.tooltipPrice", { price: `$${fmtNum(Number(v), 2)}` })}
               formatter={(v: number, name: string) => [fmtUsd(v, { signed: true, decimals: 0 }), name === "exp" ? t("shared.atExpiry") : t("payoff.today")]}
-              cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }}
             />
-            <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
+            <ReferenceLine {...ZERO_LINE} />
             {strikes.map((k) => (
-              <ReferenceLine key={`k${k}`} x={k} stroke="hsl(var(--chart-3))" strokeDasharray="3 3" strokeOpacity={0.7} />
+              <ReferenceLine key={`k${k}`} x={k} {...REF_LINE} stroke={CHART.series[2]} strokeDasharray="3 3" />
             ))}
             {breakevens.map((b, i) => (
-              <ReferenceLine key={`be${i}`} x={b} stroke="hsl(var(--chart-5))" strokeDasharray="2 4" />
+              <ReferenceLine key={`be${i}`} x={b} {...REF_LINE} stroke={CHART.series[4]} strokeDasharray="2 4" />
             ))}
-            <ReferenceLine x={spot} stroke="hsl(var(--chart-1))" strokeWidth={1.5} />
-            <Area type="linear" dataKey="exp" stroke={`url(#line-${gid})`} strokeWidth={2} fill={`url(#fill-${gid})`} isAnimationActive={false} />
-            {showNow && <Line type="monotone" dataKey="now" stroke="hsl(var(--chart-1))" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />}
+            <ReferenceLine x={spot} stroke={CHART.series[0]} strokeWidth={STROKE_THIN} />
+            {/* Recomputed on every keystroke in the legs form: no draw-in (it would replay while typing). */}
+            <Area type="linear" dataKey="exp" stroke={`url(#line-${gid})`} strokeWidth={STROKE} fill={`url(#fill-${gid})`} activeDot={{ r: 4, strokeWidth: 2, stroke: CHART.surface, fill: CHART.fg }} isAnimationActive={false} />
+            {showNow && <Line type="monotone" dataKey="now" stroke={CHART.series[0]} strokeWidth={STROKE_THIN} strokeDasharray="5 4" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: CHART.surface, fill: CHART.series[0] }} isAnimationActive={false} />}
           </ComposedChart>
         </ResponsiveContainer>}
       </div>

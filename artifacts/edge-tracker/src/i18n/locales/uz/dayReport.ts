@@ -4,9 +4,9 @@ import type ru from "../ru/dayReport";
 export default {
   hold: { s: "{n} s", m: "{n} daq", hm: "{h} soat {m} daq", h: "{h} soat" },
   leakShort: {
-    fee_over_gross: "komissiya > yalpi",
+    fee_over_gross: "komissiya yalpini yedi",
     after_peak: "choʻqqidan keyin",
-    revenge: "revenge",
+    revenge: "tez qayta kirish",
     size_up: "oʻlcham ↑",
     after_limit: "limitdan keyin",
   },

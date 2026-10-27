@@ -3,7 +3,7 @@ import type ru from "../ru/telegram";
 
 export default {
   start: {
-    hello: "👋 Salom! Bu WS_LEXX Trade Desk boti.\n\nHisobni bogʻlash uchun saytdagi Settings boʻlimida <b>Connect Telegram</b> tugmasini bosing.",
+    hello: "👋 Salom! Bu WS_Desk boti.\n\nHisobni bogʻlash uchun saytdagi Settings boʻlimida <b>Connect Telegram</b> tugmasini bosing.",
     badToken: "❌ Havola yaroqsiz yoki muddati oʻtgan. Saytdagi <b>Settings → Telegram</b> boʻlimida yangisini yarating.",
     linkedElsewhere: "❌ Bu Telegram hisobi allaqachon <b>{name}</b>ga bogʻlangan. Avval uni Settings boʻlimida uzing.",
     linked: "✅ Telegram <b>{name}</b> hisobiga bogʻlandi!\n\nEndi trade ideas haqida bildirishnomalar olasiz va shu yerning oʻzida javob bera olasiz.",

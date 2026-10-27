@@ -82,7 +82,7 @@ describe("dates with years (MAKSIM-34) and the default window (DEV-01)", () => {
     expect(spansYears("2026-01-01", "2026-03-05")).toBe(false);
   });
   it("90 days: the current window and the previous one are separate", () => {
-    const r = periodRanges("90d", now);
+    const r = periodRanges("quarter", now);
     expect(r.cur.from).toBe("2026-07-22");
     expect(r.prev).toEqual({ from: "2026-04-23", to: "2026-07-21" });
   });

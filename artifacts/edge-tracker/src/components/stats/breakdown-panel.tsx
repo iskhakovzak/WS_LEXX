@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Panel, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Segmented, usePersistentState } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { EVENT_LABEL } from "@/components/trades/trade-utils";
 import { fmtValue, groupBy, sessionKey, sessionLabel, type GroupStat, type Metric } from "./metrics";
@@ -41,7 +41,7 @@ export function BreakdownPanel({
 }) {
   const { t } = statsI18n.useT();
   const dims = hideTrader ? DIMS.filter((d) => d.value !== "trader") : DIMS;
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "value", dir: -1 });
+  const [sort, setSort] = usePersistentState<{ key: SortKey; dir: 1 | -1 }>("stats.breakdown.sort", { key: "value", dir: -1 });
   const [showAll, setShowAll] = useState(false);
   const dim = dims.find((d) => d.value === dimension) ?? dims[0];
 

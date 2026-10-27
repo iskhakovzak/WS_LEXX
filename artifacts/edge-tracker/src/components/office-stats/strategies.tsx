@@ -13,7 +13,7 @@ import {
   type PeriodView, type PrevPeriod, type Strategy, type Unit, type YearView,
 } from "./api";
 import { LineCanvas, monthTicks, type LineSeries } from "./line-canvas";
-import { divergingCell, strategyColor, useDark, yearColor } from "./palette";
+import { divergingCell, labelOn, strategyColor, useDark, yearColor } from "./palette";
 import type { Ctx } from "./overview";
 import { fmtCount } from "@/lib/format";
 import { nyDate } from "@/lib/trading-date";
@@ -113,7 +113,7 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
               <span key={y.year} className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: yearColor(rank, dark) }} aria-hidden="true" />{y.year}</span>
             ))}
           </div>
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4">
             {STRATEGIES.map((k) => {
               const rowF = focus.strategies.find((s) => s.key === k);
               const series: LineSeries[] = years.map((y, rank) => {
@@ -210,10 +210,10 @@ export function VolumeShare({ years }: { years: YearView[] }) {
                         onMouseEnter={() => setHover(id)}
                         onMouseLeave={() => setHover(null)}
                         title={t("strategies.volumeTip", { strategy: p.key, share: fmtShare(p.volumeShare, 1), trades: commonI18n.t("units.trades", { count: p.trades }) })}
-                        className={cn("relative grid min-w-[3px] place-items-center overflow-hidden text-2xs font-semibold text-white transition-opacity first:rounded-l-md last:rounded-r-md", hover && hover !== id && "opacity-50")}
-                        style={{ width: `${w}%`, background: strategyColor(p.key, dark) }}
+                        className={cn("relative grid min-w-[3px] place-items-center overflow-hidden text-2xs font-semibold transition-opacity first:rounded-l-md last:rounded-r-md", hover && hover !== id && "opacity-50")}
+                        style={{ width: `${w}%`, background: strategyColor(p.key, dark), color: labelOn(strategyColor(p.key, dark)) }}
                       >
-                        {w >= 9 ? <span className="truncate px-1 [text-shadow:0_1px_2px_rgb(0_0_0/0.35)]">{fmtShare(p.volumeShare)}</span> : null}
+                        {w >= 9 ? <span className="truncate px-1">{fmtShare(p.volumeShare)}</span> : null}
                       </span>
                     );
                   })}
@@ -241,7 +241,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
     <Panel title={t("strategies.matrixTitle", { year: focus.year })} description={t("strategies.matrixDesc")} icon={Grid3x3}>
       {!rows.length ? <EmptyState compact icon={Grid3x3} title={t("states.noTrades")} /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-separate border-spacing-[3px] text-xs tabular-nums">
+          <table data-density="fixed" className="w-full min-w-[560px] border-separate border-spacing-[3px] text-xs tabular-nums">
             <thead>
               <tr>
                 <th className="w-24 text-left font-medium text-muted-foreground" />

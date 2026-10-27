@@ -4,10 +4,11 @@
 // suggestion as a one-tap chip. Mistakes and emotions live in trades.tags (vocabulary in review-presets); a mistake (key M)
 // is one code of the desk's one mistakes vocabulary (components/shared/error-vocab) — the server also writes it into the
 // one errors store (trading_errors, Волна 2 п. 2.8), so «Ошибки» and «Сколько стоили мои ошибки» see it.
+import { TradeChip } from "@/components/ds/trade-chip";
 import * as React from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { Check, Plus } from "lucide-react";
-import { Kbd, Pill, type Tone } from "@/components/ds";
+import { Kbd, type Tone } from "@/components/ds";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -250,7 +251,7 @@ export function ReviewChips({
 
   const chip = (k: TagKind, v: string) => (
     <button key={`${k}:${v}`} type="button" disabled={!canTag} onClick={openPicker(k)} className="rounded-full disabled:cursor-default" title={t("tagging.chipTitle", { kind: KIND_META[k].label, value: shown(k, v) })}>
-      <Pill tone={KIND_META[k].tone} className="max-w-[160px]"><span className="truncate">{shown(k, v)}</span></Pill>
+      <TradeChip group="tag" value={k} className="max-w-[160px]"><span className="truncate">{shown(k, v)}</span></TradeChip>
     </button>
   );
 
@@ -261,9 +262,9 @@ export function ReviewChips({
       {group("mistake", mistakes.map((m) => chip("mistake", m)), true)}
       {group("emotion", emotions.map((m) => chip("emotion", m)), true)}
       {other.length > 0 && (
-        <Pill tone="neutral" title={other.map(tagLabel).join(", ")} className="max-w-[140px]">
+        <TradeChip group="tag" value="other" title={other.map(tagLabel).join(", ")} className="max-w-[140px]">
           <span className="truncate">{tagLabel(other[0])}</span>{other.length > 1 && <span>+{other.length - 1}</span>}
-        </Pill>
+        </TradeChip>
       )}
     </div>
   );

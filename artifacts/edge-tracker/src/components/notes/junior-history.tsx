@@ -1,15 +1,15 @@
 import * as React from "react";
-import { BookOpen, Search, X } from "lucide-react";
+import { BookOpen, Search } from "lucide-react";
 import {
   CartesianGrid, ComposedChart, Bar, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { EmptyState, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
-import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, tint, tooltipProps, useChartMotion } from "@/components/shared/charts";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  SECTION_META, TOOLTIP_STYLE, previewSections, filledKeys, isUnread, moodLabelByScore, moodMeta,
+  SECTION_META, previewSections, filledKeys, isUnread, moodLabelByScore, moodMeta,
   sectionsOf, type JuniorNote,
 } from "./junior-lib";
 import { fmtDate, fmtWeekday } from "@/lib/format";
@@ -56,28 +56,15 @@ export function JuniorHistory({
 }) {
   const { t } = notesI18n.useT();
   const { t: tc } = commonI18n.useT();
+  const motion = useChartMotion();
   const [q, setQ] = React.useState("");
   const [filter, setFilterState] = React.useState<Filter>(readFilter);
   const [openId, setOpenId] = React.useState<number | null>(null);
-  const searchRef = React.useRef<HTMLInputElement>(null);
 
   const setFilter = (f: Filter) => {
     setFilterState(f);
     try { localStorage.setItem(FILTER_KEY, f); } catch { /* ignore */ }
   };
-
-  // "/" focuses search.
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (e.key === "/" && !(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const counts = React.useMemo(() => ({
     all: history.length,
@@ -146,20 +133,20 @@ export function JuniorHistory({
         {hasTrend ? (
           <div className="h-44 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={trend} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
-                <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} minTickGap={16} />
-                <YAxis domain={[0, 5]} ticks={[1, 3, 5]} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+              <ComposedChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="label" {...X_AXIS} />
+                <YAxis {...Y_AXIS} width={24} domain={[0, 5]} ticks={[1, 3, 5]} />
                 <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
+                  {...tooltipProps("bar")}
+                  content={<GlassTooltip />}
                   formatter={(v: number, name: string) => {
                     if (name === "mood") return [moodLabelByScore(v), t("stateLabel")];
                     return [t("junior.score.ofFive", { score: v }), t("junior.history.curatorScore")];
                   }}
                 />
-                <Bar isAnimationActive={false} dataKey="score" name="score" fill="hsl(var(--chart-3) / 0.55)" radius={[6, 6, 0, 0]} maxBarSize={18} />
-                <Line dataKey="mood" name="mood" type="monotone" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />
+                <Bar {...motion} dataKey="score" name="score" fill={tint("chart-3", 0.55)} radius={BAR_RADIUS} maxBarSize={18} />
+                <Line {...motion} dataKey="mood" name="mood" type="monotone" stroke={CHART.series[0]} strokeWidth={STROKE} dot={{ r: 2.5, strokeWidth: 0, fill: CHART.series[0] }} activeDot={{ ...ACTIVE_DOT, fill: CHART.series[0] }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -169,26 +156,7 @@ export function JuniorHistory({
       </Panel>
 
       <Toolbar>
-        <div className="relative min-w-0 flex-1 basis-56">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            ref={searchRef}
-            type="search"
-            aria-label={t("searchNotes")}
-            placeholder={t("junior.history.searchPlaceholder")}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
-            className="pl-10 pr-10"
-          />
-          {q ? (
-            <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : (
-            <Kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
-          )}
-        </div>
+        <ToolbarSearch value={q} onChange={setQ} ariaLabel={t("searchNotes")} placeholder={t("junior.history.searchPlaceholder")} />
         <Segmented
           ariaLabel={t("junior.history.filterAria")}
           size="sm"

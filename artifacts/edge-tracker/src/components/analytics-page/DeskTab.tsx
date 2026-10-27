@@ -12,6 +12,7 @@ import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
 import { useEdgeMatrix, type EdgeCell } from "./edge-api";
 import { percentileRank, maxDrawdownByDays, quantile } from "./edge-stats";
+import { winRateOf } from "@/lib/trade-math";
 
 type TraderRow = {
   trader: string; n: number; closed: number;
@@ -22,7 +23,6 @@ type TraderRow = {
 type DayCell = EdgeCell & { rDays?: string[]; netDays?: string[] };
 
 function rowOf(c: DayCell, u: Unit): TraderRow {
-  const decided = c.wins + c.losses;
   const n = u === "r" ? c.rN : c.pnlN;
   const total = u === "r" ? c.sumR : c.net;
   const pos = u === "r" ? c.posR : c.posNet, neg = u === "r" ? c.negR : c.negNet;
@@ -30,7 +30,7 @@ function rowOf(c: DayCell, u: Unit): TraderRow {
   const days = u === "r" ? c.rDays : c.netDays;
   return {
     trader: c.row, n: c.n, closed: c.closed,
-    winRate: decided ? c.wins / decided : null,
+    winRate: winRateOf(c.wins, c.losses),
     expectancy: n ? total / n : null, total,
     pf: neg < 0 ? pos / Math.abs(neg) : null,
     // By day close, as on «Обзор» (IMPROVEMENT_PLAN 2.7): the server's figure over every trade of the cell; older API

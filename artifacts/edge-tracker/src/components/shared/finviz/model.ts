@@ -229,7 +229,7 @@ export function catalystLine(r: ScreenerRow, preset: ScreenerPreset, earnings: s
   const parts: string[] = [];
   const move = rowMove(r, preset);
   if (move != null) parts.push(preset === "gappers" ? `Gap ${fmtPct(move, 1)}` : fmtPct(move, 1));
-  if (r.relVolume != null) parts.push(`RVOL ${fmtNum(r.relVolume, 1)}`);
+  if (rvolValue(r.relVolume) != null) parts.push(`RVOL ${fmtNum(r.relVolume, 1)}`);
   if (r.float != null) parts.push(`Float ${fmtCompact(r.float)}`);
   if (r.shortFloatPct != null) parts.push(`SI ${fmtPct(r.shortFloatPct, { decimals: 1, signed: false })}`);
   if (earnings) parts.push(earnings);
@@ -315,4 +315,12 @@ export function earningsList(rows: readonly EarningsRow[], range: { from: string
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
       return order(a.timing) - order(b.timing) || a.ticker.localeCompare(b.ticker);
     });
+}
+
+/**
+ * Relative volume as shown: «—» while there is no volume yet (premarket / a fresh session reports 0, which printed as
+ * a suspicious «0.0»), else one decimal. `null` for «not shown» in compact lines.
+ */
+export function rvolValue(v: number | null | undefined): number | null {
+  return v == null || !Number.isFinite(v) || v < 0.05 ? null : v;
 }

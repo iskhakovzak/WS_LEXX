@@ -7,15 +7,22 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
-import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf, toneText } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, Toolbar, toneOf, toneText } from "@/components/ds";
+import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { PERIOD_PRESETS, periodDays, type DayRange, type PeriodValue } from "@/lib/period-range";
+import { nyDate } from "@/lib/trading-date";
 import { Avatar, RankDelta, Sparkline, StreakBadge, OutcomeBar, downloadCsv, useStoredState } from "./shared";
+import { usePeriodParam } from "@/hooks/use-period-param";
+
 import { fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { comparePersonNames, personName } from "@/i18n";
+import { PersonLink } from "@/components/shared/person-link";
 import { gamificationTitlesQuery } from "@/lib/api/queries";
 import { TitleTag } from "@/components/shared/season-bar";
 import { titleLabel } from "@/components/shared/gamification-labels";
+import { winRateOf } from "@/lib/trade-math";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -34,15 +41,19 @@ export type LeaderboardEntry = {
   prev?: { totalTrades: number; winrate: number; totalPnl: number; totalR: number | null; avgR: number | null; expectancy: number; expectancyR?: number | null } | null;
 };
 
-export const PERIODS = [
-  { value: "7", key: "p7" },
-  { value: "30", key: "p30" },
-  { value: "90", key: "p90" },
-  { value: "all", key: "all" },
-] as const;
-export type Period = (typeof PERIODS)[number]["value"];
-const PERIOD_VALUES = PERIODS.map((p) => p.value) as readonly Period[];
-const periodKey = (p: Period) => PERIODS.find((x) => x.value === p)!.key;
+/** The leaderboard window: the period vocabulary (GET /api/leaderboard takes days=N, from/to and period=all). */
+export type LbWindow = { period: PeriodValue; custom: DayRange | null };
+const LB_PRESETS = PERIOD_PRESETS;
+/** The raw value an older build stored under `key` («7», «30», «90», «all»). */
+const lsRaw = (key: string): string | null => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+/** The query of a window: «Всё» → period=all, «Период…» → from/to, a preset → its days. */
+export function leaderboardQuery(w: LbWindow): Record<string, string> {
+  if (w.period === "custom") return w.custom ? { from: w.custom.from, to: w.custom.to } : { period: "all" };
+  const days = periodDays(w.period, null);
+  return days == null ? { period: "all" } : { days: String(days) };
+}
 
 type Metric = "r" | "pnl" | "winrate" | "expR";
 const METRIC_KEYS: Metric[] = ["r", "pnl", "winrate", "expR"];
@@ -58,7 +69,7 @@ type MetricSource = {
 /** Row win rate in %, W/(W+L) — null (→ «—») when there are no decided trades. */
 export function winPctOf(e: { winrate: number; wins?: number; losses?: number; winRate?: number | null }): number | null {
   if (e.winRate !== undefined) return e.winRate == null ? null : e.winRate * 100;
-  if (e.wins != null && e.losses != null) return e.wins + e.losses > 0 ? (e.wins / (e.wins + e.losses)) * 100 : null;
+  if (e.wins != null && e.losses != null) return e.wins + e.losses > 0 ? ((winRateOf(e.wins, e.losses) ?? 0)) * 100 : null;
   return e.winrate;
 }
 function metricOf(m: Metric, e: MetricSource): number | null {
@@ -90,10 +101,11 @@ function hasPnlOf(l: LeaderboardEntry): boolean {
 export type RankedEntry = LeaderboardEntry & { rank: number; rankDelta: number | null; isNew: boolean };
 
 /** Shared hook: leaderboard for a period, ranked by metric, with rank change vs previous period. */
-export function useLeaderboard(period: Period, metric: Metric | "auto") {
+export function useLeaderboard(win: LbWindow, metric: Metric | "auto") {
+  const query = leaderboardQuery(win);
   const q = useQuery<LeaderboardEntry[]>({
-    queryKey: ["leaderboard", period],
-    queryFn: ({ signal }) => http.get<LeaderboardEntry[]>("/api/leaderboard", { query: { days: period === "all" ? null : period }, signal }),
+    queryKey: ["leaderboard", query],
+    queryFn: ({ signal }) => http.get<LeaderboardEntry[]>("/api/leaderboard", { query, signal }),
     staleTime: STALE.default,
     placeholderData: keepPreviousData, // period switch keeps the board on screen instead of a skeleton flash
   });
@@ -169,9 +181,9 @@ export function SelfRow({ row, metric, periodFor, titles }: { row: RankedEntry; 
 }
 
 export function LeaderboardTab({ me, staff = false }: { me: string | null; staff?: boolean }) {
-  const [period, setPeriod] = useStoredState<Period>("ratings.lb.period", "30", PERIOD_VALUES);
+  const { period, custom, setPreset, setCustom } = usePeriodParam({ presets: LB_PRESETS, fallback: "month", storageKey: "ratings.lb.period.v2", legacy: () => lsRaw("ratings.lb.period") });
   const [metricPref, setMetricPref] = useStoredState<Metric | "auto">("ratings.lb.metric", "auto", METRIC_VALUES);
-  const { ranked, metric, isLoading, isError, error, refetch, hasPnl } = useLeaderboard(period, metricPref);
+  const { ranked, metric, isLoading, isError, error, refetch, hasPnl } = useLeaderboard({ period, custom }, metricPref);
   const { t } = ratingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const METRICS = metricOptions();
@@ -191,16 +203,17 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
     const pnl = pnlRows.length > 0 ? pnlRows.reduce((s, l) => s + l.totalPnl, 0) : null;
     const streak = [...ranked].sort((a, b) => b.bestStreak - a.bestStreak)[0];
     const hot = [...ranked].filter((l) => l.currentStreak > 0).sort((a, b) => b.currentStreak - a.currentStreak)[0];
-    return { trades, winrate: decided > 0 ? (wins / decided) * 100 : null, r, pnl, streak, hot };
+    const wr = winRateOf(wins, decided - wins);
+    return { trades, winrate: wr == null ? null : wr * 100, r, pnl, streak, hot };
   }, [ranked]);
 
-  const periodFor = t(`leaderboard.periodFor.${periodKey(period)}`);
+  const periodFor = period === "custom" ? t("leaderboard.periodFor.custom", { range: custom ? fmtDayRange(custom) : "" }) : t(`leaderboard.periodFor.${period}`);
   const selfOnly = isSelfOnly(ranked, me, staff);
   const prevLabel = period === "all" ? t("leaderboard.prevAll") : t("leaderboard.prevPeriod");
 
   function exportCsv() {
     downloadCsv(
-      `leaderboard-${period}.csv`,
+      `leaderboard-${period === "custom" && custom ? `${custom.from}_${custom.to}` : period}.csv`,
       ["#", t("leaderboard.csv.trader"), t("leaderboard.csv.trades"), t("leaderboard.csv.winRatePct"), t("leaderboard.csv.totalR"), t("leaderboard.csv.expR"), "P&L $", t("leaderboard.csv.sharpe"), t("leaderboard.csv.streak"), t("leaderboard.csv.bestStreak")],
       ranked.map((l) => [l.rank, personName(l.trader), l.totalTrades, winPctOf(l), l.totalR, l.expectancyR ?? l.avgR, l.totalPnl, sharpeOf(l).value, l.currentStreak, l.bestStreak]),
     );
@@ -208,21 +221,21 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented ariaLabel={t("leaderboard.periodAria")} options={PERIODS.map((p) => ({ value: p.value, label: t(`leaderboard.periods.${p.key}`) }))} value={period} onChange={setPeriod} />
+      {/* One row: the ranking metric is the mode, the period the scope (design audit wave 3). */}
+      <Toolbar>
         <Segmented
           ariaLabel={t("leaderboard.rankByAria")}
-          size="sm"
           options={METRICS.map((m) => ({ ...m, disabled: m.value === "pnl" && !hasPnl && ranked.length > 0 }))}
           value={metric}
           onChange={(v) => setMetricPref(v)}
         />
-        {!selfOnly && (
-          <Button variant="ghost" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={ranked.length === 0}>
+        <PeriodPicker compact ariaLabel={t("leaderboard.periodAria")} value={period} custom={custom} onPreset={setPreset} onCustom={setCustom} today={nyDate()} />
+        {!selfOnly && ranked.length > 0 && (
+          <Button variant="ghost" size="sm" className="ml-auto gap-1.5" onClick={exportCsv}>
             <Download className="h-4 w-4" aria-hidden="true" /> CSV
           </Button>
         )}
-      </div>
+      </Toolbar>
 
       {isLoading && (
         <div className="flex flex-col gap-3" aria-busy="true" aria-label={t("leaderboard.loading")}>
@@ -239,7 +252,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
             icon={Trophy}
             title={period === "all" ? t("leaderboard.emptyAll") : t("leaderboard.emptyPeriod", { period: periodFor })}
             description={t("leaderboard.emptyDescription")}
-            action={period !== "all" ? <Button variant="outline" size="sm" onClick={() => setPeriod("all")}>{t("leaderboard.showAll")}</Button> : undefined}
+            action={period !== "all" ? <Button variant="outline" size="sm" onClick={() => setPreset("all")}>{t("leaderboard.showAll")}</Button> : undefined}
           />
         </Panel>
       )}
@@ -266,7 +279,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                        <PersonLink name={l.trader} className="truncate text-sm font-semibold text-foreground" />
                         <TitleTag label={titleLabel(titles[l.trader])} />
                         {l.trader === me && <Pill tone="accent">{t("shared.you")}</Pill>}
                       </div>
@@ -363,7 +376,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
                             <Avatar name={l.trader} highlight={mine} className="h-7 w-7" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-foreground">{personName(l.trader)}</span>
+                                <PersonLink name={l.trader} className="font-medium text-foreground" />
                                 <TitleTag label={titleLabel(titles[l.trader])} />
                                 {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                               </div>
@@ -414,7 +427,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate font-medium text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                      <PersonLink name={l.trader} className="truncate font-medium text-foreground" />
                       <TitleTag label={titleLabel(titles[l.trader])} />
                       {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                     </div>

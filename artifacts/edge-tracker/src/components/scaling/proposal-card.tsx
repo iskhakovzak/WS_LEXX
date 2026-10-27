@@ -13,6 +13,7 @@ import { personName } from "@/i18n";
 import type { Proposal, Tier } from "./use-scaling";
 import { useDecideProposal } from "./use-scaling";
 import { ACTION_TONE, actionLabel, proposalStatusMeta, tierName } from "./format";
+import { CapitalProposalCard } from "./capital-proposal-card";
 
 /** Curator decision with an optional comment, in a popover (no page-level forms). */
 function DecisionPopover({
@@ -82,7 +83,14 @@ function DecisionPopover({
   );
 }
 
-export function ProposalCard({
+type CardProps = { proposal: Proposal; tiers: Tier[]; canDecide: boolean; onOpenTrader?: (trader: string) => void; className?: string };
+
+/** A queue card: a tier decision, or a capital allocation one (kind 'limits', components/scaling/capital-proposal-card). */
+export function ProposalCard(props: CardProps) {
+  return props.proposal.kind === "limits" ? <CapitalProposalCard {...props} /> : <TierProposalCard {...props} />;
+}
+
+function TierProposalCard({
   proposal,
   tiers,
   canDecide,
