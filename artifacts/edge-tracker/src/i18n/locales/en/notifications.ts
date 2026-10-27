@@ -48,6 +48,8 @@ export default {
     ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },
     mentor_ready: { label: "Mentor: brief or debrief ready", description: "The pre-session brief or the post-session debrief was prepared ahead (when the admin turned scheduled pushes on)" },
     mentor_escalation: { label: "AI mentor: curator needed", description: "The AI mentor sees a pattern better handled by a person: tilt for several days, commitment breaks, drawdown near the limit, silence" },
+    trader_silence: { label: "Trader gone quiet", description: "A trader has had no trades for several trading days or keeps unclosed reviews — one notice to the curator, with «Write»" },
+    curator_message: { label: "Curator's message", description: "A short personal message from your curator" },
     risk_warn: { label: "Close to the limit", description: "≥ 70% of the daily / weekly limit or drawdown used" },
     risk_breach: { label: "Limit exceeded", description: "Daily / weekly limit or max drawdown breached — trading stop" },
     risk_repeat_breach: { label: "Repeat breach", description: "The trader breached a limit for the second time this week — needs a curator review" },

@@ -30,6 +30,7 @@ export default {
     regime: { title: "Bozor rejimi va limitlar", description: "Deskning har bir bozor rejimida kunlik zarar limiti koeffitsiyenti. Standart holatda bu maslahat: risk ekrani va treyder kunida «asos × koeffitsiyent» koʻrinadi. «Avtomatik qoʻllash» stoplarni shu boʻyicha hisoblaydi; saqlangan limitlar oʻzgarmaydi, oʻchirish asosiylarini darhol qaytaradi." },
     capital: { title: "Risk taqsimoti", description: "Haftada bir marta (juma, 19:30 NY) va «Masshtablash rejasi»dagi «Qayta hisoblash» tugmasi bilan: kimning kunlik limiti va BP'sini oshirish, qoldirish yoki kamaytirish. Nolga qisqartirilgan edge (kichik tanlov isbot emas), joriy bozor rejimidagi edge va intizom hisobga olinadi. Qarorlar «Masshtablash rejasi» navbatiga tushadi; «Avtoqo'llash»siz hech narsa o'zi o'zgarmaydi." },
     mentor: { title: "AI-mentor", description: "Treyderning shaxsiy AI-mentori («Mentor» sahifasi): sessiyadan oldin brif, keyin tahlil, savdolar boʻyicha hisoblanadigan majburiyatlar, xotira. Assistent modellarida ishlaydi va shaxsiy kunlik AI limitini sarflaydi. Kuratorga signallar AIsiz va bepul. Oldindan tayyorlangan brif va tahlil — paketda yarim narxda, sukut boʻyicha oʻchirilgan." },
+    dayState: { title: "Kun holati va jimlik", description: "Dashbord birinchi nimani koʻrsatadi: stop, tanaffusdan keyin qaytish, yangi treyder yoʻli yoki kun vaqti (premarket, sessiya, yopilishdan keyin). Qolgani yigʻiladi, lekin «Hammasini koʻrsatish» orqali ochiq. Kechqurun (18:45 NY, ish kunlari) kurator jim qolgan treyder haqida bitta xabar, haftada bir marta — yopilmagan tahlillar haqida xabar oladi. Telegram sukut boʻyicha oʻchirilgan." },
     access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
@@ -182,6 +183,15 @@ export default {
       capPctOfTier: { label: "Limit shifti", help: "Kunlik limit tir shablonining bu ulushidan (va keyingi tir shablonidan) yuqori ko'tarilmaydi — undan keyin faqat tirni oshirish." },
       maxDeskGrowthPct: { label: "Desk riskining bir martalik o'sishi", help: "Deskning kunlik limitlari yig'indisi ko'pi bilan shuncha oshadi (qo'shimcha kamaytirishlar bo'shatgan qism). Oshirishlar mutanosib kamaytiriladi." },
       autoApply: { label: "Avtoqo'llash", help: "O'chirilgan — qarorlar navbatda kurator yoki adminni kutadi. Yoqilgan — haftalik hisob ularni o'zi qo'llaydi (jurnal va bekor qilish bilan). «Qayta hisoblash» hech qachon o'zi qo'llamaydi." },
+    },
+    dayState: {
+      pausedDays: { label: "Tanaffus: savdosiz savdo kunlari", help: "Shuncha savdo kuni savdosiz (NYSE bayramlari hisoblanmaydi) — dashbord «Xush kelibsiz» kartasi bilan kutib oladi, kurator «N kun jim» xabarini oladi." },
+      newcomerTrades: { label: "Yangi treyder: nechta savdogacha", help: "Yopilgan savdolar shundan kam ekan — dashbord ilk qadamlar boʻyicha olib boradi va boʻsh analitikani yashiradi. 0 — yangi treyder rejimisiz." },
+      newcomerMaxDays: { label: "Yangi treyder: koʻpi bilan, kun", help: "Yangi treyder rejimi faqat akkauntning dastlabki shuncha kalendar kunida. 0 — vaqt cheklovisiz." },
+      staleStepDays: { label: "Keyingi qadam: yangilik, savdo kunlari", help: "Bundan eski vazifa (masalan, ancha oldingi kun tahlili) asosiy qadam boʻlmaydi — eski qoldiqlar bitta qatorga yigʻiladi." },
+      silenceEnabled: { label: "Kuratorga jimlik signali", help: "Kechqurun (18:45 NY, ish kunlari) — har bir jimlik epizodiga bitta ilova ichidagi xabar va haftada bir marta yopilmagan tahlillar haqida. AI-mentor jimlik haqida xabar bergan boʻlsa, takrorlanmaydi." },
+      missedReviewDays: { label: "Signal uchun yopilmagan tahlillar", help: "Shuncha savdo kuni yopilgan tahlilsiz (oxirgi 30 kunda) — kuratorga xabar berish uchun sabab." },
+      silenceTelegram: { label: "Telegramda ham", help: "Sukut boʻyicha oʻchirilgan. Yoqilsa — kurator signalni Telegramda ham oladi, treyder esa qisqa «Xush kelibsiz» (faqat bot bilan ishlaydigan server)." },
     },
     mentor: {
       enabled: { label: "AI-mentor", help: "Oʻchirilgan — «Mentor» sahifasi majburiyatlar va qaydlarni koʻrsatadi, lekin mentor yozmaydi." },

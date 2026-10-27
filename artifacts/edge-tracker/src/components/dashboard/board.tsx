@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useReducedMotion } from "@/lib/motion";
-import { Lock } from "lucide-react";
+import { ChevronDown, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
@@ -26,6 +26,8 @@ import {
   type BoardSection, type DashLayout, type TileSize,
 } from "./layout-model";
 import { SECTION_META, type SectionId } from "./use-dashboard";
+import { orderFirst } from "./state-layout";
+import { dayStateI18n } from "@/i18n/ns/dayState";
 import "./dashboard.css";
 
 export type { BoardSectionDef, BoardTileDef };
@@ -62,6 +64,12 @@ type Props = {
   sections: Record<BoardSection, BoardSectionDef>;
   hero: { title: ReactNode; node: ReactNode };
   onEditingChange?: (editing: boolean) => void;
+  /**
+   * The day state's composition (./state-layout): section order, tiles folded right now (kept in the layout, back with
+   * «Показать всё»), tiles moved to the front of their section, and the one-line reason under the toggle. Ignored in
+   * the edit mode, which always shows the stored layout.
+   */
+  state?: { order: readonly BoardSection[]; folded: (id: SectionId) => boolean; first: readonly SectionId[]; hint?: ReactNode };
 };
 
 export function DashBoard(props: Props) {
@@ -76,6 +84,7 @@ export function DashBoard(props: Props) {
   const [draft, setDraft] = useState<DashLayout | null>(null);
   const [message, setMessage] = useState("");
   const [fresh, setFresh] = useState<SectionId | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const shown = draft ?? layout;
   const shownRef = useRef(shown);
   const draftRef = useRef(draft);
@@ -219,6 +228,16 @@ export function DashBoard(props: Props) {
   };
 
   const hidden = TILE_ORDER.filter((id) => allowed(id) && !layout.items.some((it) => it.id === id));
+  // The state's composition (outside the edit mode): order, folding, the tiles that lead their section.
+  const st = editing ? null : props.state;
+  const order = st?.order ?? BOARD_SECTIONS;
+  const folded = (s: BoardSection) => (st ? visible(shown, s).filter((it) => st.folded(it.id) && props.tile(it.id).ready) : []);
+  const foldedCount = order.reduce((n, s) => n + folded(s).length, 0);
+  const view = (s: BoardSection) => {
+    const list = visible(shown, s);
+    if (!st) return list;
+    return orderFirst(showAll ? list : list.filter((it) => !st.folded(it.id)), st.first);
+  };
 
   return (
     <div ref={rootRef} className="dash-board" data-editing={editing || undefined}>
@@ -244,12 +263,12 @@ export function DashBoard(props: Props) {
       >
         {props.hero.node}
       </DashSection>
-      {BOARD_SECTIONS.map((s) => (
+      {order.map((s) => (
         <BoardSectionView
           key={s}
           section={s}
           def={props.sections[s]}
-          items={visible(shown, s)}
+          items={view(s)}
           scopeHidden={sectionItems(shown, s).some((it) => allowed(it.id) && !inScope(it.id))}
           editing={editing}
           cols={cols}
@@ -267,6 +286,7 @@ export function DashBoard(props: Props) {
           keysHintId={keysHintId}
         />
       ))}
+      {foldedCount > 0 && <FoldToggle open={showAll} count={foldedCount} hint={st?.hint} onToggle={() => setShowAll((v) => !v)} />}
       <span id={keysHintId} className="sr-only">{t("customize.tileKeys")}</span>
       <div className="sr-only" aria-live="polite" aria-atomic="true">{message}</div>
       {props.editable && (
@@ -281,6 +301,25 @@ export function DashBoard(props: Props) {
           reduced={reduced}
         />
       )}
+    </div>
+  );
+}
+
+/** «Показать всё · ещё N блоков» / «Свернуть лишнее» under the board, with the state's one-line reason. */
+function FoldToggle({ open, count, hint, onToggle }: { open: boolean; count: number; hint?: ReactNode; onToggle: () => void }) {
+  const { t } = dayStateI18n.useT();
+  return (
+    <div className="glass-panel mx-auto flex w-fit max-w-full flex-col items-center gap-0.5 rounded-[1.25rem] px-3 py-1.5 text-center">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-foreground/85 transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronDown className={open ? "h-4 w-4 rotate-180 transition-transform" : "h-4 w-4 transition-transform"} aria-hidden="true" />
+        {open ? t("fold.hide") : t("fold.show", { count })}
+      </button>
+      {hint && !open && <p className="max-w-prose px-2 pb-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

@@ -102,6 +102,7 @@ import officeStatsRouter from "./officeStats";
 import officeRecsRouter from "./officeRecs";
 import askRouter from "./ask";
 import dailyRouter from "./daily";
+import dayStateRouter from "./day-state";
 import deskDayRouter from "./deskDay";
 import topRouter from "./top";
 import questsRouter from "./quests";
@@ -220,6 +221,7 @@ router.use(officeStatsRouter);
 router.use(officeRecsRouter);
 router.use(askRouter);
 router.use(dailyRouter);
+router.use(dayStateRouter); // the trader's day state: /me/state, /state/team, /state/message (lib/dayState)
 router.use(deskDayRouter);
 router.use(topRouter);
 router.use(questsRouter);
