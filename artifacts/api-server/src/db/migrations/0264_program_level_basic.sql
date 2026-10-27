@@ -6,7 +6,8 @@
 DO $$
 DECLARE n integer;
 BEGIN
-  IF to_regclass('public.academy_programs') IS NOT NULL THEN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'academy_programs' AND column_name = 'level') THEN
     UPDATE academy_programs SET level = 'Базовый' WHERE level = 'Стажёр';
     GET DIAGNOSTICS n = ROW_COUNT;
     RAISE NOTICE 'academy_programs level trainee label → basic: % rows', n;
