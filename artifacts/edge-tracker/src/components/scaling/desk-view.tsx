@@ -104,7 +104,8 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
 
   return (
     <div className="flex flex-col gap-section">
-      <StatGrid>
+      {/* Zero problem counters fold into «Всё чисто: …» (design audit); the traders count is never zero on a desk. */}
+      <StatGrid allClear>
         {ev.isLoading || !s ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
         ) : (
@@ -118,7 +119,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
       </StatGrid>
 
       {(pending.isLoading || pendingList.length > 0) && (
-        <Panel title={t("desk.queueTitle")} description={t("desk.queueDesc")} icon={Inbox}>
+        <Panel id="scaling-queue" className="scroll-mt-[var(--sticky-top,1rem)]" title={t("desk.queueTitle")} description={t("desk.queueDesc")} icon={Inbox}>
           {pending.isLoading ? (
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
           ) : (

@@ -268,6 +268,8 @@ export type BlockableGroup = { id: NavGroup["id"]; readonly label: string; secti
 /** Pages a trader can open that are not in the nav but can be closed per stage (cross-trader views). */
 const EXTRA_BLOCKABLE: { href: string; group: NavGroup["id"]; label: () => string }[] = [
   { href: "/desk-day", group: "team", label: () => shellI18n.t("titles.deskDay") },
+  // The team feed: now the «Команда» tab of /notifications (its nav item is hidden), still closable per stage.
+  { href: "/activity", group: "team", label: () => shellI18n.t("nav.activity") },
 ];
 
 /**

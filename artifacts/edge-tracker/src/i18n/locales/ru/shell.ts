@@ -119,6 +119,8 @@ export default {
     marketClosed: "Рынок закрыт",
     /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
     haltedClosed: "{stop} — статус к следующей сессии",
+    /** Halted, but the person has not traded this week (a staff account with an old drawdown): a quiet fact, not an alarm. */
+    haltedIdle: "{stop} — подробности в риск-деске",
     stop: { daily: "Дневной стоп", weekly: "Недельный стоп", drawdown: "Макс. просадка" },
     open: "Открыть риск-деск",
   },
@@ -346,6 +348,12 @@ export default {
     maybe: "Возможно, вы искали",
     toDashboard: "На дашборд",
     sections: "Разделы",
+  },
+  /** A section the desk switched off (a desk feature switch, e.g. nav.authorNotes) opened by URL. */
+  sectionOff: {
+    title: "Раздел выключен администратором",
+    lead: "«{section}» сейчас выключен в настройках деска. Остальные разделы работают как обычно.",
+    ask: "Чтобы включить его, обратитесь к администратору деска.",
   },
   sectionBlocked: {
     title: "Раздел закрыт для вашей ступени",

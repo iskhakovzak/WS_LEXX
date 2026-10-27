@@ -50,6 +50,8 @@ export default function AcademyChallengesPage() {
     if (selected == null && items.length && !list.isPlaceholderData) setSelected(items[0].id);
   }, [items, selected, list.isPlaceholderData]);
 
+  const noExams = !!list.data && !list.isPlaceholderData && list.data.challenges.length === 0 && filter === "all" && !who;
+
   return (
     <Page>
       <PageHeader
@@ -65,7 +67,8 @@ export default function AcademyChallengesPage() {
           </>
         }
       >
-        <div className="flex flex-wrap items-center gap-2">
+        {/* No exams at all yet: the empty state alone, no filters over nothing (design audit wave 2). */}
+        {!noExams && <div className="flex flex-wrap items-center gap-2">
           <Segmented<Filter>
             ariaLabel={t("page.filterAria")}
             value={filter}
@@ -83,7 +86,7 @@ export default function AcademyChallengesPage() {
               <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={personOptions} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
             </label>
           )}
-        </div>
+        </div>}
       </PageHeader>
 
       {list.isLoading ? (

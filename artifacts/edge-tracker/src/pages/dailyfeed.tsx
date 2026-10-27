@@ -5,7 +5,7 @@ import {
 } from "@workspace/api-client-react";
 import type { DailyFeed, UpdateDailyFeedBody } from "@workspace/api-client-react";
 import {
-  Newspaper, Bot, RefreshCw, Search, X, ChevronLeft, ChevronRight, CalendarDays, PenLine, Megaphone,
+  Newspaper, Bot, RefreshCw, Search, X, ChevronLeft, ChevronRight, CalendarDays, PenLine,
   MoreHorizontal, ClipboardCheck, AlertTriangle, CalendarRange, Sparkles, TrendingUp, Zap, NotebookPen,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -443,16 +443,11 @@ export default function DailyFeedPage() {
       }
       actions={
         <>
+          {/* One way in for every author: «Новая запись» (an announcement or a short note is the same form; design audit). */}
           {canEdit && (
-            isStaff ? (
-              <Button onClick={openNew} title={t("page.announceTitle")}>
-                <Megaphone aria-hidden="true" /> {t("page.announce")}
-              </Button>
-            ) : (
-              <Button variant="outline" onClick={openNew} title={t("page.noteTitle")}>
-                <PenLine aria-hidden="true" /> {t("page.note")}
-              </Button>
-            )
+            <Button onClick={openNew} title={t("page.newEntryTitle")}>
+              <PenLine aria-hidden="true" /> {t("page.newEntry")}
+            </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -560,7 +555,7 @@ export default function DailyFeedPage() {
           icon={Newspaper}
           title={t("page.emptyTitle")}
           description={t("page.emptyText")}
-          action={canEdit ? <Button variant="outline" onClick={openNew}><PenLine aria-hidden="true" />{isStaff ? t("page.announce") : t("page.note")}</Button> : undefined}
+          action={canEdit ? <Button variant="outline" onClick={openNew}><PenLine aria-hidden="true" />{t("page.newEntry")}</Button> : undefined}
         />
       </Panel>
     );

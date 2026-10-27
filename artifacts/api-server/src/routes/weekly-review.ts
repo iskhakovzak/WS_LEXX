@@ -525,6 +525,16 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
   const reviewRows = reviews.rows as any[];
   const review = presentReview(reviewRows.find((r) => r.week === week.key));
   const prevReview = presentReview(reviewRows.find((r) => r.week === week.prevKey));
+  // An empty week names the trader's last week with closed trades before it (the client's «Последняя неделя со
+  // сделками» button, design audit wave 2). null — none earlier.
+  let lastTradedWeek: string | null = null;
+  if (current.trades === 0) {
+    const { rows } = await pool.query<{ d: string | null }>(
+      `SELECT MAX(${CDATE}) AS d FROM trades t WHERE t.trader = $1 AND t.deleted_at IS NULL AND ${DATE_OK} AND ${CDATE} < $2`,
+      [trader, week.start],
+    ).catch(() => ({ rows: [] as { d: string | null }[] }));
+    lastTradedWeek = rows[0]?.d ? weekKeyOf(rows[0].d) : null;
+  }
 
   res.json({
     trader,
@@ -549,6 +559,7 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     prevReview,
     prevGoals: prevReview?.goals ?? [],
     feeCoaching,
+    lastTradedWeek,
   });
 }));
 

@@ -9,7 +9,7 @@
 import * as React from "react";
 import { useLocation, useSearch } from "wouter";
 import { Lock, Search, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, usePersistentState } from "@/components/ds";
+import { EmptyState, FilterChip, Page, PageHeader, Panel, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,11 +17,12 @@ import { QueryError } from "@/components/query-error";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDeskDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { cn } from "@/lib/utils";
 import { nyDate } from "@/lib/trading-date";
 import { deskDayI18n } from "@/i18n/ns/deskDay";
-import { useDayCandles, useDeskDay, type DeskDay } from "@/components/desk-day/api";
+import { useDayCandles, useDeskDay, useDeskDayTop, type DeskDay, type DeskDayTop } from "@/components/desk-day/api";
 import { DeskDayChart } from "@/components/desk-day/DeskDayChart";
 import { DeskDayLegend, RoleKey } from "@/components/desk-day/DeskDayLegend";
 import { clampEmptyWicks, defaultFocus, pickTakeaways, traderColors } from "@/components/desk-day/model";
@@ -108,6 +109,33 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
   );
 }
 
+/**
+ * Prefill instead of an empty form (design audit wave 2): the desk's most traded tickers of its last trading day as
+ * chips; the page opens the first one when no ticker is in the address. A click opens that ticker-day.
+ */
+function TopTickers({ top, ticker, date, onGo }: { top: DeskDayTop; ticker: string; date: string; onGo: (ticker: string, date: string) => void }) {
+  const { t } = deskDayI18n.useT();
+  if (!top.date || !top.items.length) return null;
+  const day = fmtDeskDate(top.date, "weekdayDayMonth");
+  return (
+    <div role="group" aria-label={t("top.aria", { date: day })} className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-sm text-muted-foreground">{t("top.label", { date: day })}</span>
+      {top.items.map((x) => (
+        <FilterChip
+          key={x.ticker}
+          size="sm"
+          active={x.ticker === ticker && top.date === date}
+          count={x.traders}
+          onClick={() => onGo(x.ticker, top.date!)}
+          title={`${t("top.chipTitle", { traders: commonI18n.t("units.traders", { count: x.traders }), trades: commonI18n.t("units.trades", { count: x.trades }) })}${x.traded ? ` · ${t("top.mine")}` : ""}`}
+        >
+          {x.ticker}
+        </FilterChip>
+      ))}
+    </div>
+  );
+}
+
 /** Same grid as DayView (chart 8/12 + legend 4/12) so nothing jumps when the day arrives. */
 function DayViewSkeleton({ label }: { label: string }) {
   return (
@@ -133,6 +161,12 @@ export default function DeskDayPage() {
   const { ticker, date, alias } = React.useMemo(() => readParams(search), [search]);
   const q = useDeskDay(ticker, date, member);
   const go = React.useCallback((tk: string, d: string) => setLocation(links.deskDay(tk, d)), [setLocation]);
+  const top = useDeskDayTop(date || nyDate(), member);
+  // No ticker in the address: open the desk's most traded ticker of its last trading day (replace: Back leaves the page).
+  const first = !ticker && top.data?.date ? top.data.items[0] : undefined;
+  React.useEffect(() => {
+    if (first && top.data?.date) setLocation(links.deskDay(first.ticker, top.data.date), { replace: true });
+  }, [first, top.data?.date, setLocation]);
 
   const header = (
     <PageHeader
@@ -145,6 +179,7 @@ export default function DeskDayPage() {
 
   let body: React.ReactNode;
   if (!member) body = <Panel><EmptyState icon={Lock} title={t("guest.title")} description={t("guest.desc")} /></Panel>;
+  else if ((!ticker || !date) && (top.isLoading || first)) body = <DayViewSkeleton label={t("loading")} />;
   else if (!ticker || !date) body = <Panel><EmptyState icon={Search} title={t("title")} description={t("form.hint")} /></Panel>;
   else if (q.isError) body = <Panel><QueryError error={q.error} onRetry={() => q.refetch()} /></Panel>;
   else if (!q.data) body = <DayViewSkeleton label={t("loading")} />;
@@ -154,6 +189,7 @@ export default function DeskDayPage() {
   return (
     <Page>
       {header}
+      {member && top.data && <TopTickers top={top.data} ticker={ticker} date={date} onGo={go} />}
       {body}
     </Page>
   );

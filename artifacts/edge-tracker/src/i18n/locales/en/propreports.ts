@@ -9,7 +9,6 @@ export default {
     signInTitle: "Sign-in required",
     signInText: "Sign in to see your accounts and import trades.",
     syncNow: "Sync now",
-    syncDisabled: "The broker API isn’t connected — trades are loaded from files. A developer sets up the connection.",
     sessionExpired: "Session expired",
     statusFailed: "Couldn’t load the status",
     tabsAria: "Integration sections",

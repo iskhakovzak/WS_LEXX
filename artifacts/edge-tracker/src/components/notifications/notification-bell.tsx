@@ -28,7 +28,8 @@ export function NotificationBell({ className }: { className?: string }) {
   const openNotification = useOpenNotification(() => setOpen(false));
 
   const unread = count?.unread ?? 0;
-  const critical = (count?.critical ?? 0) > 0;
+  // The reader's own stop lives in the dashboard hero: it is counted, but does not turn the bell red (one alarm, one place).
+  const critical = (count?.critical ?? 0) - (count?.ownStop ?? 0) > 0;
   const groups = useMemo(() => groupByDay(list.items), [list.items]);
 
   const goToPage = () => {

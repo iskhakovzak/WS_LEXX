@@ -25,7 +25,7 @@ import { screenerQuery, useFinvizRefresh, useFinvizStatus, usePlanTickerDoc } fr
 import { useAddToPlan } from "../add-to-plan";
 import { EarningsFlagPill, FinvizOff, useMinuteClock } from "./earnings";
 import {
-  DEFAULT_SORT, PLAN_MAX_TICKERS, SCREENER_PRESETS, catalystLine, earningsFlagOf, morningState, planTickers, rowMove, screenerSummary, sortRows,
+  DEFAULT_SORT, PLAN_MAX_TICKERS, SCREENER_PRESETS, catalystLine, earningsFlagOf, morningState, planTickers, rowMove, rvolValue, screenerSummary, sortRows,
   type ScreenerPreset, type ScreenerRow, type ScreenerSortKey,
 } from "./model";
 
@@ -103,7 +103,7 @@ function PhoneList({ rows, preset, a, day }: { rows: ScreenerRow[]; preset: Scre
             </div>
             <p className="truncate text-xs tabular-nums text-muted-foreground">
               {[
-                r.relVolume != null ? `RVOL ${fmtNum(r.relVolume, 1)}` : null,
+                rvolValue(r.relVolume) != null ? `RVOL ${fmtNum(r.relVolume, 1)}` : null,
                 r.float != null ? `Float ${fmtCompact(r.float)}` : null,
                 r.shortFloatPct != null ? `SI ${fmtPct(r.shortFloatPct, { decimals: 1, signed: false })}` : null,
                 r.price != null ? `$${fmtPrice(r.price)}` : null,
@@ -161,7 +161,7 @@ function DeskTable({ rows, preset, a, day, sort, onSort }: {
                 )}
               </td>
               <td className="text-right"><MoveCell r={r} preset={preset} /></td>
-              <td className="text-right">{fmtNum(r.relVolume, 1)}</td>
+              <td className="text-right">{rvolValue(r.relVolume) == null ? <span className="text-muted-foreground">—</span> : fmtNum(r.relVolume, 1)}</td>
               <td className="text-right">{fmtCompact(r.float)}</td>
               <td className="text-right">{fmtPct(r.shortFloatPct, { decimals: 1, signed: false })}</td>
               <td className="text-right">{fmtNum(r.atr)}</td>

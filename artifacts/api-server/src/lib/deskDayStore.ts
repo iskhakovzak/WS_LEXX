@@ -97,3 +97,32 @@ export async function deskDayCounts(tickers: readonly string[], date: string, tr
     return { ticker: t, traders, traded, others: Math.max(0, traders - (traded ? 1 : 0)) };
   });
 }
+
+export type DeskDayTop = { date: string | null; items: { ticker: string; traders: number; trades: number; traded: boolean }[] };
+
+/**
+ * The most traded tickers of the desk's last trading day on or before `onOrBefore` (the /desk-day prefill: «вчера деск
+ * торговал NVDA 12 · SOXS 7 …»). By distinct traders, then trades. `traded` = `trader` was among them.
+ */
+export async function deskDayTop(onOrBefore: string, trader: string | null, limit = 6, q: Queryable = pool): Promise<DeskDayTop> {
+  const { rows: last } = await q.query(
+    `SELECT MAX(date) AS d FROM trades WHERE date <= $1 AND deleted_at IS NULL AND trader IS NOT NULL AND trader <> ''`,
+    [onOrBefore],
+  );
+  const date = (last[0] as { d: string | null } | undefined)?.d ?? null;
+  if (!date) return { date: null, items: [] };
+  const { rows } = await q.query(
+    `SELECT ticker, COUNT(DISTINCT trader)::int AS traders, COUNT(*)::int AS trades, COALESCE(BOOL_OR(trader = $2), FALSE) AS traded
+       FROM trades
+      WHERE date = $1 AND deleted_at IS NULL AND trader IS NOT NULL AND trader <> '' AND ticker IS NOT NULL AND ticker <> ''
+      GROUP BY ticker
+      ORDER BY traders DESC, trades DESC, ticker
+      LIMIT $3`,
+    [date, trader ?? "", limit],
+  );
+  return {
+    date: String(date).slice(0, 10),
+    items: (rows as { ticker: string; traders: number; trades: number; traded: boolean }[])
+      .map((r) => ({ ticker: String(r.ticker).toUpperCase(), traders: Number(r.traders), trades: Number(r.trades), traded: !!r.traded })),
+  };
+}

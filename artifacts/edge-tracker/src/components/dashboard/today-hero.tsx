@@ -47,6 +47,7 @@ function Cell({
   title,
   href,
   extra,
+  wrap = false,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -56,6 +57,8 @@ function Cell({
   title?: string;
   href?: string;
   extra?: ReactNode;
+  /** Never truncate the value and the hint (the stop cell: its reason must be read in full on a phone). */
+  wrap?: boolean;
 }) {
   const body = (
     <>
@@ -63,9 +66,9 @@ function Cell({
       {loading ? (
         <Skeleton className="my-0.5 h-6 w-24 rounded-md" />
       ) : (
-        <span className={cn("truncate text-xl font-semibold leading-7 tabular-nums tracking-tight", toneText(tone))}>{value}</span>
+        <span className={cn(wrap ? "text-base leading-6 sm:text-xl sm:leading-7" : "truncate text-xl leading-7", "font-semibold tabular-nums tracking-tight", toneText(tone))}>{value}</span>
       )}
-      {loading ? <Skeleton className="h-3.5 w-28 rounded" /> : hint != null && <span className="text-xs text-muted-foreground tabular-nums max-lg:line-clamp-2 lg:truncate">{hint}</span>}
+      {loading ? <Skeleton className="h-3.5 w-28 rounded" /> : hint != null && <span className={cn("text-xs text-muted-foreground tabular-nums", !wrap && "max-lg:line-clamp-2 lg:truncate")}>{hint}</span>}
       {!loading && extra}
     </>
   );
@@ -121,7 +124,7 @@ function HeroCell({
       {loading ? (
         <Skeleton className="h-10 w-40 max-w-full rounded-xl" />
       ) : value == null ? (
-        <span className="type-hero text-muted-foreground/70 max-sm:text-[1.75rem]">—</span>
+        <span className="type-hero text-[1.5rem] text-muted-foreground/60">—</span>
       ) : (
         // The reveal sits on a wrapper: the live flash is an animation too, and on the same element it would replace
         // (and on removal restart) the reveal. Phones (2 × 2 cells) take a smaller step of the same scale.
@@ -188,20 +191,7 @@ function RiskCell({ risk, desk, team, loading, quietDay }: { risk: RiskMe | null
   }
   if (risk === undefined && loading) return <Cell label={t("hero.dailyLimit")} value="" loading />;
   if (!risk) return <Cell label={t("hero.dailyLimit")} value="—" hint={t("hero.riskUnavailable")} />;
-  if (risk.halted && quietDay) {
-    return (
-      <Cell
-        label={t("hero.dailyLimit")}
-        value={risk.stop.label}
-        hint={t("hero.haltedClosed")}
-        href={links.risk(risk.trader)}
-        title={risk.stop.message}
-      />
-    );
-  }
-  if (risk.halted) {
-    return <Cell label={t("hero.dailyLimit")} value={risk.stop.label} tone="down" hint={risk.stop.message} href={links.risk(risk.trader)} title={risk.stop.message} extra={<LiveBadge live={risk.live} />} />;
-  }
+  if (risk.halted) return <HaltCell risk={risk} quietDay={quietDay} />;
   const limit = risk.limits?.dailyLossLimit ?? null;
   if (!risk.limits || limit == null || limit <= 0) {
     // No dead end (Волна 1 п. 1.1): the trader asks the curator right here (a button cannot sit inside the cell link).
@@ -222,6 +212,44 @@ function RiskCell({ risk, desk, team, loading, quietDay }: { risk: RiskMe | null
         <LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" />
         {bp != null && <span className="truncate text-2xs tabular-nums text-muted-foreground">{t("hero.buyingPower", { amount: fmtUsd(bp, { decimals: 0 }) })}</span>}
         <LiveBadge live={risk.live} className="mt-0.5" />
+      </>}
+    />
+  );
+}
+
+/**
+ * A stopped trader: the cell names the rule that stopped trading («Просадка от пика $948 / лимит $800») and gives the
+ * one next step, «Написать куратору» (design audit wave 2: this cell is the one place of the stop alarm; the sidebar,
+ * the plan and the bell no longer repeat it). Red only on a trading day; on a weekend / holiday it reads neutrally.
+ * No cell link: a button cannot sit inside it (the risk desk is one click away in the nav).
+ */
+function HaltCell({ risk, quietDay }: { risk: RiskMe; quietDay: boolean }) {
+  const { t } = dashboardI18n.useT();
+  const L = risk.limits;
+  const state = risk.stop.state === "drawdown" || risk.stop.state === "weekly" ? risk.stop.state : "stop";
+  const [used, limit] = state === "drawdown"
+    ? [risk.drawdown.currentUsd, L?.maxDrawdown ?? null]
+    : state === "weekly"
+      ? [Math.max(0, -(risk.week.pnlNet ?? 0)), L?.weeklyLossLimit ?? null]
+      : [Math.max(0, -(risk.today.pnlNet ?? 0)), L?.dailyLossLimit ?? null];
+  const rule = t(`hero.haltRule.${state}`);
+  const usedText = fmtUsd(used, { decimals: 0 });
+  const limitText = limit != null ? fmtUsd(limit, { decimals: 0 }) : "—";
+  return (
+    <Cell
+      label={rule}
+      value={limit != null ? t("hero.haltValue", { used: usedText, limit: limitText }) : risk.stop.label}
+      tone={quietDay ? "neutral" : "down"}
+      hint={quietDay ? t("hero.haltedClosed") : t(`hero.haltHint.${state}`)}
+      title={risk.stop.message}
+      wrap
+      extra={<>
+        <AskCuratorButton
+          kind="other" size="xs" className="mt-1 self-start"
+          label={t("hero.writeCurator")}
+          prefill={t("hero.writeCuratorPrefill", { rule: rule.toLowerCase(), used: usedText, limit: limitText })}
+        />
+        {!quietDay && <LiveBadge live={risk.live} className="mt-0.5" />}
       </>}
     />
   );

@@ -5,6 +5,7 @@
  */
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LiveBadge } from "@/components/shared/live-badge";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -19,7 +20,8 @@ const LINE: Record<TodayTone, string> = { down: "text-down", warn: "text-warn", 
 export function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
   const { t } = shellI18n.useT();
   const day = useMarketDay();
-  const m = todayCardModel(risk, day);
+  const { user } = useAuth();
+  const m = todayCardModel(risk, day, { trader: user?.role === "trader" });
   const pnlCls = m.pnlSign > 0 ? "text-up" : m.pnlSign < 0 ? "text-down" : "text-foreground";
   const lineCls = m.limitAlarm ? LINE[m.tone] : "text-muted-foreground";
 
@@ -72,7 +74,7 @@ export function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
           <span className={cn("block h-full origin-left rounded-full transition-transform duration-[var(--dur-3)] ease-smooth", BAR[m.tone])} style={{ transform: `scaleX(${m.usedPct / 100})` }} />
         </span>
       )}
-      {m.limitLine && <span className={cn("mt-1 line-clamp-2 block text-2xs leading-snug", lineCls)} title={m.limitLine}>{m.limitLine}</span>}
+      {m.limitLine && <span className={cn("mt-1 block text-pretty text-2xs leading-snug", lineCls)}>{m.limitLine}</span>}
       <LiveBadge live={risk.live} className="mt-0.5 flex max-w-full" />
     </Link>
   );

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Award, Download, HelpCircle, ListFilter, Loader2, MoreHorizontal, RefreshCw, SearchX, Sunrise, UserRound, Zap } from "lucide-react";
 import {
-  EmptyState, Kbd, Page, PageHeader, Panel, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState,
+  EmptyState, Kbd, Page, PageHeader, Panel, Pill, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -382,18 +382,19 @@ export default function AnalystActionsPage() {
         icon={Award}
         meta={
           <>
-            {feed.data?.sourceUnavailable ? items.length > 0 && <SourceDown at={feed.data.checkedAt} /> : <UpdatedAgo at={feed.data?.scannedAt ?? feed.dataUpdatedAt} />}
+            {!feed.data?.sourceUnavailable && <UpdatedAgo at={feed.data?.scannedAt ?? feed.dataUpdatedAt} />}
             <span>{tf("page.timeNy")}</span>
           </>
         }
         actions={
           <>
+            {feed.data?.sourceUnavailable && items.length > 0 && <SourceDown at={feed.data.checkedAt} />}
             <Button variant="ghost" size="icon" onClick={() => feed.refetch()} disabled={feed.isFetching} aria-label={tf("page.refreshAria")} title={commonI18n.t("actions.refresh")}>
               <RefreshCw className={cn(feed.isFetching && "motion-safe:animate-spin")} aria-hidden="true" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={exportCsv} disabled={!tableRows.length} aria-label={tf("page.exportAria")} title={tf("page.exportTitle")}>
+            {tableRows.length > 0 && <Button variant="ghost" size="icon" onClick={exportCsv} aria-label={tf("page.exportAria")} title={tf("page.exportTitle")}>
               <Download aria-hidden="true" />
-            </Button>
+            </Button>}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label={tf("page.hotkeysAria")}>
@@ -470,7 +471,7 @@ export default function AnalystActionsPage() {
 
       {/* ── premarket + my stats ── */}
       {/* Same 3-column track as the KPI row above, so the panel edges line up with the stat cards. */}
-      <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-3">
         <PremarketPanel
           className="xl:col-span-2"
           rows={premarketRows}
@@ -623,7 +624,8 @@ export default function AnalystActionsPage() {
 }
 
 /** «источник недоступен · HH:MM NY» — the scan failed / never ran (item 1.14); one muted line, never a banner. */
+/** The source is down: a yellow status next to ↻ — the main status of the screen (design audit wave 2). */
 function SourceDown({ at }: { at: string | undefined }) {
   const { t } = analystI18n.useT();
-  return <span role="status" className="text-2xs text-muted-foreground tabular-nums" title={t("page.sourceDownTitle")}>{t("page.sourceDown", { time: fmtDeskTime(at ?? Date.now()) })}</span>;
+  return <span role="status" className="inline-flex"><Pill tone="warn" dot title={t("page.sourceDownTitle")}>{t("page.sourceDown", { time: fmtDeskTime(at ?? Date.now()) })}</Pill></span>;
 }

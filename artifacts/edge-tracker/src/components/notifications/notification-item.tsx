@@ -110,7 +110,8 @@ export const NotificationItem = React.memo(function NotificationItem({
           )}
         </div>
       )}
-      {full && !n.isRead && <span className="absolute left-0 top-3 h-[calc(100%-1.5rem)] w-0.5 rounded-full bg-primary" aria-hidden="true" />}
+      {/* Unread: a dot, not a coloured side stripe. */}
+      {full && !n.isRead && <span className="absolute left-1 top-[1.15rem] h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
     </div>
   );
 });

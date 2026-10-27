@@ -5,10 +5,11 @@
  *                  risk events and the curator's feedback + grade (existing collab flow, E1 notifications).
  */
 import * as React from "react";
-import { CalendarX2 } from "lucide-react";
+import { CalendarX2, History } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { BentoGrid, EmptyState, Panel, Pill } from "@/components/ds";
 import type { Tip } from "@/lib/weeklyInsights";
-import type { WeeklyReview } from "./api";
+import { weekLabel, type WeeklyReview } from "./api";
 import { CuratorReviewPanel, PrevGoalsPanel, SelfReviewPanel } from "./collab";
 import {
   ChecklistPanel, DayStrip, DeskComparePanel, GoalPanel, JournalRiskPanel, PositivesPanel, TipsPanel, WeekKpiStrip, weekHeadline,
@@ -38,21 +39,27 @@ function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
   return <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">{panels}</div>;
 }
 
-function NoTradesWeek({ doc }: { doc: WeeklyReview }) {
+/** Opens another week of the report (the page's week state). */
+export type OnWeek = (week: string) => void;
+
+/** An empty week with the one way forward: the trader's last week with trades (prefill, design audit wave 2). */
+function NoTradesWeek({ doc, onWeek }: { doc: WeeklyReview; onWeek?: OnWeek }) {
   const { t } = weeklyI18n.useT();
+  const last = doc.lastTradedWeek;
   return (
     <Panel>
       <EmptyState
         icon={CalendarX2}
         title={t("audience.noTradesTitle")}
         description={doc.week.isCurrent ? t("audience.noTradesCurrent") : t("audience.noTradesPast")}
+        action={last && onWeek ? <Button onClick={() => onWeek(last)}><History aria-hidden="true" />{t("audience.lastTradedWeek", { week: weekLabel(last) })}</Button> : undefined}
       />
     </Panel>
   );
 }
 
 // ── Трейдеру ─────────────────────────────────────────────────────────────────
-export function TraderView({ doc }: { doc: WeeklyReview }) {
+export function TraderView({ doc, onWeek }: { doc: WeeklyReview; onWeek?: OnWeek }) {
   const { t: tr } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const [inject, setInject] = React.useState<{ text: string; n: number } | null>(null);
@@ -62,7 +69,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
   if (k.trades === 0) {
     return (
       <div className="flex flex-col gap-[var(--grid-gap)]">
-        <NoTradesWeek doc={doc} />
+        <NoTradesWeek doc={doc} onWeek={onWeek} />
         <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <GoalPanel doc={doc} />
           <PrevGoalsPanel doc={doc} />
@@ -101,7 +108,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
 }
 
 // ── Куратору ─────────────────────────────────────────────────────────────────
-export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: string; open: () => void } | null }) {
+export function CuratorView({ doc, next, onWeek }: { doc: WeeklyReview; next?: { name: string; open: () => void } | null; onWeek?: OnWeek }) {
   const { t } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const k = doc.kpis.current;
@@ -117,7 +124,7 @@ export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: s
         {warns > 0 && <Pill tone="warn" dot>{t("audience.warns", { count: warns })}</Pill>}
         {fails === 0 && warns === 0 && <Pill tone="up" dot>{t("audience.clean")}</Pill>}
       </div>
-      {k.trades > 0 ? <WeekKpiStrip doc={doc} ins={ins} /> : <NoTradesWeek doc={doc} />}
+      {k.trades > 0 ? <WeekKpiStrip doc={doc} ins={ins} /> : <NoTradesWeek doc={doc} onWeek={onWeek} />}
       <Breakeven doc={doc} />
       <FeeCoachingCard data={doc.feeCoaching} trader={doc.trader} />
       <BentoGrid>

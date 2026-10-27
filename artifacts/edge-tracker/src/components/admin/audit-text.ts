@@ -418,6 +418,14 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
     case "curator.note.restore": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteRestoreFor", { trader: pn(d.trader) }) : t("text.noteRestore") };
     case "auth.logout_others": return { label: L("login"), tone: "neutral", text: t("text.logoutOthers") };
     case "auth.lockout": return { label: L("login"), tone: "warn", text: t("text.lockout", { minutes: n(d.minutes) }), detail: e.targetType === "user" ? undefined : s(e.targetId) || undefined };
+    // Screen lock / quick code (routes/screen-lock.ts): were shown as raw «auth screen unlock · with: quick_code».
+    case "auth.screen_lock": return { label: L("login"), tone: "neutral", text: t("text.screenLock") };
+    case "auth.screen_unlock": return { label: L("login"), tone: "neutral", text: t("text.screenUnlock"), detail: d.with === "quick_code" ? t("text.screenUnlockWith.quick_code") : d.with === "password" ? t("text.screenUnlockWith.password") : undefined };
+    case "auth.screen_unlock_failed": return { label: L("login"), tone: "warn", text: t("text.screenUnlockFailed"), detail: d.attemptsLeft != null ? t("text.screenUnlockLeft", { count: n(d.attemptsLeft) }) : undefined };
+    case "auth.screen_unlock_signed_out": return { label: L("login"), tone: "down", text: t("text.screenUnlockSignedOut") };
+    case "auth.quick_code_set": return { label: L("login"), tone: "neutral", text: t("text.quickCodeSet") };
+    case "auth.quick_code_change": return { label: L("login"), tone: "neutral", text: t("text.quickCodeChange") };
+    case "auth.quick_code_remove": return { label: L("login"), tone: "neutral", text: t("text.quickCodeRemove") };
 
     case "daily_quote.regenerate": return { label: L("dailyQuote"), tone: "neutral", text: t("text.quoteRegenerate") };
     case "daily_quote.cron": return { label: L("dailyQuote"), tone: "neutral", text: t("text.quoteCron") };

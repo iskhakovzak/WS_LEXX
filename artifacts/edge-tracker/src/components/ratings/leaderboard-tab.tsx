@@ -218,8 +218,8 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
           value={metric}
           onChange={(v) => setMetricPref(v)}
         />
-        {!selfOnly && (
-          <Button variant="ghost" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={ranked.length === 0}>
+        {!selfOnly && ranked.length > 0 && (
+          <Button variant="ghost" size="sm" className="ml-auto gap-1.5" onClick={exportCsv}>
             <Download className="h-4 w-4" aria-hidden="true" /> CSV
           </Button>
         )}

@@ -13,6 +13,7 @@ export default {
     autoTitle: "Создать предложения повышения / понижения по правилам",
     autoRunning: "Проверяем…",
     auto: "Предложения",
+    pendingCta: "Ждут решения: {count} · Одобрить",
     viewAria: "Режим плана",
     viewDesk: "Деск",
     viewMe: "Мой план",

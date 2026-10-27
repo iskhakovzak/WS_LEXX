@@ -291,8 +291,8 @@ export default {
     all: "All",
     newMeeting: "1:1 meeting",
     loadFailed: "Couldn’t load the mentor dashboard",
-    noCohorts: "No cohorts yet",
-    noCohortsDesc: "Create a cohort and enroll students.",
+    noCohorts: "You don’t mentor any cohort",
+    noCohortsDesc: "Students of the cohorts you mentor appear here. A cohort’s mentor is set on the cohorts page.",
     toCohorts: "Go to cohorts",
     notAssigned: "You aren’t the mentor of any cohort — showing all desk cohorts.",
     kpi: {

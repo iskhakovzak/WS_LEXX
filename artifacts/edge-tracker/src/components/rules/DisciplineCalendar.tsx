@@ -56,6 +56,20 @@ export function DisciplineCalendar({
     return out;
   }, [from, to, today]);
   const weeks = cols.length;
+  // Month labels overflow into the next columns (~3 at 28 px): a label is drawn only with room before the next one, so
+  // two months never run together («июлавг», design audit). The first column yields to a month starting right after.
+  const monthAt = useMemo(() => {
+    const starts = cols.map((col, i) => i === 0 || new Date(`${col[0]}T12:00:00`).getDate() <= 7);
+    const out = starts.map(() => false);
+    let last = -Infinity;
+    starts.forEach((on, i) => {
+      if (!on || i >= weeks - 1) return;
+      const next = starts.findIndex((x, j) => j > i && x);
+      if (i === 0 && next > 0 && next < 3) return;
+      if (i - last >= 3) { out[i] = true; last = i; }
+    });
+    return out;
+  }, [cols, weeks]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -68,15 +82,11 @@ export function DisciplineCalendar({
         </div>
         <div className="min-w-0 flex-1" style={{ maxWidth: weeks * 28 }}>
           <div className="grid gap-[3px] pb-1 text-xs text-muted-foreground" style={{ gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` }} aria-hidden="true">
-            {cols.map((col, i) => {
-              const d = new Date(`${col[0]}T12:00:00`);
-              const showMonth = i === 0 || d.getDate() <= 7;
-              return (
-                <span key={col[0]} className="h-4 overflow-visible whitespace-nowrap leading-4">
-                  {showMonth && i < weeks - 1 ? fmtMonth(d, "short").replace(".", "") : ""}
-                </span>
-              );
-            })}
+            {cols.map((col, i) => (
+              <span key={col[0]} className="h-4 overflow-visible whitespace-nowrap leading-4">
+                {monthAt[i] ? fmtMonth(new Date(`${col[0]}T12:00:00`), "short").replace(".", "") : ""}
+              </span>
+            ))}
           </div>
           <div
             role="group"

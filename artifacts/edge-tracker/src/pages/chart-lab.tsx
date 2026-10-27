@@ -15,7 +15,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, RefreshCw, Search } from "lucide-react";
-import { EmptyState, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { Input } from "@/components/ui/input";
@@ -186,27 +186,30 @@ function StartState({ onPick }: { onPick: (t: TradeRow) => void }) {
     queryFn: async ({ signal }) => (await http.get<PageResp>(`/api/trades/page?${searchParams("", 6)}`, { signal })).items ?? [],
     staleTime: 60_000,
   });
+  // In a Panel: over a photo background the start state was unreadable (design audit wave 2).
   return (
-    <EmptyState
-      icon={CandlestickChart}
-      title={tl("empty.title")}
-      description={tl("empty.description")}
-      action={(
-        <div className="flex w-full max-w-md flex-col gap-3">
-          {recent.isLoading ? (
-            <div className="flex flex-col gap-1.5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}</div>
-          ) : recent.data?.length ? (
-            <div className="flex flex-col rounded-xl border border-[var(--glass-border)] py-1 text-left">
-              <p className="px-3 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">{tl("empty.recent")}</p>
-              {recent.data.map((t) => <TradeRowButton key={t.id} t={t} onPick={onPick} />)}
-            </div>
-          ) : null}
-          <Button variant="ghost" asChild className="self-center">
-            <Link href={TRAINER_HREF}><Dumbbell className="mr-2 h-4 w-4" aria-hidden="true" /> {tl("empty.trainer")}</Link>
-          </Button>
-        </div>
-      )}
-    />
+    <Panel>
+      <EmptyState
+        icon={CandlestickChart}
+        title={tl("empty.title")}
+        description={tl("empty.description")}
+        action={(
+          <div className="flex w-full max-w-md flex-col gap-3">
+            {recent.isLoading ? (
+              <div className="flex flex-col gap-1.5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}</div>
+            ) : recent.data?.length ? (
+              <div className="flex flex-col rounded-xl border border-[var(--glass-border)] py-1 text-left">
+                <p className="px-3 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">{tl("empty.recent")}</p>
+                {recent.data.map((t) => <TradeRowButton key={t.id} t={t} onPick={onPick} />)}
+              </div>
+            ) : null}
+            <Button variant="ghost" asChild className="self-center">
+              <Link href={TRAINER_HREF}><Dumbbell className="mr-2 h-4 w-4" aria-hidden="true" /> {tl("empty.trainer")}</Link>
+            </Button>
+          </div>
+        )}
+      />
+    </Panel>
   );
 }
 
@@ -320,7 +323,7 @@ export default function ChartLabPage() {
       ) : tradeId != null && trade.isLoading ? (
         <Skeleton className="min-h-[420px] flex-1 rounded-2xl" />
       ) : tradeId != null && (trade.error || !trade.data) ? (
-        <EmptyState
+        <Panel><EmptyState
           icon={CandlestickChart}
           title={tl("unavailable", { id: tradeId })}
           description={trade.error?.message ?? tl("notFound")}
@@ -329,7 +332,7 @@ export default function ChartLabPage() {
               <RefreshCw className={trade.isFetching ? "animate-spin motion-reduce:animate-none" : undefined} aria-hidden="true" /> {commonI18n.t("actions.retry")}
             </Button>
           )}
-        />
+        /></Panel>
       ) : current ? (
         <WsChart
           key={`${current.id}`}

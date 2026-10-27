@@ -26,7 +26,8 @@ import { RewardsAdminBlock } from "@/components/gamification/rewards-admin-block
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { adminI18n } from "@/i18n/ns/admin";
-import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useReviewLoad, useTiers } from "@/components/admin/console-api";
+import { useDataQuality, useEodStatus, useHealth, useReviewLoad, useTiers } from "@/components/admin/console-api";
+import { reviewQueueOf } from "@/components/admin/overview-model";
 
 const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "settings", "usage", "data", "audit", "errors"];
 // Old tab ids (links/bookmarks) map onto the new ones.
@@ -128,10 +129,12 @@ function AdminConsole() {
   const risk = useRiskDesk();
   const health = useHealth();
   const eod = useEodStatus();
-  const queue = useEodQueueCount();
   const tiers = useTiers();
   const quality = useDataQuality();
-  const reviewLoad = useReviewLoad(can("journal.review"));
+  const canReview = can("journal.review");
+  const reviewLoad = useReviewLoad(canReview);
+  // One variable for the review queue: KPI, «Требует действий» and the per-curator panel (design audit wave 2).
+  const queue = canReview ? reviewQueueOf(reviewLoad.data) : null;
 
   const tierNames = useMemo(
     () => Object.fromEntries((tiers.data ?? []).map((t) => [t.key, t.name])) as Record<string, string>,
@@ -244,14 +247,14 @@ function AdminConsole() {
         {tab === "overview" && (
           <div className="flex flex-col gap-[var(--grid-gap)]">
             <LoopYesterdayPanel showPilot={showUsage} onOpenUsage={showUsage ? () => setTab("usage") : undefined} onOpenPeople={() => setTab("people")} />
-            <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue.data} loading={pulse.isLoading} onGo={go} />
+            <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue} loading={pulse.isLoading} onGo={go} />
             <OverviewPanel
               pulse={pulse.data}
               overview={overview.data}
               risk={risk.data}
               health={health.data}
               eod={eod.data}
-              queue={queue.data}
+              queue={queue}
               quality={quality.data?.checks ?? (quality.data === null ? null : undefined)}
               pulseError={pulse.isError ? pulse.error : null}
               healthError={health.isError ? health.error : null}
@@ -260,7 +263,7 @@ function AdminConsole() {
               onGo={go}
               tierNames={tierNames}
               canAudit={showAudit}
-              reviewLoad={can("journal.review") ? (reviewLoad.isLoading ? undefined : reviewLoad.data ?? null) : null}
+              reviewLoad={canReview ? (reviewLoad.isLoading ? undefined : reviewLoad.data ?? null) : null}
               onGoNoCurator={goNoCurator}
               rewards={<RewardsAdminBlock enabled={showSettings} onOpenCatalog={() => setTab("settings")} />}
             />

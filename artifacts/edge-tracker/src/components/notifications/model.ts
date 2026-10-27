@@ -43,7 +43,8 @@ export type Notification = {
 };
 
 export type NotificationPage = { items: Notification[]; nextCursor: string | null };
-export type UnreadCount = { unread: number; critical: number; warn: number };
+/** `ownStop`: unread critical notices of the reader's own risk stop (shown in the dashboard hero, not as a red bell). */
+export type UnreadCount = { unread: number; critical: number; warn: number; ownStop: number };
 export type TypeMeta = { type: string; label: string; group: NotificationGroup; severity: Severity; description: string };
 export type Pref = { type: string; inApp: boolean; muteUntil: string | null };
 export type Prefs = { prefs: Pref[]; muteAllUntil: string | null };
@@ -298,6 +299,8 @@ export const NOTIF_KEYS = {
 
 export type ListFilters = {
   unread?: boolean;
+  /** Text search in the title / message (server ILIKE). */
+  q?: string;
   types?: string[];
   severities?: Severity[];
   archived?: "0" | "1" | "all";
@@ -308,6 +311,7 @@ export type ListFilters = {
 export function filterParams(f: ListFilters): string {
   const p = new URLSearchParams();
   if (f.unread) p.set("unread", "1");
+  if (f.q) p.set("q", f.q);
   if (f.types?.length) p.set("type", f.types.join(","));
   if (f.severities?.length) p.set("severity", f.severities.join(","));
   if (f.archived && f.archived !== "0") p.set("archived", f.archived);
@@ -319,7 +323,7 @@ export function filterParams(f: ListFilters): string {
 export const notificationsApi = {
   async count(): Promise<UnreadCount> {
     const d = await http.get<Partial<UnreadCount>>("/api/notifications/count");
-    return { unread: Number(d.unread ?? 0), critical: Number(d.critical ?? 0), warn: Number(d.warn ?? 0) };
+    return { unread: Number(d.unread ?? 0), critical: Number(d.critical ?? 0), warn: Number(d.warn ?? 0), ownStop: Number(d.ownStop ?? 0) };
   },
   async list(params: string, cursor?: string | null): Promise<NotificationPage> {
     return normalizePage(await http.get(`/api/notifications?${params}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`));

@@ -471,7 +471,9 @@ router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): 
   if (!trader) throw badRequest("TRADER_REQUIRED");
   if (!(await requireNotesReader(req, res, trader))) return;
   const params: unknown[] = [trader, limit];
-  let where = `trader = $1`;
+  // Rows written by the security test suite («[sec-test] …», mojibake from a non-UTF-8 shell) are test data, not notes:
+  // hidden from the archive, kept in the table (design audit wave 2).
+  let where = `trader = $1 AND raw_text NOT LIKE '[sec-test]%'`;
   if (q) {
     params.push(`%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
     where += ` AND (raw_text ILIKE $3 OR COALESCE(curator_feedback, '') ILIKE $3)`;

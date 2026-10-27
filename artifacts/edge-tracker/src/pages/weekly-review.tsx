@@ -106,6 +106,7 @@ export default function WeeklyReviewPage() {
   }, [staff, effectiveView, trader, week]);
 
   const q = useWeeklyReview(trader, week, !!trader && effectiveView !== "partners");
+  const emptyWeek = !!q.data && q.data.kpis.current.trades === 0;
   const doc = q.data;
   const today = currentWeekKey();
   const isFuture = week >= today;
@@ -184,7 +185,8 @@ export default function WeeklyReviewPage() {
               className="w-auto min-w-[13rem] max-w-[18rem]" ariaLabel={t("page.traderAria")}
             />
           )}
-          {perTrader && (
+          {/* An empty week has nothing to export: copy / print are hidden until it has trades. */}
+          {perTrader && !emptyWeek && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button type="button" variant="outline" size="sm" disabled={!doc}><ClipboardCopy className="h-4 w-4" aria-hidden="true" /> {t("page.copy")}</Button>
@@ -197,9 +199,11 @@ export default function WeeklyReviewPage() {
           )}
           {/* «Итоги недели» story: own week only (a card carries the owner's result out of the desk); closed weeks only. */}
           {perTrader && me && trader === me && <WrappedButton week={week} />}
-          <Button type="button" variant="outline" size="sm" disabled={perTrader && !doc} onClick={() => window.print()}>
-            <Printer className="h-4 w-4" aria-hidden="true" /> {t("page.print")}
-          </Button>
+          {!(perTrader && emptyWeek) && (
+            <Button type="button" variant="outline" size="sm" disabled={perTrader && !doc} onClick={() => window.print()}>
+              <Printer className="h-4 w-4" aria-hidden="true" /> {t("page.print")}
+            </Button>
+          )}
         </div>
       }
     >
@@ -244,7 +248,7 @@ export default function WeeklyReviewPage() {
             </p>
             {/* The nightly AI week review (Fridays, when the desk turned it on); nothing shows until one exists. */}
             <AiReviewCard subject={{ kind: "week", date: doc.week.start, trader: doc.trader }} className="mb-[var(--grid-gap)]" />
-            {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} next={next} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} />}
+            {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} next={next} onWeek={setWeek} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} onWeek={setWeek} />}
           </div>
         )}
       </div>

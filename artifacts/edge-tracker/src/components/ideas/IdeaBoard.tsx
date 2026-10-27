@@ -42,7 +42,7 @@ export function IdeaBoard({
   return (
     <div
       className={cn(
-        "flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2",
+        "flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-2",
         lanes.length === 5 ? "xl:grid xl:overflow-visible" : "2xl:grid 2xl:overflow-visible",
       )}
       style={{ gridTemplateColumns: template }}

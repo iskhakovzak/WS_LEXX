@@ -72,6 +72,8 @@ export interface ReviewLoad {
   windowDays: number;
   curators: { name: string; wards: number; count: number; overdue: number }[];
   unassigned: { traders: number; count: number; overdue: number };
+  /** The whole queue (curators + unassigned): the one number every «ревью» figure on /admin is built from. */
+  total?: { count: number; overdue: number };
 }
 
 export interface DataCheck {
@@ -132,7 +134,6 @@ export const consoleKeys = {
   quality: ["admin-console", "quality"] as const,
   tiers: ["admin-console", "tiers"] as const,
   eod: ["admin-console", "eod"] as const,
-  eodQueue: ["admin-console", "eod-queue"] as const,
   reviewLoad: ["admin-console", "review-load"] as const,
 };
 
@@ -241,16 +242,6 @@ export function useEodStatus() {
   return useQuery<EodStatus | null>({
     queryKey: [...consoleKeys.eod, date],
     queryFn: ({ signal }) => http.get<EodStatus>("/api/eod/status", { query: { date }, signal }).catch(() => null),
-    refetchInterval: POLL.minute,
-    retry: false,
-  });
-}
-
-/** Curator review queue size and SLA breaches for the whole desk (scope=desk: the default is the caller's wards). null when unavailable. */
-export function useEodQueueCount() {
-  return useQuery<{ count: number; overdue: number; slaHours: number } | null>({
-    queryKey: consoleKeys.eodQueue,
-    queryFn: ({ signal }) => http.get<{ count: number; overdue: number; slaHours: number }>("/api/eod/queue/count", { query: { scope: "desk" }, signal }).catch(() => null),
     refetchInterval: POLL.minute,
     retry: false,
   });

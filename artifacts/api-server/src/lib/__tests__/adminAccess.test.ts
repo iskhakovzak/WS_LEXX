@@ -93,5 +93,6 @@ describe("groupReviewLoad — who is late with reviews (OWNER-05)", async () => 
       { name: "Руслан А.", wards: 0, count: 0, overdue: 0 },
     ]);
     expect(r.unassigned).toEqual({ traders: 13, count: 2, overdue: 2 });
+    expect(r.total).toEqual({ count: 4, overdue: 3 });
   });
 });

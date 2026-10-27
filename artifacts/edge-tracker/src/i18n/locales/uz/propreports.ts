@@ -9,7 +9,6 @@ export default {
     signInTitle: "Kirish kerak",
     signInText: "Hisoblaringizni koʻrish va savdolarni import qilish uchun tizimga kiring.",
     syncNow: "Hozir sinxronlash",
-    syncDisabled: "Broker API ulanmagan — savdolar fayllardan yuklanadi. Ulanishni dasturchi sozlaydi.",
     sessionExpired: "Sessiya tugadi",
     statusFailed: "Holatni yuklab boʻlmadi",
     tabsAria: "Integratsiya boʻlimlari",

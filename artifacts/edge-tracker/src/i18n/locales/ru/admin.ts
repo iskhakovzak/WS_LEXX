@@ -140,7 +140,7 @@ export default {
     unavailable: "Статус интеграции недоступен.",
     lastSync: "Последний синк",
     never: "ещё не было",
-    status: { ok: "успешно", running: "идёт", partial: "частично", error: "ошибка" },
+    status: { ok: "успешно", running: "идёт", partial: "частично", error: "ошибка", stale: "устарело" },
     fromFile: "Из файла",
     viaApi: "Через API",
     runCounts: "+{inserted} · обновлено {updated}",

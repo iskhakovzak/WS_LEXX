@@ -5,6 +5,8 @@
 //                                         (lib/playbookPrivacy: own trades; staff all).
 //   GET /desk-day/:ticker/:date/summary   { ticker, date, traders, traded, others } — cheap count for entry points.
 //   GET /desk-day/counts?date=&tickers=   the same for several tickers of one day (day report).
+//   GET /desk-day/top?upTo=YYYY-MM-DD      { date, items: [{ ticker, traders, trades, traded }] } — the most traded tickers
+//                                         of the desk's last trading day (the page's prefill instead of an empty form).
 //
 // Signed-in members only (trades.read.own: every role but guest). Names: staff always see them; traders see day aliases
 // unless their stage sees names (lib/access/names.ts; lib/deskDay.ts — views). Candles: GET /candles/:ticker/day/:date.
@@ -14,7 +16,7 @@ import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { parseDateStrict } from "../lib/candleDay";
 import { loadMoneyViewer } from "../lib/playbookAccess";
-import { deskDayCounts, loadDeskDay } from "../lib/deskDayStore";
+import { deskDayCounts, deskDayTop, loadDeskDay } from "../lib/deskDayStore";
 import { route } from "../lib/http";
 import type { Actor } from "../lib/permissions";
 import { namesVisible } from "../lib/access/names";
@@ -47,6 +49,14 @@ router.get("/desk-day/counts", route({
 }, async ({ query, actor, res }) => {
   res.setHeader("Cache-Control", "private, no-cache");
   return { date: query.date, items: await deskDayCounts(query.tickers, query.date, await perspective(actor, query.trader)) };
+}));
+
+router.get("/desk-day/top", route({
+  cap: CAP,
+  query: z.object({ upTo: daySchema.optional() }),
+}, async ({ query, actor, res }) => {
+  res.setHeader("Cache-Control", "private, no-cache");
+  return deskDayTop(query.upTo ?? nyDate(), actor.name);
 }));
 
 router.get("/desk-day/:ticker/:date/summary", route({

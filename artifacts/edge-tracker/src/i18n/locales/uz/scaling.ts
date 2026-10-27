@@ -11,6 +11,7 @@ export default {
     autoTitle: "Qoidalar boʻyicha koʻtarilish / tushirilish takliflarini yaratish",
     autoRunning: "Tekshirilmoqda…",
     auto: "Takliflar",
+    pendingCta: "Qaror kutmoqda: {count} · Tasdiqlash",
     viewAria: "Reja koʻrinishi",
     viewDesk: "Desk",
     viewMe: "Mening rejam",

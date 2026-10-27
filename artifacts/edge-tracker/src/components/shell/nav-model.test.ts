@@ -64,7 +64,8 @@ describe("simpleNav", () => {
 
   it("«Ещё» keeps the full-menu order; the ratings' pages become rows", () => {
     expect(s.more.map((r) => r.href)).toEqual([
-      "/risk", "/analytics", "/rules", "/events", "/themes", "/watchlist", "/discussions", "/trade-ideas",
+      // «Лента» is the one child of «Обсуждения» left (the team feed moved into /notifications) → its own row.
+      "/risk", "/analytics", "/rules", "/events", "/themes", "/watchlist", "/discussions", "/dailyfeed", "/trade-ideas",
       "/benchmark", "/top-results", "/trade-idea-stats", "/office",
     ]);
     const analytics = s.more.find((r) => r.href === "/analytics")!;
@@ -82,7 +83,7 @@ describe("simpleNav", () => {
     const all = [...flat(s.primary), ...s.moreItems.map((i) => i.href)];
     expect(all).not.toContain("/junior-notes");
     expect(groups.flatMap((g) => g.items).map((i) => i.href)).not.toContain("/junior-notes");
-    expect(s.moreItems.map((i) => i.href)).toEqual(expect.arrayContaining(["/dailyfeed", "/activity"]));
+    expect(s.moreItems.map((i) => i.href)).toEqual(expect.arrayContaining(["/dailyfeed"]));
     expect(s.primary.map((i) => i.href)).not.toContain("/dailyfeed");
     // The legacy page is still titled (old links keep working).
     expect(ALL_NAV_ITEMS.find((i) => i.href === "/junior-notes")!.hidden).toBe(true);
@@ -184,16 +185,16 @@ describe("sections behind a desk switch (Волна 2 п. 2.15)", () => {
 describe("nav-structure: menus per role", () => {
   const rows = (groups: ReturnType<typeof visibleNav>) => groups.map((g) => [g.id, g.rows.map((r) => r.href)]);
 
-  it("trader / senior: five groups, 16 rows, no «Управление»", () => {
+  it("trader / senior: five groups, 17 rows, no «Управление»", () => {
     const groups = visibleNav(false);
     expect(rows(groups)).toEqual([
       ["today", ["/", "/game-plan", "/trades", "/risk"]],
       ["review", ["/journal", "/analytics", "/playbook", "/rules"]],
       ["market", ["/events", "/themes", "/watchlist"]],
-      ["team", ["/discussions", "/trade-ideas", "/ratings"]],
+      ["team", ["/discussions", "/dailyfeed", "/trade-ideas", "/ratings"]],
       ["learn", ["/academy/my", "/trainer"]],
     ]);
-    expect(groups.flatMap((g) => g.rows).length).toBe(16);
+    expect(groups.flatMap((g) => g.rows).length).toBe(17);
   });
 
   it("curator / admin: «Управление» right under «Сегодня», the cabinet first", () => {

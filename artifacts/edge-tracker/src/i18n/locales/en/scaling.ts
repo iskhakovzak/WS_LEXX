@@ -11,6 +11,7 @@ export default {
     autoTitle: "Create promotion / demotion proposals from the rules",
     autoRunning: "Checking…",
     auto: "Proposals",
+    pendingCta: "Awaiting decision: {count} · Approve",
     viewAria: "Plan view",
     viewDesk: "Desk",
     viewMe: "My plan",

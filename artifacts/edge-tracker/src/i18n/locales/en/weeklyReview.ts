@@ -343,6 +343,7 @@ export default {
     noTradesTitle: "No closed trades this week",
     noTradesCurrent: "The report fills in as you trade — trades load automatically.",
     noTradesPast: "Pick another week with the arrows above.",
+    lastTradedWeek: "Last week with trades · {week}",
     withCurator: "Review with the curator",
     violations: { one: "{count} check failed", other: "{count} checks failed" },
     warns: "{count} to watch",

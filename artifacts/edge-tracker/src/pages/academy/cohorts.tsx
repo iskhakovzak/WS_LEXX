@@ -37,8 +37,14 @@ export default function AcademyCohortsPage() {
   const [selectedId, setSelectedId] = useState<number | null>(() => Number(new URLSearchParams(search).get("id")) || null);
   useEffect(() => {
     if (!cohorts.length) return;
-    // Default: my own cohort (I am its mentor), else the first one (OLGA-19).
-    if (!selectedId || !cohorts.some((c) => c.id === selectedId)) setSelectedId((cohorts.find((c) => c.mine) ?? cohorts[0]).id);
+    // Default (prefill, design audit wave 2): my own cohort with people in it, else the cohort with the most people,
+    // else my own, else the first — never an empty «В когорте пока никого нет» while another cohort has a roster.
+    if (!selectedId || !cohorts.some((c) => c.id === selectedId)) {
+      const people = (c: CohortListItem) => c.counts.active + c.counts.paused;
+      const fullest = [...cohorts].sort((a, b) => people(b) - people(a))[0];
+      const mine = cohorts.find((c) => c.mine && people(c) > 0);
+      setSelectedId((mine ?? (people(fullest) > 0 ? fullest : cohorts.find((c) => c.mine) ?? cohorts[0])).id);
+    }
   }, [cohorts, selectedId]);
   const [createOpen, setCreateOpen] = useState(false);
   const seed = useSeedDemo();
@@ -163,13 +169,14 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
             <WhereLine mode={c.format === "remote" ? "online" : c.format === "office" ? "office" : "hybrid"} room={c.room} meetingUrl={c.meetingUrl} />
           </div>
         )}
-        <StatGrid className="mt-3">
+        {/* An empty cohort shows its empty roster, not four «—» KPIs (design audit: hide KPIs on empty pages). */}
+        {(d.enrollments.length > 0 || d.sessions.length > 0) && <StatGrid className="mt-3">
           <StatCard label={t("cohortsPage.statActive")} value={active} hint={t("cohortsPage.statActiveHint", { n: d.enrollments.length })} />
           <StatCard label={t("cohortsPage.statAttendance")} value={fmtRate(d.attendance.rate)} tone={d.attendance.rate == null ? "neutral" : d.attendance.rate >= 0.9 ? "up" : d.attendance.rate >= 0.75 ? "warn" : "down"}
             hint={staff ? t("cohortsPage.hintAll") : t("cohortsPage.hintMine")} />
           <StatCard label={t("cohortsPage.statPunctuality")} value={fmtRate(d.attendance.punctuality)} hint={t("cohortsPage.punctualityHint")} />
           <StatCard label={t("cohortsPage.statSessions")} value={d.sessions.length} />
-        </StatGrid>
+        </StatGrid>}
       </Panel>
       <SectionTabs ariaLabel={t("cohortsPage.tabsAria")} value={tab} onChange={setTab} tabs={[
         { value: "members", label: t("cohortsPage.tabMembers"), icon: Users, count: d.enrollments.length },

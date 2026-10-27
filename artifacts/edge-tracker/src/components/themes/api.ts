@@ -27,7 +27,8 @@ export const themesQuery = () =>
     queryFn: ({ signal }) => http.get<ThemesResponse>("/api/themes", { signal }),
     staleTime: STALE.live,
     // refetchIntervalInBackground stays false: a hidden tab does not poll.
-    refetchInterval: (q) => pollInterval(q.state.data?.session),
+    // A cold server answers `warming` (no numbers yet): ask again in 3 s until the first refresh has landed.
+    refetchInterval: (q) => (q.state.data?.warming ? 3_000 : pollInterval(q.state.data?.session)),
     // Closed market = a slow 5 min poll (CLOSED_POLL_MS); coming back to the tab also asks once.
     refetchOnWindowFocus: true,
     meta: { i18n: false },

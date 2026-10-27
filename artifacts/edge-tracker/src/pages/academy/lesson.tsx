@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Circle, Clock, Eye, Layers, Loader2, PencilRuler } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -8,8 +8,8 @@ import { EmptyLink, EmptyState, Page, PageHeader, Panel, Pill, SplitSkeleton } f
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  kindLabel, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
-  type ItemKind, type Nav,
+  kindLabel, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, usePrograms, useQuiz,
+  type CatalogProgram, type ItemKind, type Nav,
 } from "@/components/academy/content/api";
 import { ApiError } from "@/lib/api/http";
 import { Markdown } from "@/components/academy/content/markdown";
@@ -57,22 +57,42 @@ export default function AcademyLesson() {
   const staff = isCurator || !!meta.data?.staff;
   const viewUser = staff ? params.get("user") ?? undefined : undefined;
   const submission = Number(params.get("submission")) || null;
-  const { t } = academyI18n.useT();
 
-  if (!target) {
-    return (
-      <Page>
-        <Panel>
-          <EmptyState art="scroll" icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
-        </Panel>
-      </Page>
-    );
-  }
+  if (!target) return <NextItem />;
   return (
     <Page>
       {target.kind === "lesson" && <LessonView id={target.id} user={viewUser} staff={staff} />}
       {target.kind === "quiz" && <QuizView id={target.id} user={viewUser} staff={staff} />}
       {target.kind === "assignment" && <AssignmentView id={target.id} user={viewUser} staff={staff} focus={submission} />}
+    </Page>
+  );
+}
+
+/** The program to continue: one already started and not finished, else the first with something left. */
+function programToContinue(programs: readonly CatalogProgram[]): CatalogProgram | null {
+  const open = programs.filter((p) => p.progress.next);
+  return open.find((p) => p.progress.done > 0) ?? open[0] ?? null;
+}
+
+/**
+ * /academy/lesson without an item (design audit wave 2, prefill): open the viewer's next unfinished lesson / test /
+ * assignment instead of «Материал не выбран» (replace: Back does not return to the empty address). Nothing left → the
+ * old state with the way to the courses.
+ */
+function NextItem() {
+  const { t } = academyI18n.useT();
+  const [, navigate] = useLocation();
+  const programs = usePrograms();
+  const next = programs.data ? programToContinue(programs.data.programs)?.progress.next ?? null : null;
+  useEffect(() => {
+    if (next) navigate(academyLinks.item(next.kind, next.id), { replace: true });
+  }, [next, navigate]);
+  if (programs.isLoading || next) return <Page><SplitSkeleton side="260px" /></Page>;
+  return (
+    <Page>
+      <Panel>
+        <EmptyState art="scroll" icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
+      </Panel>
     </Page>
   );
 }

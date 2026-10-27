@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAutoOpenThread } from "@/components/discussions/use-auto-open";
 import {
   useListDiscussions, useDeleteDiscussion, getListDiscussionsQueryKey,
 } from "@workspace/api-client-react";
@@ -115,7 +116,7 @@ export default function Discussions() {
 
   // Viewer identity comes from the auth token — no `?trader=` / body identity.
   const votesKey = ["discussions-votes", me] as const;
-  const { data: votes = {} } = useQuery<VoteMap>({
+  const { data: votes = {}, isLoading: votesLoading } = useQuery<VoteMap>({
     queryKey: votesKey,
     queryFn: ({ signal }) => http.get<VoteMap>("/api/discussions/votes/all", { signal }),
     staleTime: 5_000,
@@ -297,6 +298,8 @@ export default function Discussions() {
       selectThread(null);
     }
   }, [isLoading, rawThreads]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useAutoOpenThread({ ready: !isLoading && !votesLoading && !!rawThreads, blocked: formOpen, selectedId, list: filtered, isUnread: (id) => unreadIds.has(id), open: selectThread });
 
   // Capture "seen before opening" for a deep-linked thread on first load.
   const didInitSeen = useRef(false);

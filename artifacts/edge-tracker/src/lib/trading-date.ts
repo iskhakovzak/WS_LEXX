@@ -25,3 +25,15 @@ export function prevWeekday(date: string): string {
     d = addDays(d, -1);
   }
 }
+
+/**
+ * Data freshness of a sync (PropReports): stale once the last synced desk day is before the previous weekday
+ * (Fri → Mon is fresh, Thu → Sat is not; holidays not considered). Every «последний синк» status reads this rule,
+ * so a green «успешно» never sits over old trades. `days` = whole calendar days since `lastAt`.
+ */
+export function syncStale(lastAt: string | null | undefined, now: Date = new Date()): { stale: boolean; days: number } {
+  if (!lastAt) return { stale: false, days: 0 };
+  const at = new Date(lastAt);
+  if (Number.isNaN(at.getTime())) return { stale: false, days: 0 };
+  return { stale: nyDate(at) < prevWeekday(nyDate(now)), days: Math.floor((now.getTime() - at.getTime()) / 86_400_000) };
+}

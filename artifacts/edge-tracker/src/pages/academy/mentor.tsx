@@ -70,7 +70,8 @@ export default function AcademyMentorPage() {
             <Segmented ariaLabel={t("mentorPage.scopeAria")} value={all ? "all" : "mine"} onChange={(v) => setAll(v === "all")}
               options={[{ value: "mine", label: t("mentorPage.mine") }, { value: "all", label: t("mentorPage.all") }]} />
           )}
-          <Button onClick={() => setMeetingFor(selected)} disabled={!d?.students.length}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("mentorPage.newMeeting")}</Button>
+          {/* No students → no 1:1 to plan: the button appears with the first student (design audit wave 2). */}
+          {!!d?.students.length && <Button onClick={() => setMeetingFor(selected)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("mentorPage.newMeeting")}</Button>}
         </>}
       />
       {q.isLoading && <><StatGridSkeleton count={4} /><PanelSkeleton height={280} /></>}

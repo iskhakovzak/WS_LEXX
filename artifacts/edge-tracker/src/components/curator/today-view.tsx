@@ -106,7 +106,8 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <StatGrid cols={6}>
+      {/* Zero counters (reviews, unclosed days, no plan …) fold into «Всё чисто: …»; only what needs doing stays big. */}
+      <StatGrid cols={6} allClear>
         <StatCard label={t("today.trading")} value={t("today.tradingValue", { n: c.trading, total: c.traders })} icon={Users} hint={data.phase === "weekend" ? t("today.weekend") : undefined} />
         <StatCard
           label={t("today.stopNear")}

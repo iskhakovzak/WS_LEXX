@@ -116,6 +116,7 @@ export default {
     marketClosed: "Bozor yopiq",
     /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
     haltedClosed: "{stop} — holat keyingi sessiya uchun",
+    haltedIdle: "{stop} — tafsilotlar risk-deskda",
     stop: { daily: "Kunlik stop", weekly: "Haftalik stop", drawdown: "Maks. pasayish" },
     open: "Risk-deskni ochish",
   },
@@ -342,6 +343,11 @@ export default {
     maybe: "Balki siz buni qidirgandirsiz",
     toDashboard: "Boshqaruv paneliga",
     sections: "Boʻlimlar",
+  },
+  sectionOff: {
+    title: "Boʻlim administrator tomonidan oʻchirilgan",
+    lead: "«{section}» hozir desk sozlamalarida oʻchirilgan. Qolgan boʻlimlar odatdagidek ishlaydi.",
+    ask: "Uni yoqish uchun desk administratoriga murojaat qiling.",
   },
   sectionBlocked: {
     title: "Bu boʻlim sizning bosqichingiz uchun yopiq",

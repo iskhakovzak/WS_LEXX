@@ -122,9 +122,11 @@ type ListProps = {
 const numCell = "text-right tabular-nums";
 
 const Row = memo(function Row({
-  o, i, active, variant, day, e, query, onOpen, onHover, actions,
+  o, i, active, variant, day, e, query, onOpen, onHover, actions, showGap,
 }: {
   o: Offering; i: number; active: boolean; variant: ListVariant; day?: string; e: Exposure | undefined; query: string;
+  /** The «Реакция» column is shown only when at least one listed deal has a reaction (an all-«—» column is noise). */
+  showGap: boolean;
   onOpen: (o: Offering) => void; onHover: (i: number) => void; actions: ListProps["actions"];
 }) {
   const { t } = offeringsI18n.useT();
@@ -203,7 +205,7 @@ const Row = memo(function Row({
           {o.offerPrice == null && o.priceRange && <div className="text-2xs text-muted-foreground">${o.priceRange}</div>}
         </div>
       </td>
-      {variant === "deals" && (
+      {showGap && (
         <td className={cn(numCell, "hidden md:table-cell")}>
           {o.reaction ? (
             <div className="leading-tight" title={`${t("list.reactionTitle", { gap: o.reaction.gapPct, o2c: o.reaction.o2cPct, low: o.reaction.lowFromOpenPct })}${o.reaction.live ? t("list.reactionLive") : ""}`}>
@@ -234,6 +236,7 @@ export function OfferingsList({
   items, variant = "deals", day, exposure, activeIndex, indexBase = 0, query, sort, sortDir, onSort, onOpen, onHover, actions,
 }: ListProps) {
   const { t } = offeringsI18n.useT();
+  const showGap = variant === "deals" && items.some((o) => o.reaction);
   const th = (k: SortKey, label: string, cls?: string) => (
     <SortableTh active={sort === k} dir={sortDir} onSort={() => onSort(k)} align="right" className={cls}>{label}</SortableTh>
   );
@@ -251,7 +254,7 @@ export function OfferingsList({
               {variant === "deals" && th("adv", t("list.sort.adv"), "hidden xl:table-cell")}
               {variant === "deals" && th("discount", t("list.sort.discount"))}
               {th("price", t("list.sort.price"))}
-              {variant === "deals" && th("gap", t("list.sort.gap"), "hidden md:table-cell")}
+              {showGap && th("gap", t("list.sort.gap"), "hidden md:table-cell")}
               <SortableTh active={sort === "score"} dir={sortDir} onSort={() => onSort("score")}>{t("list.sort.score")}</SortableTh>
               <th scope="col"><span className="sr-only">{t("list.actions")}</span></th>
             </tr>
@@ -261,7 +264,7 @@ export function OfferingsList({
               <Row
                 key={`${o.ticker}|${o.form ?? o.type}|${o.date}|${o.status}`}
                 o={o} i={indexBase + i} active={indexBase + i === activeIndex} variant={variant} day={day}
-                e={exposure.get(o.ticker.toUpperCase())} query={query} onOpen={onOpen} onHover={onHover} actions={actions}
+                e={exposure.get(o.ticker.toUpperCase())} query={query} onOpen={onOpen} onHover={onHover} actions={actions} showGap={showGap}
               />
             ))}
           </tbody>

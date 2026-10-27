@@ -7,6 +7,7 @@ import { Pill, StatCard, StatGrid } from "@/components/ds";
 import { Kbd } from "@/components/ds";
 import { agoText, runStatusLabel, untilText, type Status } from "./api";
 import { fmtCount } from "@/lib/format";
+import { syncStale } from "@/lib/trading-date";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 
 /** «всё синхронизировано» only when trades come over the API; file uploads say «из файлов» (OWNER-18). */
@@ -63,7 +64,7 @@ export function StatusHero({ status, actions }: { status: Status; actions?: Reac
       )}
 
       <StatGrid className="mt-4">
-        <StatCard icon={Clock} label={t("hero.lastSync")} value={lastSync ? agoText(lastSync) : t("never")} hint={lastRun ? t("hero.lastRunHint", { source: lastRun.source === "api" ? "API" : t("file"), status: runStatusLabel(lastRun.status) }) : undefined} tone={lastRun?.status === "error" ? "down" : "neutral"} />
+        <StatCard icon={Clock} label={t("hero.lastSync")} value={lastSync ? agoText(lastSync) : t("never")} hint={lastRun ? t("hero.lastRunHint", { source: lastRun.source === "api" ? "API" : t("file"), status: runStatusLabel(lastRun.status) }) : undefined} tone={lastRun?.status === "error" ? "down" : syncStale(lastSync).stale ? "warn" : "neutral"} />
         {/* in-process schedule (classic server) → next run; otherwise the HTTP heartbeat → its last tick */}
         <StatCard icon={Server} label={t("hero.nextAuto")} value={scheduler.enabled ? untilText(scheduler.nextRunAt) : status.tick?.last ? agoText(status.tick.last.startedAt) : t("hero.off")} hint={scheduler.enabled ? t("hero.every", { minutes: scheduler.minutes ?? 0 }) : status.tick?.last ? t("bg.title") : t("hero.notSet")} />
         <StatCard label={t("hero.accountsTitle")} value={`${accounts.mapped} / ${accounts.total}`} hint={accounts.unmapped.length ? t("hero.unmapped", { list: accounts.unmapped.join(", ") }) : t("hero.allMapped")} tone={accounts.unmapped.length ? "warn" : "neutral"} />
