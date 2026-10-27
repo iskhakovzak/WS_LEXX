@@ -41,6 +41,8 @@ export default {
     quest_failed: { label: "Квест не выполнен", description: "Ученик не выполнил квест куратора к сроку" },
     quest_cancelled: { label: "Квест отменён", description: "Куратор отменил данный вам квест" },
     achievement_earned: { label: "Новое достижение", description: "Получена новая ступень достижения: бронза, серебро, золото или платина" },
+    achievement_summary: { label: "Достижения по истории", description: "Достижения посчитаны по прошлым дням — одно сообщение вместо многих" },
+    kudos_received: { label: "Признание куратора", description: "Куратор отметил ваш торговый день или сделку" },
     reward_eligible: { label: "Можно получить награду", description: "Условие награды из каталога выполнено — её можно запросить" },
     reward_requested: { label: "Запрос награды", description: "Трейдер запросил награду — вручите или отклоните" },
     reward_granted: { label: "Награда вручена", description: "Куратор отметил вашу награду врученной" },

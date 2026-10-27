@@ -60,6 +60,8 @@ const TYPE_DEFS: readonly NotificationTypeDef[] = [
   { type: "quest_failed", group: "review", severity: "info" },
   { type: "quest_cancelled", group: "review", severity: "info" },
   { type: "achievement_earned", group: "review", severity: "info" },
+  { type: "achievement_summary", group: "review", severity: "info" },
+  { type: "kudos_received", group: "review", severity: "info" },
   { type: "reward_eligible", group: "review", severity: "info" },
   { type: "reward_requested", group: "review", severity: "info" },
   { type: "reward_granted", group: "review", severity: "info" },

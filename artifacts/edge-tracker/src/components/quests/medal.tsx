@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 import type { AchievementCategory, AchievementTier } from "@/lib/quests/types";
 
 /** One Greek emblem per category: discipline = hoplite shield, review = scroll, focus = Artemis' bow, risk = the scales
- *  of Themis, planning = temple, learning = oil lamp, growth = olive sprig. */
+ *  of Themis, planning = temple, learning = oil lamp, growth = olive sprig; v2: records = torch, leaks = a sealed amphora,
+ *  mastery = helmet, social = Athena's owl. */
 export const CATEGORY_EMBLEM: Readonly<Record<AchievementCategory, EmblemKey>> = {
   discipline: "shield",
   review: "scroll",
@@ -17,6 +18,10 @@ export const CATEGORY_EMBLEM: Readonly<Record<AchievementCategory, EmblemKey>> =
   planning: "temple",
   learning: "lamp",
   growth: "sprig",
+  records: "torch",
+  leaks: "amphora",
+  mastery: "helmet",
+  social: "owl",
 };
 
 /** Text / tinted fill / ring per tier — Tailwind classes over the medal tokens (no raw colours). */

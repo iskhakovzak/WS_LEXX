@@ -206,6 +206,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /psychology/weekly-report/recalculate": owner("own report; others need a staff role, not on the matrix (checked on the body)"),
   "POST /quests/:id/cancel": cap("journal.review", "curator settles a trader's quest (checked after the quest loads)"),
   "POST /quests/:id/complete": cap("journal.review", "curator settles a trader's quest (checked after the quest loads)"),
+  "POST /quests/achievements/seen": member("the viewer marks the own achievement ceremonies seen (checked after the body is validated)"),
   "POST /ratings/:id/ack": owner("the rated trader acknowledges; others need ratings.write (checked after the row loads)"),
   "POST /reports": member("any member reports content to moderation"),
   "POST /risk/breach-reviews/:id/action": cap("journal.review", "curator handles a breach review (journal.review or risk.limits.edit, checked after the row loads)"),

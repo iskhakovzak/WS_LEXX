@@ -45,6 +45,11 @@ export function renderCapitalReason(item: CapReason, lang: Lang = "ru"): string 
         score: item.score, index: item.index == null ? "—" : `${item.index}/100`, violations: item.violations,
         closed: item.closedPct == null ? "—" : `${item.closedPct}%`, stops: item.stopDays,
       });
+    case "achievements": {
+      if (item.resetBy) return t("achievementsReset", { day: item.resetBy });
+      const names = item.parts.map((p) => capitalT.tryFor(lang, `achievementKind.${p.kind}`) ?? p.kind);
+      return t("achievements", { value: Math.round(item.value * 100), list: [...new Set(names)].join(", ") });
+    }
     case "verdict": {
       const bp = item.fromBp != null && item.toBp != null && item.toBp !== item.fromBp ? `; ${t("verdict.bp", { from: usd(item.fromBp), to: usd(item.toBp) })}` : "";
       if (item.direction === "keep") return item.fromDaily == null ? t("verdict.keepNone") : t("verdict.keep", { from: usd(item.fromDaily) });

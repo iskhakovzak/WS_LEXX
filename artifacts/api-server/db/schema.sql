@@ -165,6 +165,7 @@ CREATE SEQUENCE public.academy_sessions_id_seq AS integer START WITH 1 INCREMENT
 CREATE SEQUENCE public.academy_stage_criteria_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_stage_history_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_submissions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.achievement_kudos_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.activity_log_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.ai_assistant_audit_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_assistant_messages_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
@@ -656,6 +657,19 @@ CREATE TABLE public.academy_trader_stage (
   updated_by text,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT academy_trader_stage_pkey PRIMARY KEY (user_name)
+);
+
+CREATE TABLE public.achievement_kudos (
+  id integer DEFAULT nextval('public.achievement_kudos_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  author text NOT NULL,
+  day text NOT NULL,
+  trade_id integer,
+  note text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT achievement_kudos_pkey PRIMARY KEY (id),
+  CONSTRAINT achievement_kudos_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT achievement_kudos_self_check CHECK (trader <> author)
 );
 
 CREATE TABLE public.activity_log (
@@ -2970,6 +2984,9 @@ CREATE TABLE public.trader_achievements (
   earned_on text NOT NULL,
   target integer DEFAULT 0 NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
+  detail jsonb,
+  lost_on text,
+  seen_at timestamp with time zone,
   CONSTRAINT trader_achievements_pkey PRIMARY KEY (trader, line, tier)
 );
 
@@ -3497,6 +3514,7 @@ ALTER SEQUENCE public.academy_sessions_id_seq OWNED BY public.academy_sessions.i
 ALTER SEQUENCE public.academy_stage_criteria_id_seq OWNED BY public.academy_stage_criteria.id;
 ALTER SEQUENCE public.academy_stage_history_id_seq OWNED BY public.academy_stage_history.id;
 ALTER SEQUENCE public.academy_submissions_id_seq OWNED BY public.academy_submissions.id;
+ALTER SEQUENCE public.achievement_kudos_id_seq OWNED BY public.achievement_kudos.id;
 ALTER SEQUENCE public.activity_log_id_seq OWNED BY public.activity_log.id;
 ALTER SEQUENCE public.ai_assistant_audit_id_seq OWNED BY public.ai_assistant_audit.id;
 ALTER SEQUENCE public.ai_assistant_messages_id_seq OWNED BY public.ai_assistant_messages.id;
@@ -3636,6 +3654,8 @@ CREATE INDEX academy_stage_criteria_stage_idx ON public.academy_stage_criteria U
 CREATE INDEX academy_stage_history_user_idx ON public.academy_stage_history USING btree (user_name, created_at DESC);
 CREATE INDEX academy_submissions_status_idx ON public.academy_submissions USING btree (status) WHERE (archived_at IS NULL);
 CREATE INDEX academy_submissions_user_idx ON public.academy_submissions USING btree (user_name, assignment_id);
+CREATE UNIQUE INDEX achievement_kudos_once ON public.achievement_kudos USING btree (author, trader, day, COALESCE(trade_id, 0));
+CREATE INDEX achievement_kudos_trader_idx ON public.achievement_kudos USING btree (trader, day);
 CREATE INDEX activity_log_section_entity_idx ON public.activity_log USING btree (section, entity_id, created_at DESC);
 CREATE INDEX ai_assistant_audit_user_idx ON public.ai_assistant_audit USING btree (user_name, created_at DESC);
 CREATE INDEX ai_assistant_messages_user_idx ON public.ai_assistant_messages USING btree (user_name, id DESC) WHERE (cleared_at IS NULL);

@@ -1,6 +1,7 @@
 /**
  * Quests client (api-server routes/quests.ts): GET /api/quests/me, GET /api/quests/trader/:name (staff),
- * GET /api/quests/templates (curator catalog), POST /api/quests/assign, POST /api/quests/:id/cancel | complete.
+ * GET /api/quests/templates (curator catalog), POST /api/quests/assign, POST /api/quests/:id/cancel | complete;
+ * achievements v2: GET /api/quests/catalog, POST /api/quests/achievements/seen, POST /api/quests/kudos, GET /api/quests/kudos/:name.
  * Texts travel as keys (rendered by the `quests` dictionaries), so a language switch needs no refetch.
  * 403 / a missing route → null: the role has no quests, or the API build does not have them yet.
  */
@@ -8,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { apiErrorStatus } from "@/lib/api/errors";
 import { KEYS, POLL, STALE } from "@/lib/api/keys";
-import type { AssignQuestBody, Quest, QuestsMe, TextItem } from "@/lib/quests/types";
+import type { AchievementCatalogEntry, AssignQuestBody, Quest, QuestsMe, TextItem } from "@/lib/quests/types";
 
 export const questKeys = {
   all: ["quests"] as const,
@@ -125,5 +126,83 @@ export function useCancelQuest() {
   return useMutation({
     mutationFn: (id: number) => http.post<unknown>(`/api/quests/${id}/cancel`, {}),
     onSuccess: invalidate,
+  });
+}
+
+// ─── achievements v2: catalog, ceremony seen, kudos ─────────────────────────
+
+export type CatalogResponse = { entries: AchievementCatalogEntry[]; kudosEnabled: boolean; enabled: boolean };
+
+/** Every achievement line with its criteria (staff). */
+export function useAchievementCatalog(enabled: boolean) {
+  return useQuery({
+    queryKey: ["quests", "catalog"] as const,
+    queryFn: ({ signal }) => orNull(http.get<CatalogResponse>("/api/quests/catalog", { signal })),
+    enabled,
+    retry: false,
+    staleTime: STALE.default,
+    meta: { i18n: false },
+  });
+}
+
+/** Switches lines off / on: the desk setting achievements.disabled (admin, PUT /api/admin/settings). */
+export function useSaveDisabledLines() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: readonly string[]) => http.put("/api/admin/settings", { changes: [{ key: "achievements.disabled", value: [...ids].sort().join(",") }] }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["quests"] });
+      void qc.invalidateQueries({ queryKey: ["admin-console", "desk-settings"] });
+    },
+  });
+}
+
+/** The viewer saw these ceremonies ("line|tier"). */
+export function useMarkSeen() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (keys: readonly string[]) => http.post<{ ok: boolean }>("/api/quests/achievements/seen", { keys }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: questKeys.me() }),
+  });
+}
+
+export type Kudos = { id: number; trader: string; author: string; day: string; tradeId: number | null; note: string | null; createdAt: string };
+
+export function useKudos(trader: string | null) {
+  return useQuery({
+    queryKey: ["quests", "kudos", trader ?? ""] as const,
+    queryFn: ({ signal }) => orNull(http.get<{ kudos: Kudos[] }>(`/api/quests/kudos/${enc(trader!)}`, { signal })),
+    enabled: !!trader,
+    retry: false,
+    staleTime: STALE.default,
+    meta: { i18n: false },
+  });
+}
+
+export function useGiveKudos() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { trader: string; day: string; tradeId?: number | null; note?: string }) => http.post<{ ok: boolean; kudos: Kudos }>("/api/quests/kudos", body),
+    onSuccess: (_r, body) => {
+      void qc.invalidateQueries({ queryKey: ["quests", "kudos", body.trader] });
+      void qc.invalidateQueries({ queryKey: questKeys.trader(body.trader) });
+    },
+  });
+}
+
+export type DayTrade = { id: number; ticker: string; date: string; pnl: number | null };
+
+/** The trader's trades of one NY day (kudos tied to a trade). */
+export function useDayTrades(trader: string | null, day: string, next: string) {
+  return useQuery({
+    queryKey: ["quests", "dayTrades", trader ?? "", day, next] as const,
+    queryFn: async ({ signal }) => {
+      const rows = await orNull(http.get<DayTrade[]>(`/api/trades?trader=${enc(trader!)}&from=${day}&to=${next}&lite=1`, { signal }));
+      return (rows ?? []).filter((t) => String(t.date).slice(0, 10) === day);
+    },
+    enabled: !!trader && /^\d{4}-\d{2}-\d{2}$/.test(day),
+    retry: false,
+    staleTime: STALE.default,
+    meta: { i18n: false },
   });
 }

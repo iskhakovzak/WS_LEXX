@@ -10,7 +10,8 @@ export type Direction = "raise" | "keep" | "cut";
 
 /** Desk settings of the engine (lib/settings/registry `capital.*`), read once per run (settings.ts). */
 export type CapitalSettings = {
-  weights: { edge: number; regime: number; discipline: number };
+  /** `achievements` — the positive-only weight of big achievements (lib/achievements/signal; 0 when switched off). */
+  weights: { edge: number; regime: number; discipline: number; achievements?: number };
   /** Max step of one proposal, % of the current daily loss limit. */
   maxStepUpPct: number;
   maxStepDownPct: number;
@@ -63,6 +64,8 @@ export type CapTraderInput = {
   ladderAction: LadderAction | null;
   /** A tier proposal is already waiting in the queue. */
   pendingTier: boolean;
+  /** Big achievements as a positive signal 0 … 1 (lib/achievements/signal); absent / null = not used. */
+  achievements?: { value: number; parts: { kind: string; line: string; tier: string; weight: number }[]; resetBy: string | null } | null;
 };
 
 export type CapTier = { key: string; order: number; dailyLossLimit: number | null };
@@ -97,6 +100,8 @@ export type CapReason =
   | { code: "regime"; regime: RegimeKey; usd: { theta: number; lo: number; hi: number } | null; days: number }
   | { code: "noRegime" }
   | { code: "discipline"; score: number | null; index: number | null; violations: number; closedPct: number | null; stopDays: number }
+  /** Big achievements (a held setup mastery, closed leaks, clean months, comebacks) — value 0 … 1, or reset by a violation. */
+  | { code: "achievements"; value: number; parts: { kind: string; line: string; tier: string; weight: number }[]; resetBy: string | null }
   | { code: "verdict"; direction: Direction; pct: number; fromDaily: number | null; toDaily: number | null; fromBp: number | null; toBp: number | null }
   | { code: "gate"; gate: GateCode; value?: number | null; limit?: number | null; action?: string };
 
