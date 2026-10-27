@@ -51,6 +51,7 @@ const TEXT: Record<string, readonly string[]> = {
   academy_stages: ["updated_by"],
   academy_submissions: ["graded_by", "user_name"],
   academy_trader_stage: ["updated_by", "user_name"],
+  achievement_kudos: ["author", "trader"],
   activity_log: ["trader"],
   ai_assistant_audit: ["user_name"],
   ai_assistant_messages: ["user_name"],
@@ -259,6 +260,7 @@ export const KEPT: Readonly<Record<string, string>> = {
   // json: operational logs / snapshots of what happened
   "app_error_occurrences.context": "error log",
   "job_runs.details": "job run log",
+  "trader_achievements.detail": "what a per-setup / per-leak / path-step achievement is about (setup name, slice key, metric) — not a person",
   "trader_progress_snapshots.diagnosis": "plateau diagnosis pack: slice codes, $ per day, fee share — no names",
   "curator_interventions.params": "intervention parameters: codes and numbers (rule kind, tier, mistake), no names",
   "usage_events.meta": "no names by design (lib/usage/keys.ts)",

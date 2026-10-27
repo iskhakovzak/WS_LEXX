@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, Plus, Swords, X } from "lucide-react";
+import { Award, Check, ChevronDown, Plus, Swords, X } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,9 @@ import { AssignQuestDialog } from "./assign-dialog";
 import { achievementTitle, earnedTiers, questTitle, tierLabel } from "./model";
 import { Medal } from "./medal";
 import { QuestsBoard } from "./quests-board";
+import { AchievementsGrid } from "./achievements-grid";
+import { KudosDialog } from "./kudos-dialog";
+import { useKudos } from "./api";
 
 /** Totals + earned medals in one line (highest tier colour; the title says the tier and date). */
 function Summary({ data }: { data: QuestsMe }) {
@@ -47,17 +50,61 @@ function Summary({ data }: { data: QuestsMe }) {
   );
 }
 
+/** The trader's kudos from curators (newest first, up to 5). */
+function KudosList({ trader }: { trader: string }) {
+  const { t } = questsI18n.useT();
+  const q = useKudos(trader);
+  const list = q.data?.kudos ?? [];
+  if (!list.length) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="micro-label">{t("kudos.list")}</span>
+      <ul className="flex flex-col gap-0.5">
+        {list.slice(0, 5).map((k) => (
+          <li key={k.id} className="flex min-w-0 items-baseline gap-2 text-xs">
+            <Award className="h-3.5 w-3.5 shrink-0 self-center text-medal-gold" aria-hidden="true" />
+            <span className="shrink-0 text-muted-foreground">{t("kudos.by", { curator: personName(k.author), date: fmtDayMonth(k.day) })}</span>
+            {k.note && <span className="min-w-0 truncate text-foreground" title={k.note}>{k.note}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Every achievement of the trader (folded by default: the cabinet leads with today's work). */
+function AllAchievements({ data }: { data: QuestsMe }) {
+  const { t } = questsI18n.useT();
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="flex flex-col gap-2">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="inline-flex min-h-8 items-center gap-1 self-start rounded-lg px-1 text-xs font-medium text-primary hover:underline">
+        {t("profile.all")}
+        <ChevronDown className={open ? "h-3.5 w-3.5 rotate-180" : "h-3.5 w-3.5"} aria-hidden="true" />
+      </button>
+      {open && <AchievementsGrid list={data.achievements} />}
+    </div>
+  );
+}
+
 /** Presentational (tests): the trader's quests (curator quests cancellable) and achievements summary. */
-export function CuratorQuestsView({ data, onGive, onCancel, onComplete }: { data: QuestsMe; onGive: () => void; onCancel: (q: Quest) => void; onComplete: (q: Quest) => void }) {
+export function CuratorQuestsView({ data, onGive, onCancel, onComplete, onKudos, trader }: { data: QuestsMe; onGive: () => void; onCancel: (q: Quest) => void; onComplete: (q: Quest) => void; onKudos?: () => void; trader?: string }) {
   const { t } = questsI18n.useT();
   return (
     <Panel
       title={t("curator.title")}
       icon={Swords}
-      actions={<Button type="button" size="sm" onClick={onGive}><Plus className="h-3.5 w-3.5" /> {t("curator.give")}</Button>}
+      actions={
+        <span className="flex flex-wrap items-center gap-1.5">
+          {onKudos && <Button type="button" size="sm" variant="outline" onClick={onKudos}><Award className="h-3.5 w-3.5" /> {t("kudos.give")}</Button>}
+          <Button type="button" size="sm" onClick={onGive}><Plus className="h-3.5 w-3.5" /> {t("curator.give")}</Button>
+        </span>
+      }
     >
       <div className="flex flex-col gap-3">
         <Summary data={data} />
+        {trader && <KudosList trader={trader} />}
+        <AllAchievements data={data} />
         <QuestsBoard
           quests={data.quests}
           today={data.today}
@@ -89,6 +136,7 @@ export function CuratorQuestsPanel({ trader }: { trader: string }) {
   const [giving, setGiving] = React.useState(false);
   const [cancelling, setCancelling] = React.useState<Quest | null>(null);
   const [completing, setCompleting] = React.useState<Quest | null>(null);
+  const [kudos, setKudos] = React.useState(false);
   const cancel = useCancelQuest();
   const complete = useCompleteQuest();
   // Both confirmations close at once; the result arrives as a toast and the lists refetch in the background.
@@ -118,7 +166,8 @@ export function CuratorQuestsPanel({ trader }: { trader: string }) {
   };
   return (
     <>
-      <CuratorQuestsView data={q.data} onGive={() => setGiving(true)} onCancel={setCancelling} onComplete={setCompleting} />
+      <CuratorQuestsView data={q.data} trader={trader} onGive={() => setGiving(true)} onCancel={setCancelling} onComplete={setCompleting} onKudos={() => setKudos(true)} />
+      <KudosDialog open={kudos} onOpenChange={setKudos} trader={trader} />
       <AssignQuestDialog open={giving} onOpenChange={setGiving} trader={trader} today={q.data.today} />
       <AlertDialog open={!!cancelling} onOpenChange={(v) => { if (!v) setCancelling(null); }}>
         <AlertDialogContent>

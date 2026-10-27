@@ -38,6 +38,8 @@ export default {
     quest_failed: { label: "Kvest bajarilmadi", description: "Shogird kurator kvestini muddatida bajarmadi" },
     quest_cancelled: { label: "Kvest bekor qilindi", description: "Kurator sizga bergan kvestni bekor qildi" },
     achievement_earned: { label: "Yangi yutuq", description: "Yutuqning yangi bosqichi: bronza, kumush, oltin yoki platina" },
+    achievement_summary: { label: "Tarix boʻyicha yutuqlar", description: "Yutuqlar oʻtgan kunlar boʻyicha hisoblandi — koʻp xabar oʻrniga bitta" },
+    kudos_received: { label: "Kurator eʼtirofi", description: "Kurator savdo kuningizni yoki bitimingizni belgiladi" },
     reward_eligible: { label: "Mukofot olish mumkin", description: "Katalogdagi mukofot sharti bajarildi — uni soʻrashingiz mumkin" },
     reward_requested: { label: "Mukofot soʻrovi", description: "Treyder mukofot soʻradi — topshiring yoki rad eting" },
     reward_granted: { label: "Mukofot topshirildi", description: "Kurator mukofotingizni topshirilgan deb belgiladi" },

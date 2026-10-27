@@ -114,6 +114,7 @@ export const tierName = (tier: string): string => questsI18n.tryT(`achievements.
 /** One Greek emblem per achievement category (same as the quests medals). */
 export const CATEGORY_EMBLEM: Readonly<Record<string, EmblemKey>> = {
   discipline: "shield", review: "scroll", focus: "bow", risk: "scales", planning: "temple", learning: "lamp", growth: "sprig",
+  records: "torch", leaks: "amphora", mastery: "helmet", social: "owl",
 };
 export const emblemOf = (category: string): EmblemKey => CATEGORY_EMBLEM[category] ?? "unknown";
 export const metalOf = (tier: string): Metal | null => (tier === "bronze" || tier === "silver" || tier === "gold" || tier === "platinum" ? tier : null);

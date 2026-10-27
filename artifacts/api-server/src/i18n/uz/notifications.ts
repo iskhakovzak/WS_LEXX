@@ -183,6 +183,8 @@ export default {
     quest_failed: { label: "Kvest bajarilmadi", description: "Siz bergan kvest bajarilmadi yoki muddati tugadi" },
     quest_cancelled: { label: "Kvest bekor qilindi", description: "Kurator sizga bergan kvestni bekor qildi" },
     achievement_earned: { label: "Yutuq", description: "Yutuqning yangi pogʻonasi: kontrakt seriyasi, tahlillar, ochilishdan oldin reja, simulyator va boshqalar" },
+    achievement_summary: { label: "Yutuqlar qayta hisoblandi", description: "Yutuqlar bir vaqtda koʻp oʻtgan kunlar boʻyicha hisoblanganda bitta xabar" },
+    kudos_received: { label: "Kurator eʼtirofi", description: "Kurator kuningizni yoki bitimingizni belgiladi" },
     reward_eligible: { label: "Mukofot mavjud", description: "Desk katalogidagi mukofot shartini bajardingiz — uni soʻrashingiz mumkin" },
     reward_requested: { label: "Mukofot soʻrovi", description: "Treyder katalogdagi mukofotni topshirishni soʻramoqda (kuratorlar va adminlar uchun)" },
     reward_granted: { label: "Mukofot topshirildi", description: "Kurator sizga katalogdagi mukofotni topshirdi" },

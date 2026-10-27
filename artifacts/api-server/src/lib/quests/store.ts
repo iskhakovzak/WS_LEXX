@@ -135,7 +135,8 @@ export async function markAssignedNoticeRead(trader: string, questId: number): P
 
 // ─── achievements ───────────────────────────────────────────────────────────
 
-export type StoredAchievement = { line: string; tier: string; date: string; target: number };
+/** `detail` — what a dynamic line is about (setup / slice / path step); `quiet` — stored seen (no ceremony: history). */
+export type StoredAchievement = { line: string; tier: string; date: string; target: number; detail?: Record<string, unknown> | null; quiet?: boolean };
 
 export async function achievementsOf(trader: string): Promise<StoredAchievement[]> {
   const { rows } = await pool
@@ -150,9 +151,10 @@ export async function achievementsOf(trader: string): Promise<StoredAchievement[
 /** Stores one tier (once). True when this call awarded it. */
 export async function insertAchievement(trader: string, a: StoredAchievement): Promise<boolean> {
   const { rows } = await pool.query(
-    `INSERT INTO trader_achievements (trader, line, tier, earned_on, target) VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO trader_achievements (trader, line, tier, earned_on, target, detail, seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, CASE WHEN $7::boolean THEN now() END)
      ON CONFLICT (trader, line, tier) DO NOTHING RETURNING line`,
-    [trader, a.line, a.tier, a.date, a.target],
+    [trader, a.line, a.tier, a.date, a.target, a.detail ? JSON.stringify(a.detail) : null, !!a.quiet],
   );
   return rows.length > 0;
 }

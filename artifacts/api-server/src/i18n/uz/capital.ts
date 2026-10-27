@@ -19,6 +19,9 @@ export default {
   noRegime: "Bu hafta bozor rejimi belgilanmagan — umumiy edge hisobga olinadi",
   discipline: "Intizom {score}/100: indeks {index}, {violations} ta buzilish, EOD kunlarning {closed} qismida yopilgan, {stops} ta risk to'xtashi",
   disciplineNone: "Intizomni baholab bo'lmaydi: oynada savdo kunlari yo'q",
+  achievements: "Yutuqlar {value}/100 (qarorga qoʻshimcha, asos emas): {list}",
+  achievementsReset: "Yutuqlar bonusi nolga tushdi: {day} kuni buzilish",
+  achievementKind: { setup: "setap ustasi", leak: "yopilgan yoʻqotish", cleanMonth: "toza oy", comeback: "stopdan keyin qaytish" },
   verdict: {
     raise: "Kunlik zarar limitini {pct}% oshirish: {from} → {to}",
     cut: "Kunlik zarar limitini {pct}% kamaytirish: {from} → {to}",

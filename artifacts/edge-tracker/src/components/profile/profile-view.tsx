@@ -2,6 +2,7 @@
  * The whole profile for one person: hero → «Характеристика» → key numbers → equity + style → the year → slices →
  * edge + extras → «Автобиография». One query (components/profile/api); 403 = the closed view, 404 = not found.
  */
+import type { ReactNode } from "react";
 import { BookText, CandlestickChart, ClipboardList, Lock, SearchX, Sprout } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { BentoGrid, EmptyState, ErrorState, Page, PanelSkeleton, SkeletonBlock, StatGridSkeleton } from "@/components/ds";
@@ -75,12 +76,16 @@ function HeroActions({ p }: { p: ProfileResponse }) {
   );
 }
 
-function ProfileBody({ p }: { p: ProfileResponse }) {
+/** The achievements shelf, rendered by the page (components/quests is another feature). */
+export type AchievementsSlot = (who: { name: string; self: boolean }) => ReactNode;
+
+function ProfileBody({ p, achievements }: { p: ProfileResponse; achievements?: AchievementsSlot }) {
   const { t } = profileI18n.useT();
   const noTrades = p.stats.trades === 0;
   return (
     <Page>
       <ProfileHero profile={p} actions={<HeroActions p={p} />} />
+      {achievements?.({ name: p.person.name, self: p.person.self })}
       {noTrades ? (
         <EmptyState icon={Sprout} title={t("empty.title")} description={t("empty.description")} />
       ) : (
@@ -109,10 +114,10 @@ function ProfileBody({ p }: { p: ProfileResponse }) {
   );
 }
 
-export function ProfileView({ profileRef }: { profileRef: ProfileRef }) {
+export function ProfileView({ profileRef, achievements }: { profileRef: ProfileRef; achievements?: AchievementsSlot }) {
   const { t } = profileI18n.useT();
   const q = useQuery(profileQuery(profileRef));
-  if (q.data) return <ProfileBody p={q.data} />;
+  if (q.data) return <ProfileBody p={q.data} achievements={achievements} />;
   if (q.isError) {
     const status = apiErrorStatus(q.error);
     if (status === 403) return <Closed kind="denied" />;

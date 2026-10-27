@@ -139,7 +139,7 @@ export function buildTimeline(x: TimelineInput): TimelineEvent[] {
 
   for (const s of x.stages) ev.push({ kind: "stage_change", day: s.day, params: { from: s.from, to: s.to, action: s.action } });
   for (const r of x.readiness) ev.push({ kind: "readiness", day: r.day, params: { stage: r.stage } });
-  for (const a of newest(x.achievements, MAX_ACHIEVEMENT_EVENTS)) ev.push({ kind: "achievement", day: a.day, params: { line: a.line, tier: a.tier } });
+  for (const a of newest(x.achievements.filter((y) => !y.line.includes(":")), MAX_ACHIEVEMENT_EVENTS)) ev.push({ kind: "achievement", day: a.day, params: { line: a.line, tier: a.tier } });
 
   const bestDay = days.reduce<DayAgg | null>((b, d) => (d.net > 0 && (!b || d.net > b.net) ? d : b), null);
   if (bestDay) ev.push({ kind: "best_day", day: bestDay.day, params: { net: r2(bestDay.net), trades: bestDay.n } });
