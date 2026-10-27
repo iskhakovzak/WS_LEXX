@@ -20,6 +20,7 @@ import { MAX_ACTIVE, parseParams, type CommitmentKind, type CommitmentParams } f
 import { gatherFacts, weekOf, type MentorFacts } from "./facts";
 import { contextBlock, mentorContext, mentorSystem, rhythmUserTurn } from "./prompt";
 import { callMentor, totalUsage, type MentorCall } from "./run";
+import { guardStopped } from "./stopGuard";
 import { MENTOR_VERSION, type Brief, type ChatAnswer, type Debrief, type MentorKind, type ModelNote, type Proposal, type RhythmKind, type Weekly } from "./schema";
 import {
   addNote, closeCommitment, insertCommitment, listCommitments, loadThread, saveMessage, upsertDigest,
@@ -180,12 +181,14 @@ export async function rhythm(c: Caller, kind: RhythmKind, o: { force: boolean; e
   }
   await charge(c, kind, call, started, failure);
   if (!call) throw failure;
-  const content = await applyRhythm(kind, call.value as Brief | Debrief | Weekly, f);
+  // A stopped trader is told so whatever the model wrote (lib/mentor/stopGuard).
+  const value = guardStopped(kind, call.value as Brief | Debrief | Weekly, f.risk, c.lang);
+  const content = await applyRhythm(kind, value, f);
   const digest = await upsertDigest({
     trader: c.trader, kind, period: periodOf(kind, c.today), lang: c.lang, inputHash: req.hash, content, status: "ready", source: "live",
     deep: call.deep, units: call.units, costUsd: call.costUsd,
   });
-  await saveMessage(c.trader, { role: "mentor", kind, content: openerOf(kind, call.value as Brief | Debrief | Weekly) });
+  await saveMessage(c.trader, { role: "mentor", kind, content: openerOf(kind, value) });
   return { digest, cached: false };
 }
 
@@ -222,7 +225,7 @@ export async function chat(c: Caller, text: string): Promise<ChatResult> {
   }
   await charge(c, "chat", call, started, failure);
   if (!call) throw failure;
-  const answer: ChatAnswer = call.value;
+  const answer: ChatAnswer = guardStopped("chat", call.value, f.risk, c.lang);
   const notes = await addNotes(c.trader, answer.notes, f);
   const commitment = answer.commitment ? await addCommitment(c.trader, answer.commitment, { source: "mentor", by: "mentor", startedOn: c.today, active: f.commitments.active }) : null;
   const message = await saveMessage(c.trader, { role: "mentor", kind: "chat", content: answer.reply });

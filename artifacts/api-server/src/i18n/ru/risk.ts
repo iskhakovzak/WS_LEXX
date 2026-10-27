@@ -31,6 +31,19 @@ export default {
       drawdown: "До макс. просадки {left}.",
     },
   },
+  /** The mentor's deterministic stop guard (lib/mentor/stopGuard): what a stopped trader is told, whatever the model wrote. */
+  mentorStop: {
+    headline: {
+      drawdown: "Торговля остановлена до решения куратора",
+      weekly: "Недельный лимит исчерпан — до понедельника без сделок",
+      stop: "Дневной стоп — сегодня больше без сделок",
+    },
+    rule: {
+      drawdown: "Не торговать до решения куратора — напиши куратору.",
+      weekly: "Не торговать до понедельника — напиши куратору.",
+      stop: "Сегодня больше не торговать — напиши куратору.",
+    },
+  },
   alerts: {
     daily: "Дневной лимит убытка",
     weekly: "Недельный лимит убытка",

@@ -33,6 +33,18 @@ export default {
       drawdown: "{left} to max drawdown.",
     },
   },
+  mentorStop: {
+    headline: {
+      drawdown: "Trading is stopped until your curator decides",
+      weekly: "Weekly limit used up — no trades until Monday",
+      stop: "Daily stop — no more trades today",
+    },
+    rule: {
+      drawdown: "Don't trade until your curator decides — write to your curator.",
+      weekly: "Don't trade until Monday — write to your curator.",
+      stop: "No more trades today — write to your curator.",
+    },
+  },
   alerts: {
     daily: "Daily loss limit",
     weekly: "Weekly loss limit",

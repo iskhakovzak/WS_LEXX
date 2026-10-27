@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { commitmentVerdict, parseParams, trackCommitment, type TrackTrade } from "../commitments";
-import { currentDrawdown, detectEscalations, freshEscalations, type TradedDay } from "../escalation";
+import { detectEscalations, freshEscalations, type TradedDay } from "../escalation";
 
 const at = (day: string, hhmm: string) => Date.parse(`${day}T${hhmm}:00-04:00`);
 let seq = 0;
@@ -60,7 +60,7 @@ describe("commitment tracking", () => {
 
 describe("escalation rules", () => {
   const day = (d: string, net: number, tilt = false): TradedDay => ({ day: d, trades: 4, net, tilt });
-  const base = { today: "2026-10-27", breaks: new Map<string, number>(), maxDrawdown: null, lastActivity: "2026-10-27" };
+  const base = { today: "2026-10-27", breaks: new Map<string, number>(), maxDrawdown: null, drawdownFromPeak: 0, lastActivity: "2026-10-27" };
 
   it("a tilt streak counts the latest traded days in a row", () => {
     const days = [day("2026-10-21", 10, false), day("2026-10-22", -40, true), day("2026-10-23", -60, true), day("2026-10-26", -20, true)];
@@ -71,8 +71,8 @@ describe("escalation rules", () => {
   it("repeated commitment breaks inside the window, drawdown near the limit", () => {
     const breaks = new Map([["2026-10-26", 2], ["2026-10-27", 2], ["2026-10-01", 9]]);
     const days = [day("2026-10-22", 500), day("2026-10-23", -300), day("2026-10-26", -250)];
-    expect(currentDrawdown(days.map((d) => d.net))).toBe(550);
-    const out = detectEscalations({ ...base, days, breaks, maxDrawdown: 600 });
+    // The drawdown from the peak comes from the risk desk's state (lib/coreMetrics/risk), not from the mentor's days.
+    const out = detectEscalations({ ...base, days, breaks, maxDrawdown: 600, drawdownFromPeak: 550 });
     expect(out).toContainEqual({ rule: "rule_breaks", params: { count: 4, days: 5 } });
     expect(out).toContainEqual({ rule: "drawdown_near_limit", params: { drawdown: 550, limit: 600, pct: 92 } });
   });

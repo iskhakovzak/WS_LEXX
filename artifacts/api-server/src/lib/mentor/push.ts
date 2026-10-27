@@ -29,6 +29,7 @@ import { gatherFacts } from "./facts";
 import { addResponseUsage, mentorParams, mentorPlan, totalUsage, type MentorCall } from "./run";
 import { parseMentor, type Brief, type Debrief, type RhythmKind } from "./schema";
 import { applyRhythm, openerOf, periodOf, rhythmRequest } from "./service";
+import { guardStopped } from "./stopGuard";
 import { digestExists, failDigests, pendingBatches, pendingOf, saveMessage, setDigestBatch, upsertDigest } from "./store";
 
 /** Budget units one push request is assumed to take when fitting the desk cap (a brief / debrief is ~3–8K). */
@@ -138,9 +139,10 @@ async function poll(client: BatchClient, batchId: string): Promise<number> {
     }, false);
     if (!parsed.ok) { await failDigests([row.id]); continue; }
     const facts = await gatherFacts(row.trader, row.period);
-    const content = await applyRhythm(kind, parsed.value as Brief | Debrief, facts);
+    const value = guardStopped(kind, parsed.value as Brief | Debrief, facts.risk, row.lang);
+    const content = await applyRhythm(kind, value, facts);
     await upsertDigest({ trader: row.trader, kind, period: row.period, lang: row.lang, inputHash: row.inputHash, content, status: "ready", source: "batch", deep: !!plan.advisor, units: acc.units, costUsd: acc.costUsd });
-    await saveMessage(row.trader, { role: "mentor", kind, content: openerOf(kind, parsed.value as Brief | Debrief) });
+    await saveMessage(row.trader, { role: "mentor", kind, content: openerOf(kind, value) });
     await insertNotification({ userName: row.trader, type: "mentor_ready", params: { variant: kind }, link: "/coach", entityType: "mentor_digest", entityId: row.id });
     done++;
   }

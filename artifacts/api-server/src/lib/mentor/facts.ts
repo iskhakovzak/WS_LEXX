@@ -19,10 +19,11 @@ import { regimeEdge } from "../marketRegime/edge";
 import { playbookToday } from "../playbookToday/service";
 import { focusFor, mistakesByTrade } from "../daily/service";
 import { behaviorTradesOf } from "../daily/load";
-import { loadLimits } from "../riskData";
+import { riskStateOf, riskSummary, UNKNOWN_RISK, type RiskSummary } from "../coreMetrics/risk";
+import type { DayRow } from "../riskMetrics";
 import type { BehaviorTrade } from "../behaviorEngine";
 import { commitmentVerdict, trackCommitment, type Progress, type Verdict } from "./commitments";
-import { currentDrawdown, lastWeekdays, type TradedDay } from "./escalation";
+import { lastWeekdays, type TradedDay } from "./escalation";
 import { listCommitments, listNotes, hiddenFacts, type Commitment, type Note } from "./store";
 
 export type FactKind = "stage" | "strength" | "weakness" | "leak" | "edge" | "regime" | "agreement" | "focus";
@@ -47,9 +48,11 @@ export type MentorFacts = {
   days: DayStat[];
   /** Tilt / revenge / martingale flags per traded day (escalation). */
   tiltDays: Set<string>;
-  maxDrawdown: number | null;
-  dailyLossLimit: number | null;
-  drawdownNow: number;
+  /**
+   * The risk state from the SAME loader as the dashboard hero (lib/coreMetrics/risk → GET /risk/me): the stop, the
+   * drawdown from the equity peak and the limits in effect. A stopped trader is told so, never «trade to −$X».
+   */
+  risk: RiskSummary;
   regime: string | null;
   playbook: { id: number; name: string; fitsRegime: boolean; picked: boolean; verdict: string | null; trades: number; winRate: number | null }[];
   focus: { mistake: string | null; costNet: number | null; count: number; own: string | null } | null;
@@ -69,7 +72,11 @@ async function safe<T>(label: string, fn: () => Promise<T>, fallback: T): Promis
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-export function dayStats(trades: readonly BehaviorTrade[]): DayStat[] {
+/**
+ * Per traded day: trades / wins / losses from the behaviour rows; the day's NET from the risk desk's day rows when there
+ * are any (broker rows win over journal rows — the number the hero shows), else the sum of the behaviour rows.
+ */
+export function dayStats(trades: readonly BehaviorTrade[], dayNets: readonly Pick<DayRow, "date" | "pnl">[] = []): DayStat[] {
   const by = new Map<string, DayStat>();
   for (const t of trades) {
     if (!t.date) continue;
@@ -80,6 +87,8 @@ export function dayStats(trades: readonly BehaviorTrade[]): DayStat[] {
     if (t.result === "loss") d.losses++;
     by.set(t.date, d);
   }
+  const nets = new Map(dayNets.filter((d) => d.pnl != null).map((d) => [d.date, d.pnl as number]));
+  for (const d of by.values()) { const n = nets.get(d.day); if (n != null) d.net = round2(n); }
   return [...by.values()].sort((a, b) => a.day.localeCompare(b.day));
 }
 
@@ -152,13 +161,13 @@ async function playbookFacts(trader: string, regime: string | null): Promise<Men
 /** Everything the mentor knows about `trader` today. */
 export async function gatherFacts(trader: string, today: string): Promise<MentorFacts> {
   const from = addDays(today, -LOOKBACK_DAYS);
-  const [stage, hidden, notes, commitments, trades, limits, checkin, profile, reg, agree, focus] = await Promise.all([
+  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus] = await Promise.all([
     safe("stage", () => stageOf(trader), null),
     safe("hidden", () => hiddenFacts(trader), [] as string[]),
     safe("notes", () => listNotes(trader), [] as Note[]),
     safe("commitments", () => listCommitments(trader), { active: [] as Commitment[], closed: [] as Commitment[] }),
     safe("trades", () => behaviorTradesOf(trader)(from, today), [] as BehaviorTrade[]),
-    safe("limits", () => loadLimits(trader), new Map()),
+    safe("risk", () => riskStateOf(trader, today), null),
     safe("checkin", () => checkinOf(trader, today), null),
     safe("profile", () => profileFacts(trader), [] as Fact[]),
     safe("regime", () => regimeFacts(trader, today), { regime: null, facts: [] as Fact[] }),
@@ -184,15 +193,12 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     : [];
   const hiddenSet = new Set(hidden);
   const facts = [...stageFact, ...profile, ...reg.facts, ...agreementFacts, ...focusFact].map((f) => ({ ...f, hidden: hiddenSet.has(f.key) }));
-  const lim = (limits as Map<string, { maxDrawdown: number | null; dailyLossLimit: number | null }>).get(trader);
-  const days = dayStats(trades);
+  const days = dayStats(trades, riskState?.days ?? []);
   return {
     trader, today, stage, facts, notes,
     commitments: { active, closed: commitments.closed },
     checkin, days, tiltDays,
-    maxDrawdown: lim?.maxDrawdown != null ? Math.abs(lim.maxDrawdown) : null,
-    dailyLossLimit: lim?.dailyLossLimit != null ? Math.abs(lim.dailyLossLimit) : null,
-    drawdownNow: currentDrawdown(days.map((d) => d.net)),
+    risk: riskState ? riskSummary(riskState) : UNKNOWN_RISK,
     regime: reg.regime,
     playbook: hiddenSet.has("playbook") ? [] : await safe("playbook", () => playbookFacts(trader, reg.regime), []),
     focus: focus ? { mistake: focus.mistake, costNet: focus.costNet, count: focus.count, own: focus.ownText ?? null } : null,

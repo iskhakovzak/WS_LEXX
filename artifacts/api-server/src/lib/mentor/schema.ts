@@ -14,7 +14,7 @@ import { z } from "zod";
 import { COMMITMENT_KINDS } from "./commitments";
 import { extractJson } from "../assistant/review/schema";
 
-export const MENTOR_VERSION = 1;
+export const MENTOR_VERSION = 2;
 
 const MENTOR_KINDS = ["brief", "debrief", "weekly", "chat"] as const;
 export type MentorKind = (typeof MENTOR_KINDS)[number];
