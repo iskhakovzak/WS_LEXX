@@ -1,5 +1,5 @@
 /**
- * Mentor storage (migration 0270): memory notes, hidden facts, commitments, the thread, the rhythm digests and the
+ * Mentor storage (migration 0271): memory notes, hidden facts, commitments, the thread, the rhythm digests and the
  * escalations. SQL and row shapes only — the rules live in service.ts / commitments.ts / escalation.ts.
  */
 import { pool } from "@workspace/db";
