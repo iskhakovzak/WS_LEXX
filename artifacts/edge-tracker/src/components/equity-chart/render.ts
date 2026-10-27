@@ -14,7 +14,7 @@ import { fullView, type View } from "./viewport";
 import { equityChartI18n } from "@/i18n/ns/equityChart";
 import { BAR_DIM, CANVAS } from "@/components/shared/charts/theme";
 import {
-  FONT_SIZE, barWidth, bodyWidth, canBlur, chip, clamp01, crisp, easeOut, font, inkOn, monotonePath, overlaps, pill, rr, rr4, splitPaint, yScale,
+  FONT_SIZE, barWidth, bodyWidth, chip, clamp01, crisp, easeOut, font, inkOn, linePath, overlaps, pill, rr, rr4, splitPaint, yScale,
 } from "./paint";
 
 export interface Frame {
@@ -206,7 +206,7 @@ function drawArea(
   const pts = linePoints(f, x, y, a, b);
   if (!pts.length) return;
   const line = new Path2D();
-  monotonePath(line, pts);
+  linePath(line, pts);
   if (pts.length === 1) line.lineTo(pts[0][0] + 0.01, pts[0][1]);
   const y0 = Math.max(pane.y, Math.min(pane.y + pane.h, y(0)));
   const fill = new Path2D(line);
@@ -214,7 +214,7 @@ function drawArea(
   fill.lineTo(pts[0][0], y0);
   fill.closePath();
 
-  // A monotone curve never leaves the points' range, so the points bound the paint.
+  // Straight segments never leave the points' range, so the points bound the paint.
   let top = Infinity, bot = -Infinity;
   for (const p of pts) { top = Math.min(top, p[1]); bot = Math.max(bot, p[1]); }
   const paint = splitPaint(ctx, th, top, bot, y0);
@@ -226,16 +226,6 @@ function drawArea(
   const dense = f.slotPx < 3;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  // Dark themes: a soft glow under the line (one blurred pass of the same stroke).
-  if (th.dark && !dense && canBlur(ctx)) {
-    ctx.save();
-    ctx.filter = `blur(${CANVAS.glowBlur / 2}px)`;
-    ctx.globalAlpha = alpha * CANVAS.glowAlpha;
-    ctx.lineWidth = CANVAS.line + 2;
-    ctx.strokeStyle = paint.stroke;
-    ctx.stroke(line);
-    ctx.restore();
-  }
   ctx.lineWidth = dense ? CANVAS.lineDense : CANVAS.line;
   ctx.strokeStyle = paint.stroke;
   ctx.stroke(line);
@@ -481,7 +471,7 @@ function drawDd(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s: numb
   const startX = a === 0 ? x(0) : x(a + 0.5);
   const dpts: [number, number][] = a === 0 ? [[startX, zy]] : [];
   for (let i = a; i <= b; i++) dpts.push([x(i + 0.5), y(derived.underwater[i])]);
-  monotonePath(line, dpts);
+  linePath(line, dpts);
   const area = new Path2D(line);
   area.lineTo(x(b + 0.5), zy);
   area.lineTo(startX, zy);
@@ -531,7 +521,7 @@ function drawNavigator(ctx: CanvasRenderingContext2D, f: Frame, nav: Rect) {
   const npts: [number, number][] = [[nx(0), y(bars[0].open)]];
   for (let i = 0; i < n - 1; i += step) npts.push([nx(i + 0.5), y(bars[i].close)]);
   npts.push([nx(n - 0.5), y(bars[n - 1].close)]);
-  monotonePath(line, npts);
+  linePath(line, npts);
   const zy = Math.max(inner.y, Math.min(inner.y + inner.h, y(0)));
   const area = new Path2D(line);
   area.lineTo(nx(n - 0.5), zy);

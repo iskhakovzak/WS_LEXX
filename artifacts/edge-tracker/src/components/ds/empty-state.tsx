@@ -9,7 +9,10 @@
  *   │  secondary →  │  optional quieter link
  *   └───────────────┘
  *
- * `compact` (small panels / tiles): one row — the icon tile, the text, the action — no medallion.
+ * `compact` — the one small variant (inside panels, tiles, lists): one row — a muted icon, the text, the action — no
+ * medallion and no tile of its own. Use it for every in-panel «nothing here»; the full state is for an empty page.
+ * Over a photo background a full state outside any panel gets the panel material (index.css), so text never sits on it.
+ * An empty page shows the state alone: hide the KPI row and the filters until there is data.
  * `art` picks the motif by meaning (column = a page / overview, amphora = trades and setups, scroll = journal and
  * notes, scales = risk, laurel = progress and learning, temple = the desk and the team).
  */
@@ -71,12 +74,8 @@ export function EmptyState({
 }) {
   if (compact) {
     return (
-      <div data-empty-state="compact" className={cn("flex flex-wrap items-center gap-3 px-1 py-4 text-left", className)}>
-        {Icon && (
-          <span className="tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-muted-foreground">
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </span>
-        )}
+      <div data-empty-state="compact" className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 px-1 py-3 text-left", className)}>
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
         <div className="min-w-[12rem] flex-1">
           <p className="text-sm font-medium text-foreground">{title}</p>
           {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}

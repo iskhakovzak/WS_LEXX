@@ -27,7 +27,10 @@ export type ComputedAppearance = {
 };
 
 /** The data attributes this module may set on <html> (removed when not set). */
-export const APPEARANCE_ATTRS = ["data-density", "data-bg", "data-panels", "data-font", "data-scene-panels", "data-motion"] as const;
+export const APPEARANCE_ATTRS = ["data-density", "data-bg", "data-panels", "data-font", "data-scene-panels", "data-motion", "data-work-bg"] as const;
+
+/** Least card share of a glass panel on the work screens while a photo is dimmed / replaced there (design audit). */
+export const WORK_GLASS_MIN = 0.9;
 
 const FG_KEYS = ["--foreground", "--card-foreground", "--popover-foreground", "--secondary-foreground", "--accent-foreground", "--sidebar-foreground", "--sidebar-accent-foreground"];
 
@@ -93,6 +96,13 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
     vars["--primary-foreground"] = toTriplet(label);
     vars["--sidebar-primary-foreground"] = toTriplet(label);
     vars["--accent-soft"] = toTriplet(ensureContrast(accent, [mix(card, accent, 0.12), ...textSurfaces(theme)], TEXT_TARGET).rgb);
+    // The primary button takes the accent fill (an ink accent keeps the ring from index.css).
+    if (accentRaw) {
+      vars["--action-bg"] = `hsl(${toTriplet(accent)})`;
+      vars["--action-hover-bg"] = `hsl(${toTriplet(accent)} / 0.88)`;
+      vars["--action-fg"] = `hsl(${toTriplet(label)})`;
+      vars["--action-border"] = "transparent";
+    }
   }
 
   // Hairlines.
@@ -153,8 +163,13 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
       const p = panels === "glass" ? lv.glass : lv.frosted;
       vars["--glass-bg"] = `color-mix(in srgb, hsl(var(--card)) ${Math.round(p * 100)}%, transparent)`;
       vars["--glass-thick-bg"] = `color-mix(in srgb, hsl(var(--popover)) ${Math.min(100, Math.round(p * 100) + 8)}%, transparent)`;
+      // Work screens (index.css: main[data-surface="work"]) take near-opaque panels unless the viewer keeps the photo.
+      const w = Math.max(p, WORK_GLASS_MIN);
+      vars["--glass-work-bg"] = `color-mix(in srgb, hsl(var(--card)) ${Math.round(w * 100)}%, transparent)`;
+      vars["--glass-work-thick-bg"] = `color-mix(in srgb, hsl(var(--popover)) ${Math.min(100, Math.round(w * 100) + 6)}%, transparent)`;
     }
     attrs["data-scene-panels"] = panels;
+    attrs["data-work-bg"] = a.bg.work;
   }
 
   const stack = FONT_STACKS[a.font];

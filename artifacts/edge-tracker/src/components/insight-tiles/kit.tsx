@@ -1,5 +1,5 @@
 /**
- * Building blocks of an insight tile: the glass shell with its mono label, the huge numeral (blur-in reveal), the italic
+ * Building blocks of an insight tile: the glass shell with its label, the huge numeral (blur-in reveal), the
  * caption, the one-sentence verdict (with `*accent*` and inline nodes), the confidence badge, the trend chip, the action
  * chips and the hover / focus detail that shares one grid cell with the chart (no layout shift).
  */
@@ -15,7 +15,6 @@ import { rich } from "@/i18n/rich";
 import { cn } from "@/lib/utils";
 import { insightTilesI18n } from "@/i18n/ns/insightTiles";
 import type { Claim } from "./insights";
-import { smoothPath } from "@/components/shared/charts/path";
 import "./insight-tiles.css";
 
 export const usd = (v: number | null | undefined) => fmtUsd(v, { signed: true, decimals: "auto" });
@@ -38,7 +37,7 @@ export function toneText(tone: "up" | "down" | "be" | undefined): string {
 
 /* ─────────────────────────── text ─────────────────────────── */
 
-/** A translated sentence with `*accent*` words (italic serif) and {slot} nodes. */
+/** A translated sentence with `*accent*` words (semibold) and {slot} nodes. */
 export function Phrase({ text, nodes = {} }: { text: string; nodes?: Record<string, React.ReactNode> }) {
   const parts = text.split(/(\*[^*]+\*)/g);
   return (
@@ -384,7 +383,8 @@ export function Spark({ series, tone, label, className }: { series: number[]; to
   const span = max - min || 1;
   const x = (i: number) => (i / (series.length - 1)) * w;
   const y = (v: number) => h - 2 - ((v - min) / span) * (h - 4);
-  const d = smoothPath(series.map((v, i) => [x(i), y(v)] as const));
+  // Straight segments: only the real points of the day, no curve between them.
+  const d = series.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(" ");
   const color = tone === "up" ? "hsl(var(--up))" : tone === "down" ? "hsl(var(--down))" : tone === "be" ? "hsl(var(--be))" : "hsl(var(--foreground))";
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className={cn("h-11 w-40", className)} role="img" aria-label={label} preserveAspectRatio="none">

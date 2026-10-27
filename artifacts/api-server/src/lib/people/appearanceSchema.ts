@@ -49,6 +49,8 @@ export const AppearanceSchema = z.object({
     brightness: z.number().finite().min(0).max(1).optional(),
     /** Background motion: system / on / off (optional: older clients send none). */
     motion: z.enum(["auto", "on", "off"]).optional(),
+    /** Work screens under a photo: photo / dimmed column / flat canvas (optional: older clients send none). */
+    work: z.enum(["photo", "dim", "flat"]).optional(),
   }),
   density: z.enum(["compact", "spacious"]),
   /** Optional: clients before the chips setting send none. */

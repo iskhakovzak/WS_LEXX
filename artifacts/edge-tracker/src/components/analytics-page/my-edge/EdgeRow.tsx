@@ -98,7 +98,7 @@ export function EdgeRow({
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 py-2.5">
       <div className="min-w-0">
-        {showDim && <div className="truncate text-[11px] text-muted-foreground">{dimLabel(row.dim)}</div>}
+        {showDim && <div className="truncate text-2xs text-muted-foreground">{dimLabel(row.dim)}</div>}
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="min-w-0 break-words text-sm font-medium text-foreground">{bucketLabel(row.dim, row.key)}</span>
           {row.outcome && <Pill tone="neutral" title={t("outcomeHint")}>{t("outcome")}</Pill>}
@@ -112,7 +112,7 @@ export function EdgeRow({
         <TooltipTrigger asChild>
           <button type="button" className="cursor-help rounded-md text-right outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <span className={cn("block text-sm font-semibold tabular-nums", toneText(tone))}>{t("perDay", { value: money(row.perDay.point) })}</span>
-            <span className="block text-[11px] tabular-nums text-muted-foreground">{t("interval", { lo: money(row.perDay.lo), hi: money(row.perDay.hi) })}</span>
+            <span className="block text-2xs tabular-nums text-muted-foreground">{t("interval", { lo: money(row.perDay.lo), hi: money(row.perDay.hi) })}</span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="top"><Detail row={row} /></TooltipContent>

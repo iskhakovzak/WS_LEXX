@@ -194,7 +194,7 @@ function Upcoming({ d, now, readOnly }: { d: MyDashboard; now: number; readOnly:
       <div className="flex flex-col gap-3">
         {groups.slice(0, 7).map(([day, list]) => (
           <section key={day} aria-label={day}>
-            <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{day}</h3>
+            <h3 className="mb-1 text-xs font-medium text-muted-foreground">{day}</h3>
             <ul className="flex flex-col gap-1.5">
               {list.map((o) => {
                 const live = now >= new Date(o.startUtc).getTime() && now <= new Date(o.endUtc).getTime();
@@ -313,7 +313,7 @@ function AttendancePanel({ d }: { d: MyDashboard }) {
       </div>
       {d.recent.length > 0 && (
         <>
-          <h3 className="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("myPage.attendance.recent")}</h3>
+          <h3 className="mb-1 mt-4 text-xs font-medium text-muted-foreground">{t("myPage.attendance.recent")}</h3>
           <ul className="flex flex-col divide-y divide-border/50">
             {d.recent.slice(0, 8).map((o) => (
               <li key={`${o.sessionId}-${o.date}`} className="flex items-center justify-between gap-2 py-1.5 text-sm">

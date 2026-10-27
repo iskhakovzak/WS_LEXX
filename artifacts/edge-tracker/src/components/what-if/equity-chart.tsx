@@ -3,7 +3,7 @@ import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, 
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
-  areaGradient, barGradients, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion, useGlow,
+  areaGradient, barGradients, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion,
 } from "@/components/shared/charts";
 import { fmtDate, fmtDateCustom, fmtDeskDate, fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
@@ -37,7 +37,6 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
   const gid = `wi${useId().replace(/:/g, "")}`;
   // Fact alone: a P&L curve (profit above zero, loss below). With a scenario: fact recedes (dashed, muted), scenario leads.
   const paint = useMemo(() => pnlPaint(gid, base.map((p) => p.cum)), [base, gid]);
-  const glow = useGlow(gid);
   const usd = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   return (
     <div style={{ height }} className={onDay ? "cursor-pointer" : undefined} title={onDay ? t("chart.clickDay") : undefined} role="img" aria-label={hasScenario ? t("chart.ariaBoth") : t("chart.ariaFact")}>
@@ -49,7 +48,6 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             onClick={onDay ? (st: { activePayload?: { payload?: { day?: unknown } }[] } | null) => { const day = st?.activePayload?.[0]?.payload?.day; if (typeof day === "string") onDay(day); } : undefined}
           >
             {hasScenario ? areaGradient(`${gid}-sc`, CHART.accent) : paint.defs}
-            {glow.defs}
             <CartesianGrid {...GRID} />
             <XAxis dataKey="label" {...X_AXIS} minTickGap={36} />
             <YAxis {...Y_AXIS} tickFormatter={usd} width={76} />
@@ -67,12 +65,12 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             {hasScenario && <Legend verticalAlign="top" align="right" height={28} iconType="plainline" wrapperStyle={{ fontSize: 11 }} />}
             <ReferenceLine {...ZERO_LINE} />
             {hasScenario ? (
-              <Line type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={CHART.neutral} dot={false} strokeWidth={STROKE_THIN} strokeDasharray="4 3" activeDot={{ ...ACTIVE_DOT, fill: CHART.neutral }} {...motion} />
+              <Line type="linear" dataKey={SERIES_BASE} name={t("chart.base")} stroke={CHART.neutral} dot={false} strokeWidth={STROKE_THIN} strokeDasharray="4 3" activeDot={{ ...ACTIVE_DOT, fill: CHART.neutral }} {...motion} />
             ) : (
-              <Area type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={paint.stroke} fill={paint.fill} dot={false} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" filter={glow.filter} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
+              <Area type="linear" dataKey={SERIES_BASE} name={t("chart.base")} stroke={paint.stroke} fill={paint.fill} dot={false} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
             )}
             {hasScenario && (
-              <Area type="monotone" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke={CHART.accent} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" filter={glow.filter} fill={`url(#${gid}-sc)`} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} connectNulls />
+              <Area type="linear" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke={CHART.accent} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" fill={`url(#${gid}-sc)`} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} connectNulls />
             )}
           </ComposedChart>
         </ResponsiveContainer>

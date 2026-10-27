@@ -40,7 +40,7 @@ function BlockView({ b }: { b: Block }) {
         1: "mt-6 text-xl font-semibold",
         2: "mt-6 text-lg font-semibold",
         3: "mt-5 text-base font-semibold",
-        4: "mt-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground",
+        4: "mt-4 text-sm font-semibold text-muted-foreground",
       }[b.level];
       const Tag = (`h${Math.min(6, b.level + 1)}`) as "h2" | "h3" | "h4" | "h5";
       return <Tag id={b.id} className={cn("scroll-mt-24 text-foreground first:mt-0", cls)}><InlineView nodes={b.c} /></Tag>;

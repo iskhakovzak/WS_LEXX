@@ -343,6 +343,10 @@ export default {
     wholeTeam: "Butun jamoa",
   },
   ds: {
+    more: "yana",
+    less: "yig'ish",
+    allClear: "Hammasi joyida: {items}",
+    rowMore: "Boshqa amallar",
     trend: "Trend: {from} → {to}",
     sortAsc: "oʻsish boʻyicha",
     sortDesc: "kamayish boʻyicha",

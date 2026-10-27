@@ -271,7 +271,7 @@ function DataQualityCard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{c.label}</span>
                   <Pill tone={c.count ? sev.tone : "up"}>{c.count ? (c.groups ? t("data.quality.inGroups", { count: c.count, groups: c.groups }) : c.count) : t("data.quality.ok")}</Pill>
-                  {c.count > 0 && <span className="text-2xs uppercase tracking-wide text-muted-foreground">{sev.label}</span>}
+                  {c.count > 0 && <span className="text-2xs text-muted-foreground">{sev.label}</span>}
                   {link && c.count > 0 && (
                     <Button asChild variant="ghost" size="sm" className="ml-auto h-8">
                       <Link href={link.href}>{t(`data.quality.${link.label}`)} <ArrowRight /></Link>

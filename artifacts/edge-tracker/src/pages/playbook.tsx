@@ -17,8 +17,8 @@ import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { playbookTodayQuery } from "@/lib/api/queries";
 import {
-  Activity, BookOpen, Building2, ChevronsDownUp, ChevronsUpDown, Columns2, Download, FileArchive, LayoutGrid,
-  Library, Lock, MoreHorizontal, Plus, Search, Send, Share2, Tag, Trophy, User, Users, X, ZoomIn, ZoomOut, type LucideIcon,
+  Activity, BookOpen, Building2, ChevronsDownUp, ChevronsUpDown, Columns2, Download, FileArchive, Images, LayoutGrid,
+  Library, Lock, MoreHorizontal, Plus, Search, Send, Share2, Tag, User, Users, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
@@ -764,7 +764,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
             onChange={setView}
             options={[
               { value: "library", label: <><Library className="h-4 w-4" aria-hidden="true" />{t("page.view.library")}</> },
-              { value: "gallery", label: <><Trophy className="h-4 w-4" aria-hidden="true" />{t("page.view.gallery")}</> },
+              { value: "gallery", label: <><Images className="h-4 w-4" aria-hidden="true" />{t("page.view.gallery")}</> },
               { value: "grid", label: <><LayoutGrid className="h-4 w-4" aria-hidden="true" />{t("page.view.grid")}</> },
             ]}
           />}
@@ -1236,7 +1236,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         onPick={(id) => openFromElsewhere(id)}
         actions={[
           ...(canCreate ? [{ id: "new", label: newLabel, icon: Plus, hint: "N", run: () => newSetup(selected?.folder ?? null) }] : []),
-          ...(traderView ? [] : [{ id: "gallery", label: t("page.action.gallery"), icon: Trophy, run: () => setView("gallery") }]),
+          ...(traderView ? [] : [{ id: "gallery", label: t("page.action.gallery"), icon: Images, run: () => setView("gallery") }]),
           { id: "compare", label: t("page.compare"), icon: Columns2, hint: "C", run: () => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null) },
           ...visibleSpaces.map((s) => ({ id: `space-${s.value}`, label: t("page.action.space", { name: s.label }), icon: s.icon, run: () => { setView("library"); setSpace(s.value); openSetup(null); } })),
           ...(traderView ? [] : [{ id: "grid", label: view === "grid" ? t("page.action.viewLibrary") : t("page.action.viewGrid"), icon: view === "grid" ? Library : LayoutGrid, run: () => setView(view === "grid" ? "library" : "grid") }]),

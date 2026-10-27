@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { BarChart3, Download, Flame, GitCompare, Gauge, Table2, TrendingUp, Users } from "lucide-react";
+import { Download, Flame, Gauge, GitCompare, Scale, Table2, TrendingUp, Users } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, StatCard, StatGrid, Toolbar, toneOf, type SectionTab, type SegmentOption } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -194,7 +194,7 @@ export default function BenchmarkPage() {
         <SelfView data={data} />
       ) : data.rows.length === 0 && data.trend.length === 0 ? (
         <Panel>
-          <EmptyState icon={BarChart3} title={t("empty")} description={t("emptyHint")} />
+          <EmptyState icon={Scale} title={t("empty")} description={t("emptyHint")} />
         </Panel>
       ) : (
         <>

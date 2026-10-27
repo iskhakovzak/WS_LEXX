@@ -50,7 +50,7 @@ describe("WS originals: «Яркость фона», canvas titles and panel tex
   });
 
   it("glass panels stay translucent over the default dark scene, and vars carry the levels", () => {
-    const a: Appearance = { ...DEFAULT_APPEARANCE, bg: { kind: "laocoon", panels: "glass", brightness: 0.7, motion: "on" } };
+    const a: Appearance = { ...DEFAULT_APPEARANCE, bg: { kind: "laocoon", panels: "glass", brightness: 0.7, motion: "on", work: "dim" } };
     const { vars, attrs } = computeAppearanceVars(a, "dark");
     expect(Number(vars["--scene-vis"])).toBeGreaterThanOrEqual(0.35);
     expect(vars["--glass-bg"]).toMatch(/color-mix\(in srgb, hsl\(var\(--card\)\) \d+%, transparent\)/);
@@ -61,7 +61,7 @@ describe("WS originals: «Яркость фона», canvas titles and panel tex
   });
 
   it("the ridge gets its strength from the same levels", () => {
-    const { vars } = computeAppearanceVars({ ...DEFAULT_APPEARANCE, bg: { kind: "ridge", panels: "glass", brightness: 1, motion: "on" } }, "dark");
+    const { vars } = computeAppearanceVars({ ...DEFAULT_APPEARANCE, bg: { kind: "ridge", panels: "glass", brightness: 1, motion: "on", work: "dim" } }, "dark");
     expect(Number(vars["--ridge-k"])).toBeGreaterThan(2);
   });
 
@@ -119,6 +119,6 @@ describe("Light-theme photo tone and «Движение фона»", () => {
   it("animations are on by default: no field, or the old «auto», reads as «on»", () => {
     expect(parseAppearance({ bg: { kind: "parthenon", panels: "glass", brightness: 0.7 } }).bg.motion).toBe("on");
     expect(parseAppearance({ bg: { kind: "parthenon", panels: "glass", brightness: 0.7, motion: "auto" } }).bg.motion).toBe("on");
-    expect(parseAppearance({ bg: { kind: "parthenon", panels: "glass", brightness: 0.7, motion: "off" } }).bg.motion).toBe("off");
+    expect(parseAppearance({ bg: { kind: "parthenon", panels: "glass", brightness: 0.7, motion: "off", work: "dim" } }).bg.motion).toBe("off");
   });
 });

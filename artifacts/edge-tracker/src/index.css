@@ -149,7 +149,7 @@
   --font-mono: var(--app-font-mono);
 
   /* Smallest UI text (dense labels, badges). Nothing in the app goes below this. */
-  --text-2xs: 0.6875rem;
+  --text-2xs: 0.75rem;     /* the smallest text in the app: 12px (design audit) */
   --text-2xs--line-height: 1rem;
   --text-xs: 0.8125rem;
   --text-sm: 0.9375rem;
@@ -200,6 +200,9 @@
   /* Fill for solid accent controls with white text (buttons, active segments/pills):
      slightly deeper than --primary so white text clears 4.5:1 in every theme. */
   --color-primary-solid: hsl(var(--primary-solid));
+  /* The selected segment / chip / tab pill: neutral (foreground on background), never the accent. */
+  --color-selected: hsl(var(--selected));
+  --color-selected-foreground: hsl(var(--selected-foreground));
   --color-up: hsl(var(--up));
   --color-down: hsl(var(--down));
   /* Semantic warn / purple text-safe tones (chart-3 / chart-5 stay for charts: chart-3 fails 4.5:1 as text in light). */
@@ -339,6 +342,21 @@
   --field-gap: 1rem;           /* between form fields (16px); label → control is 6px (gap-1.5) */
   --tile-p: 0.75rem;           /* inner tile padding (12px) */
   --header-h: 3.5rem;          /* app header height (56px) */
+  /* Bottom clearance of the scroller so the last row never sits under the «Спросить WS» orb (assistant-orb, ws-mark.css):
+     desktop = orb 44px + its 20px offset + air; phones = the dock + the round orb above it. */
+  --orb-clear: 5.5rem;
+  --orb-clear-phone: 9.5rem;
+  /* «Рабочие экраны: затемнённое» — share of the canvas colour laid over a photo under the content column. */
+  --content-scrim: .8;
+  /* Selected segment fill (white in the dark themes, ink in the light ones) and the primary button: the accent fill when
+     an accent colour is picked (lib/appearance/vars.ts sets --action-*), a solid ring in the ink accent so it never
+     reads as a selected segment. */
+  --selected: var(--foreground);
+  --selected-foreground: var(--background);
+  --action-bg: hsl(var(--foreground) / .07);
+  --action-hover-bg: hsl(var(--foreground) / .13);
+  --action-fg: hsl(var(--foreground));
+  --action-border: hsl(var(--foreground) / .85);
   /* Row density («Вид» → Плотность, html[data-density]): table cells and list rows read these. */
   --cell-py: 0.5rem;           /* table body cell padding (compact ≈ 41px rows) */
   --row-py: 0.375rem;          /* div-based list rows (trades review list) */
@@ -684,13 +702,13 @@ body {
     pointer-events: none;
     background: linear-gradient(135deg, var(--glass-sheen), transparent 40%), var(--glass-bg);
     box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 var(--glass-lo);
-    -webkit-backdrop-filter: blur(20px) saturate(var(--glass-sat));
-    backdrop-filter: blur(20px) saturate(var(--glass-sat));
+    -webkit-backdrop-filter: blur(10px) saturate(var(--glass-sat));
+    backdrop-filter: blur(10px) saturate(var(--glass-sat));
   }
   .glass-thick::before {
     background: linear-gradient(135deg, var(--glass-sheen), transparent 40%), var(--glass-thick-bg);
-    -webkit-backdrop-filter: blur(28px) saturate(var(--glass-sat));
-    backdrop-filter: blur(28px) saturate(var(--glass-sat));
+    -webkit-backdrop-filter: blur(12px) saturate(var(--glass-sat));
+    backdrop-filter: blur(12px) saturate(var(--glass-sat));
   }
   /* Large overlay surfaces (Sheet, Dialog, Drawer): the element is already ~90% opaque, so a heavy
      blur is invisible but costs a full-screen filter pass every frame of the slide animation. */
@@ -804,12 +822,14 @@ body {
   .chip:active:not(:disabled) {
     transform: scale(.97);
   }
+  /* Selected chip / segment: the neutral «selected» fill (white in the dark themes, ink in the light ones), whatever the
+     accent — the accent belongs to the primary button, so the two never read the same (design audit). */
   .chip[data-active="true"],
   .chip[aria-pressed="true"],
   .chip[data-state="active"],
   .chip[data-state="on"] {
-    background: hsl(var(--primary-solid));
-    color: hsl(var(--primary-foreground));
+    background: hsl(var(--selected));
+    color: hsl(var(--selected-foreground));
     border-color: transparent;
     box-shadow: inset 0 1px 0 rgb(255 255 255 / .25);
   }
@@ -834,14 +854,28 @@ body {
     transform: scale(.98);
   }
 
-  /* 11px uppercase letter-spaced faint micro label (reference "REACTION", "% MOVE"). */
+  /* Small quiet label (group headings in the sidebar, field captions): 12px, sentence case, no letter-spacing —
+     the old mono-caps label read as decoration and fell apart over the photo backgrounds (design audit). */
   .micro-label {
     font-size: var(--text-2xs);
     line-height: 1rem;
     font-weight: 600;
-    letter-spacing: .08em;
-    text-transform: uppercase;
     color: hsl(var(--muted-foreground));
+  }
+
+  /* Row actions (components/ds/row-actions): shown on row hover / keyboard focus on pointer screens, always on touch.
+     Opacity only, so they stay in the tab order and the row never changes height. */
+  @media (hover: hover) and (pointer: fine) {
+    .row-actions {
+      opacity: 0;
+      transition: opacity var(--dur-1) var(--ease);
+    }
+    :is(tr, li, [data-row]):hover .row-actions,
+    :is(tr, li, [data-row]):focus-within .row-actions,
+    .row-actions:focus-within,
+    .row-actions:has([data-state="open"]) {
+      opacity: 1;
+    }
   }
 
   /* Page-level sticky bar (toolbars, bulk-action bars, sticky panels) inside the app scroller (#main-content).
@@ -935,13 +969,14 @@ body {
 @utility ease-smooth { transition-timing-function: var(--ease); animation-timing-function: var(--ease); }
 
 /* ── Display type (monochrome pass, 2026-10-24) ──
-   type-display  page titles: larger, tightly tracked (PageHeader h1, the dashboard greeting).
+   type-display  page titles: 24–28px, tightly tracked (PageHeader h1, the dashboard greeting).
    type-hero     the one big number on a screen (dashboard «today»): huge, confident, tabular.
-   type-accent   the intro's italic serif for a single accent word; slightly larger so its x-height meets the sans. */
+   Two families only: the sans (+ tabular figures) and code. The italic serif lives on the lock screen, the sign-in clock
+   and the opening intro, never on a work screen. */
 @utility type-display {
-  font-size: clamp(1.5rem, 1.1rem + 0.9vw, 2rem);
-  line-height: 1.12;
-  letter-spacing: -0.032em;
+  font-size: clamp(1.5rem, 1.25rem + 0.5vw, 1.75rem);
+  line-height: 1.15;
+  letter-spacing: -0.028em;
   font-weight: 600;
 }
 @utility type-hero {
@@ -950,13 +985,6 @@ body {
   letter-spacing: -0.045em;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-@utility type-accent {
-  font-family: var(--app-font-serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 1.08em;
-  letter-spacing: 0;
 }
 
 /* Shared reveal: blur-to-sharp + fade + 4px rise, 520 ms. For page headers and hero numbers only, never per element.
@@ -971,7 +999,14 @@ body {
 @utility reveal-late {
   animation-delay: 90ms;
 }
-html[data-motion="off"] .reveal { animation: none; }
+/* Page headers: a quick opacity fade (180 ms), so the title is readable at once on every route change. */
+@keyframes fade-in-quick {
+  from { opacity: 0; }
+}
+@utility fade-in-quick {
+  animation: fade-in-quick 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+html[data-motion="off"] :is(.reveal, .fade-in-quick) { animation: none; }
 
 /* Live numbers (lib/live-flash, ds/live-number): a polled value that moved tints its cell green / red and fades back
    to the cell's own background in 700 ms (no `to` keyframe = the underlying value). The odd twin restarts a repeat
@@ -1345,15 +1380,15 @@ html[data-motion="off"] *, html[data-motion="off"] ::before, html[data-motion="o
   --glass-thick-bg: color-mix(in srgb, hsl(var(--popover)) 82%, transparent);
 }
 :root[data-panels="frosted"] .glass-panel {
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  backdrop-filter: blur(12px) saturate(130%);
 }
 /* A scene / your image behind the shell (lib/appearance/scenes sceneLevels; --scene-vis, --glass-bg come inline):
    glass panels go translucent with a blur so the scene shows through; text that sits right on the canvas (page
    titles, subtitles) gets a soft halo in the canvas colour, and the layer adds a faint band behind the page header. */
 :root[data-scene-panels="glass"] .glass-panel {
-  -webkit-backdrop-filter: blur(16px) saturate(120%);
-  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
 }
 :root[data-scene-panels] #main-content {
   text-shadow: 0 0 2px hsl(var(--background) / .85), 0 1px 14px hsl(var(--background) / .8);
@@ -1365,6 +1400,44 @@ html[data-motion="off"] *, html[data-motion="off"] ::before, html[data-motion="o
   --glass-bg: hsl(var(--card));
   --glass-thick-bg: hsl(var(--popover));
   --glass-sheen: transparent;
+}
+
+/* ── Work screens under a photo («Вид» → Фон → «Рабочие экраны», html[data-work-bg]; layout.tsx main[data-surface]) ──
+   The dashboard is the «face» and keeps the full photo. Every other page is a work screen:
+     dim  (default) a canvas-coloured layer under the content column — the photo stays at the edges, text never sits
+          right on it; panels go near-opaque (--glass-work-bg, ≥ 90 % card, lib/appearance/vars.ts).
+     flat the photo is hidden there: the theme's own flat canvas, near-opaque panels.
+     photo the photo as on the dashboard (panels at the least cover that keeps AA). */
+:root:not(.dark) { --content-scrim: .76; }
+:root[data-scene-panels]:not([data-work-bg="photo"]) main[data-surface="work"] {
+  --glass-bg: var(--glass-work-bg, color-mix(in srgb, hsl(var(--card)) 90%, transparent));
+  --glass-thick-bg: var(--glass-work-thick-bg, color-mix(in srgb, hsl(var(--popover)) 96%, transparent));
+  isolation: isolate;
+}
+:root[data-scene-panels][data-work-bg="dim"] main[data-surface="work"]::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-block: 0;
+  /* The content column (Page is at most --page-max wide, centred): edges soften over the side gutter. */
+  inset-inline: max(0px, calc((100% - var(--page-max)) / 2 - var(--page-px)));
+  pointer-events: none;
+  background: hsl(var(--background) / var(--content-scrim));
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--page-px), #000 calc(100% - var(--page-px)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--page-px), #000 calc(100% - var(--page-px)), transparent);
+}
+:root[data-scene-panels][data-work-bg="flat"]:has(main[data-surface="work"]) .app-backdrop {
+  visibility: hidden;
+}
+/* The canvas halo for titles over the photo is not needed once the photo is dimmed or gone. */
+:root[data-scene-panels]:not([data-work-bg="photo"]) main[data-surface="work"] #main-content {
+  text-shadow: none;
+}
+/* A full-size empty state outside any panel gets the panel material over a photo (text only on a surface). */
+:root[data-scene-panels] #main-content [data-empty-state="full"]:not(:is(.glass-panel, .glass, .glass-thick, .tile, [role="dialog"]) [data-empty-state]) {
+  border: 1px solid var(--glass-border);
+  border-radius: 1rem;
+  background: var(--glass-bg);
 }
 
 /* ── Mobile & Safe Area ──────────────────────────────────────────── */

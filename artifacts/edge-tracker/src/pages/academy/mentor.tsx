@@ -301,7 +301,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
       )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section aria-label={t("mentorPage.detail.idpAria")}>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("mentorPage.detail.idp")}</h3>
+          <h3 className="mb-2 text-xs font-medium text-muted-foreground">{t("mentorPage.detail.idp")}</h3>
           {idp.isLoading && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.recalculating")}</p>}
           {idp.isError && <ErrorState error={idp.error} onRetry={idp.refetch} compact />}
           {idp.data && idp.data.goals.length === 0 && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.noGoals")}</p>}
@@ -316,7 +316,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           </div>
         </section>
         <section aria-label={t("mentorPage.detail.meetings")}>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("mentorPage.detail.meetings")}</h3>
+          <h3 className="mb-2 text-xs font-medium text-muted-foreground">{t("mentorPage.detail.meetings")}</h3>
           {meetings.isError && <ErrorState error={meetings.error} onRetry={meetings.refetch} compact />}
           {meetings.data && meetings.data.meetings.length === 0 && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.noMeetings")}</p>}
           <ul className="flex flex-col gap-2">

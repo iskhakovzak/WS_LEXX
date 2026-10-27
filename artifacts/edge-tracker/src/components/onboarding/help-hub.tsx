@@ -42,7 +42,7 @@ export default function HelpHub({
         </button>
 
         <section aria-labelledby="help-hints">
-          <h3 id="help-hints" className="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("help.hintsTitle")}</h3>
+          <h3 id="help-hints" className="mb-1 px-1 text-xs font-medium text-muted-foreground">{t("help.hintsTitle")}</h3>
           <ul className="-mx-1">
             {hints.map((id) => (
               <li key={id}>
@@ -60,7 +60,7 @@ export default function HelpHub({
         </section>
 
         <section aria-labelledby="help-keys" className="hidden md:block">
-          <h3 id="help-keys" className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("help.keysTitle")}</h3>
+          <h3 id="help-keys" className="mb-2 px-1 text-xs font-medium text-muted-foreground">{t("help.keysTitle")}</h3>
           <dl className="grid gap-x-6 gap-y-2 px-1 text-sm sm:grid-cols-2">
             <Shortcut keys={[MOD, "K"]} label={t("help.keys.palette")} />
             <Shortcut keys={[MOD, "B"]} label={t("help.keys.sidebar")} />

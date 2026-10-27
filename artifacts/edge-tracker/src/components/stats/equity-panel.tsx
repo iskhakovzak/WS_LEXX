@@ -7,7 +7,7 @@ import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
 import {
   ACTIVE_DOT, BAR_RADIUS, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
-  barGradients, pnlColor, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion, useGlow,
+  barGradients, pnlColor, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion,
 } from "@/components/shared/charts";
 import { fmtMetricCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
 import { fmtMonth } from "@/lib/format";
@@ -40,7 +40,6 @@ export function EquityPanel({
   const motion = useChartMotion();
   const gid = useId().replace(/:/g, "");
   const paint = useMemo(() => pnlPaint(`statsEq${gid}`, equity.map((p) => p.equity)), [equity, gid]);
-  const glow = useGlow(`statsEq${gid}`);
   const focus = useBarFocus();
   const rows = useMemo(() => equity.map((p, i) => ({ ...p, step: i ? p.equity - equity[i - 1].equity : p.equity })), [equity]);
   const unit = metric === "r" ? "R" : "$";
@@ -89,7 +88,6 @@ export function EquityPanel({
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={rows} margin={MARGIN}>
                   {paint.defs}
-                  {glow.defs}
                   <CartesianGrid {...GRID} />
                   <XAxis dataKey="idx" {...X_AXIS} minTickGap={48} />
                   <YAxis {...Y_AXIS} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
@@ -101,12 +99,12 @@ export function EquityPanel({
                     formatter={(v: number, name: string) => [fmtValue(v, metric), name === "equity" ? t("equity.accumulated") : t("equity.drawdown")]}
                   />
                   <Area
-                    {...motion} type="monotone" dataKey="drawdown" stroke={tint("down", 0.7)} strokeWidth={STROKE_THIN}
+                    {...motion} type="linear" dataKey="drawdown" stroke={tint("down", 0.7)} strokeWidth={STROKE_THIN}
                     fill={tint("down", 0.12)} dot={false} activeDot={false}
                   />
                   <Area
-                    {...motion} type="monotone" dataKey="equity" stroke={paint.stroke} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round"
-                    filter={glow.filter} fill={paint.fill} dot={false} activeDot={{ ...ACTIVE_DOT, fill: pnlColor(last) }}
+                    {...motion} type="linear" dataKey="equity" stroke={paint.stroke} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round"
+                    fill={paint.fill} dot={false} activeDot={{ ...ACTIVE_DOT, fill: pnlColor(last) }}
                   />
                 </AreaChart>
               </ResponsiveContainer>

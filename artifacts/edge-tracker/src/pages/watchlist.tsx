@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock, History } from "lucide-react";
+import { Radar, Search, AlertTriangle, RefreshCw, Archive, Eye, Flame, Clock, History } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
@@ -748,8 +748,9 @@ export default function Watchlist() {
   return (
     <Page>
       <PageHeader
+        size="compact"
         title={t("page.title")}
-        icon={Radar}
+        icon={Eye}
         description={days.weekend ? t("page.descWeekend", { date: fmtDate(days.levelsDay, "dayMonthNumeric") }) : t("page.desc")}
         actions={
           <>

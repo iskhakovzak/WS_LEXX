@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle, ArrowLeft, Award, BarChart3, Download, Lightbulb, MinusCircle, ThumbsDown, ThumbsUp, Users, X,
+  AlertTriangle, ArrowLeft, Award, Download, Lightbulb, MinusCircle, PieChart, ThumbsDown, ThumbsUp, Users, X,
 } from "lucide-react";
 import { links } from "@/lib/links";
 import { addDays, nyDate } from "@/lib/trading-date";
@@ -160,7 +160,7 @@ export default function TradeIdeaStats() {
   return (
     <Page>
       <PageHeader
-        icon={BarChart3}
+        icon={PieChart}
         title={t("stats.title")}
         description={byPrice ? t("stats.descriptionPrice") : t("stats.descriptionTrades")}
         actions={

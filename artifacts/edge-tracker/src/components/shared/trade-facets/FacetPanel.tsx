@@ -1,17 +1,18 @@
 /**
  * «Фильтры» — the PropReports-style filter panel (lib/trade-facets). The dimensions come in four groups (FACET_GROUPS:
- * when · how · what · result and tags), each a small uppercase heading over a grid that wraps into rows (no horizontal
+ * when · how · what · result and tags), each a small heading over a grid that wraps into rows (no horizontal
  * scroll at any width, one column on a phone); a group without a visible column is left out. A long column (tickers,
  * times) scrolls inside itself. Each value is a row with a profit bar behind it (green / red,
  * length = |net| relative to the column's largest; trade count when money is hidden); a click excludes the value
  * (struck through, dimmed), a second click brings it back. Columns with a single value and nothing excluded carry no
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
- * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
+ * user (useFacetView). Used by /trades, /stats and the period pages; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
+ * Folded on every visit (design audit: open it pushed the page's answer below the first screen): the header is a
+ * one-line summary («Разрезы · всё» or «скрыто N», the IMX switch and «Итог $X · из них IMX $Y»); a click opens the grid.
  * «Найти тикер» next to the tabs: while it holds text, the matching tickers (from any tab) show above the tab's columns,
  * which stay visible, with «Только найденные» to keep just them.
  */
 import { useRef, useState, type ReactNode } from "react";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -113,7 +114,7 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
   return (
     <section className="flex min-w-0 flex-col gap-1" aria-label={title}>
       <header className="flex items-center justify-between gap-2 border-b border-border pb-1">
-        <h4 title={title} className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 title={title} className="truncate text-xs font-semibold text-muted-foreground">
           {title}{excluded > 0 && <span className="ml-1 text-primary">−{excluded}</span>}
         </h4>
         <span className="flex shrink-0 gap-0.5 text-2xs">
@@ -242,12 +243,10 @@ function TickerResults({ q, buckets, view, onChange, money }: { q: string; bucke
 export function FacetPanel({ view, onChange, data, loading, error, className, help }: Props) {
   const t = tradeFacetsI18n.t;
   const hidden = activeCount(view);
-  // On a phone the panel starts folded each visit (open it pushes the trade list a screen down); the saved
-  // open/closed state is the desktop one.
-  const isMobile = !!useIsMobile();
-  const [phoneOpen, setPhoneOpen] = useState(false);
-  const open = isMobile ? phoneOpen : view.open;
-  const toggle = () => (isMobile ? setPhoneOpen((v) => !v) : onChange({ ...view, open: !view.open }));
+  // Folded on every visit, phones and desktop alike (open, the grid pushed the page's answer a screen down); a click
+  // opens it for this visit. The stored `view.open` is no longer read, so nobody's saved choice is rewritten.
+  const [open, setOpen] = useState(false);
+  const toggle = () => setOpen((v) => !v);
   const money = data?.money !== false;
   // Last non-empty values of every column: when the exclusions leave no trades, the other columns come back empty —
   // keep showing their values (count 0) so the panel never collapses to one column and every choice stays reachable.
@@ -284,7 +283,9 @@ export function FacetPanel({ view, onChange, data, loading, error, className, he
         >
           <Filter className="h-4 w-4" aria-hidden="true" />
           {t("title")}
-          {hidden > 0 && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs font-semibold text-primary">{t("hidden", { count: hidden })}</span>}
+          {hidden > 0
+            ? <span className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs font-semibold text-primary">{t("hidden", { count: hidden })}</span>
+            : <span className="font-normal text-muted-foreground">· {t("allIn")}</span>}
           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
         </button>
         {hidden > 0 && (
@@ -344,7 +345,7 @@ export function FacetPanel({ view, onChange, data, loading, error, className, he
                 </div>
               )}
               {folded.length > 0 && (
-                <p className="mt-3 text-2xs text-muted-foreground">
+                <p className="mt-3 text-xs text-muted-foreground">
                   {t("single")}{" "}
                   {folded.map((x, i) => (
                     <span key={x.d}>{i > 0 && " · "}<span className="font-medium text-foreground/80">{t(`dims.${x.d}`)}</span> {x.buckets[0].label}</span>

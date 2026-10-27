@@ -11,7 +11,7 @@ import { comparePersonNames, personName } from "@/i18n";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
-import { BarChart3, Brain, Compass, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
+import { Brain, Compass, Dices, FlaskConical, Grid3x3, Layers, LayoutDashboard, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { ChartSkeleton, Kbd, Page, PageHeader, Panel, Segmented, EmptyState, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -262,7 +262,7 @@ export default function Analytics() {
     <Page>
       <PageHeader
         title={t("title")}
-        icon={BarChart3}
+        icon={LineChart}
         description={isLoading ? t("loadingTrades") : summary}
         actions={<>
           <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
@@ -305,7 +305,7 @@ export default function Analytics() {
       {isError ? (
         <Panel>
           <EmptyState
-            icon={BarChart3}
+            icon={LineChart}
             title={t("loadError.title")}
             description={t("loadError.description")}
             action={<Button onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
@@ -323,7 +323,7 @@ export default function Analytics() {
       ) : bookEmpty ? (
         <Panel>
           <EmptyState
-            icon={BarChart3}
+            icon={LineChart}
             title={t("bookEmpty.title")}
             description={t("bookEmpty.description")}
             action={staffView && !scope.team

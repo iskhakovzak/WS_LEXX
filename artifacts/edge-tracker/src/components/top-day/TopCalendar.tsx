@@ -71,7 +71,7 @@ export function TopCalendar({
     >
       <div className="grid grid-cols-7 gap-1" role="grid" aria-label={title}>
         {WEEKDAYS.map((wd) => (
-          <div key={wd} className={cn("pb-1 text-center text-2xs font-medium uppercase text-muted-foreground", (wd === 0 || wd === 6) && "opacity-60")}>
+          <div key={wd} className={cn("pb-1 text-center text-2xs font-medium text-muted-foreground", (wd === 0 || wd === 6) && "opacity-60")}>
             {fmtWeekday(wd, "short")}
           </div>
         ))}

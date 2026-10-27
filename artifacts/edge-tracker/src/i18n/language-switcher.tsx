@@ -76,7 +76,7 @@ export function LanguageSegmented({ className }: { className?: string }) {
           data-i18n-focus={`lang-seg-${l}`}
           className={cn(
             "press relative h-7 min-w-9 rounded-full px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            l === lang ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            l === lang ? "text-selected-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
           {l === lang && <ActivePill layoutId="lang-seg-pill" />}

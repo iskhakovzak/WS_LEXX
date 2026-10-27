@@ -47,7 +47,7 @@ export function FillsKey({ fills, structure, layer, className }: { fills: readon
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-[11px] text-muted-foreground",
+        "flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-2xs text-muted-foreground",
         className,
       )}
       title={structure?.stats.notes?.join("\n") || undefined}

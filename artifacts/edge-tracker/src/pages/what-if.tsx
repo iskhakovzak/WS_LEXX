@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { FeePlanBox } from "@/components/what-if/fee-plan-box";
 import type { CommissionPlan } from "@/components/shared/what-if-rules";
-import { BarChart3, ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, RefreshCw, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, RefreshCw, Rows3, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -395,7 +395,7 @@ export default function WhatIf() {
         </Fold>
       )}
       {isCurator && hasTrades && <FeePlanBox scope={scope} preset={tariffPreset(base.data?.presets)} />}
-      <Fold title={t("allTitle")} icon={BarChart3} hint={t("allHint")}>
+      <Fold title={t("allTitle")} icon={Rows3} hint={t("allHint")}>
         <div className="flex flex-col gap-5">
           <MetricsTable baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} />
           <div>

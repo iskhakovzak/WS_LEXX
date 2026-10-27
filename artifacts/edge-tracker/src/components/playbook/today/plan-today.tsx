@@ -27,7 +27,7 @@ type PlanRes = { plan?: { doc?: Record<string, unknown> | null } | null } | null
 function Fact({ label, value, muted, loading }: { label: string; value: string; muted?: boolean; loading?: boolean }) {
   return (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
       {loading ? (
         <span className="skeleton inline-block h-4 w-12 self-center rounded-full" aria-hidden="true" />
       ) : (

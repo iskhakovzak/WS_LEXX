@@ -46,13 +46,13 @@ export function EdgeSummaryPanel({ setups, onOpen }: { setups: TodaySetup[]; onO
         <div className="flex flex-col gap-2.5">
           {sum.strong.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-up">{t("edge.strongTitle")}</span>
+              <span className="text-xs font-semibold text-up">{t("edge.strongTitle")}</span>
               <div className="flex flex-wrap gap-1.5">{sum.strong.map((s) => <SetupChip key={s.id} s={s} onOpen={onOpen} />)}</div>
             </div>
           )}
           {sum.careful.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-down">{t("edge.carefulTitle")}</span>
+              <span className="text-xs font-semibold text-down">{t("edge.carefulTitle")}</span>
               <div className="flex flex-wrap gap-1.5">{sum.careful.map((s) => <SetupChip key={s.id} s={s} onOpen={onOpen} />)}</div>
             </div>
           )}

@@ -131,7 +131,7 @@ function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime, onDa
       )}
     >
       <div className="flex flex-col gap-0.5">
-        <p className="inline-flex items-center gap-1 self-start text-[11px] text-muted-foreground" title={t(`suggestions.timing.${timing}Hint`)}>
+        <p className="inline-flex items-center gap-1 self-start text-2xs text-muted-foreground" title={t(`suggestions.timing.${timing}Hint`)}>
           <TimingIcon className="h-3 w-3" aria-hidden="true" />
           {t(`suggestions.timing.${timing}`)}
         </p>

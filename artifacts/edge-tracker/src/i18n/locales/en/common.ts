@@ -341,6 +341,10 @@ export default {
     wholeTeam: "Whole team",
   },
   ds: {
+    more: "more",
+    less: "less",
+    allClear: "All clear: {items}",
+    rowMore: "More actions",
     trend: "Trend: {from} → {to}",
     sortAsc: "ascending",
     sortDesc: "descending",

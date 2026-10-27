@@ -1,8 +1,8 @@
 /**
  * One visual language for the dashboard (owner, 2026-10-25: «всё вразнобой»): every card is the insight tile's glass
  * shell (components/insight-tiles: .ins-tile = .glass-panel + specular rim + soft top light, the same radius and
- * padding) with the tile's mono uppercase label as its header. So «Вид» panels / scenes apply the same way to the hero,
- * the plan, the curve, the trades and the bento. `SectionHead` is the small uppercase label above each section.
+ * padding) with the tile's sentence-case label as its header. So «Вид» panels / scenes apply the same way to the hero,
+ * the plan, the curve, the trades and the bento. `SectionHead` is the section heading above each section.
  * The tile shell's stylesheet (insight-tiles.css) comes with the page (pages/dashboard.tsx) — features do not import
  * each other.
  */
@@ -50,7 +50,7 @@ export function DashCard({
   );
 }
 
-/** The small uppercase label of a dashboard section (+ an optional quiet line and a right-side control). */
+/** The heading of a dashboard section (+ an optional quiet line and a right-side control). */
 export function SectionHead({ id, title, hint, action }: { id: string; title: ReactNode; hint?: ReactNode; action?: ReactNode }) {
   return (
     <div className="dash-section-head">

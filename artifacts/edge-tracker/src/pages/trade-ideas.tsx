@@ -3,7 +3,7 @@ import { useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { useReducedMotion } from "@/lib/motion";
 import {
-  BarChart3, Columns3, Lightbulb, List, Plus, RotateCcw, Search, Target, Timer, TrendingUp, X, Scale,
+  Columns3, Lightbulb, List, PieChart, Plus, RotateCcw, Scale, Search, Target, Timer, TrendingUp, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -324,7 +324,7 @@ export default function TradeIdeas() {
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setLocation("/trade-idea-stats")} className="gap-1.5">
-              <BarChart3 className="h-4 w-4" aria-hidden="true" /> {t("page.stats")}
+              <PieChart className="h-4 w-4" aria-hidden="true" /> {t("page.stats")}
             </Button>
             <WriteOnly>
               <Button size="sm" onClick={openCreate} className="hidden gap-1.5 sm:inline-flex" title={t("page.newIdeaTitle")}>

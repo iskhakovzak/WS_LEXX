@@ -42,7 +42,7 @@ function Point({ p }: { p: ReviewPoint }) {
       <p className="text-sm leading-snug text-foreground/90">
         {p.text}{" "}
         <span
-          className={cn("ml-0.5 inline-flex rounded-full px-1.5 py-px align-[1px] text-[0.625rem] font-medium uppercase tracking-wide", hyp ? "bg-[hsl(var(--chart-3)/0.14)] text-[hsl(var(--chart-3))]" : "bg-muted text-muted-foreground")}
+          className={cn("ml-0.5 inline-flex rounded-full px-1.5 py-px align-[1px] text-2xs font-medium", hyp ? "bg-[hsl(var(--chart-3)/0.14)] text-[hsl(var(--chart-3))]" : "bg-muted text-muted-foreground")}
           title={t(`review.basisHint.${p.basis}`)}
         >
           {t(`review.basis.${p.basis}`)}
@@ -111,7 +111,7 @@ function ReviewBody({ d }: { d: ReviewDto }) {
         </p>
       ) : null}
       <div className="rounded-xl bg-foreground px-3.5 py-3 text-background" data-testid="ai-review-tomorrow">
-        <div className="mb-1 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide opacity-75">
+        <div className="mb-1 flex items-center gap-1.5 text-2xs font-semibold opacity-75">
           <Target className="h-3.5 w-3.5" aria-hidden="true" />
           {t(FOCUS_KEY[d.kind])}
         </div>

@@ -1,5 +1,5 @@
 /**
- * «Вид» → Фон: «Выбрать фон» (the grouped gallery) and «Яркость фона» up front; your own image (IndexedDB on this
+ * «Вид» → Фон: «Выбрать фон» (the grouped gallery), «Яркость фона» and «Рабочие экраны» up front; your own image (IndexedDB on this
  * device, never uploaded) and the panel material under «Ещё настройки».
  */
 import * as React from "react";
@@ -9,7 +9,7 @@ import { isScene } from "@/lib/appearance/scenes";
 import { useAppearance } from "@/contexts/appearance-context";
 import { Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { BG_MOTIONS, PANEL_MODES } from "@/lib/appearance/model";
+import { BG_MOTIONS, PANEL_MODES, WORK_BGS } from "@/lib/appearance/model";
 import { deleteBgImage, prepareBgImage, saveBgImage } from "@/lib/appearance/bg-store";
 import { appearanceI18n } from "@/i18n/ns/appearance";
 import { MoreSettings, OptionCard, OptionText, Section } from "./bits";
@@ -104,6 +104,24 @@ function BrightnessSection() {
   );
 }
 
+/** «Рабочие экраны»: the photo, the photo under a dimmed content column (default) or a flat canvas on every page but
+ * the dashboard (index.css: main[data-surface="work"]). */
+function WorkBgSection() {
+  const { t } = appearanceI18n.useT();
+  const { appearance, update } = useAppearance();
+  return (
+    <Section title={t("background.workBg")} hint={t("background.workBgHint")}>
+      <Segmented
+        ariaLabel={t("background.workBg")}
+        className="self-start"
+        value={appearance.bg.work}
+        onChange={(work) => update((a) => ({ ...a, bg: { ...a.bg, work } }))}
+        options={WORK_BGS.map((m) => ({ value: m, label: t(`background.workBgModes.${m}`) }))}
+      />
+    </Section>
+  );
+}
+
 /** «Движение и анимации» for the whole app (lib/motion.ts): on by default, the viewer may switch it off. */
 function MotionSection() {
   const { t } = appearanceI18n.useT();
@@ -157,6 +175,7 @@ export function BackgroundTab() {
         <BackgroundGallery />
       </Section>
       {(kind === "image" || isScene(kind)) && <BrightnessSection />}
+      {(kind === "image" || isScene(kind)) && <WorkBgSection />}
       <MotionSection />
       <MoreSettings>
         <ImageControls />

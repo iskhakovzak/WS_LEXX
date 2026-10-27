@@ -45,6 +45,11 @@ describe("appearance settings schema", () => {
     expect(parseAppearance("junk")).toEqual(DEFAULT_APPEARANCE);
   });
 
+  it("a background saved before the work-screen option keeps its choices and reads as dim", () => {
+    const a = parseAppearance({ bg: { kind: "pantheon", panels: "glass", brightness: 1, motion: "on" } });
+    expect(a.bg).toEqual({ kind: "pantheon", panels: "glass", brightness: 1, motion: "on", work: "dim" });
+  });
+
   it("keeps valid fields and resets only the broken ones", () => {
     const a = parseAppearance({ accent: "#12ab34", font: "comic", density: "spacious", money: { win: "red", loss: "#ff0000", be: null, beRange: 99999 } });
     expect(a.accent).toBe("#12ab34");

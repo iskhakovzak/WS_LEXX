@@ -11,10 +11,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-           // @replit: no hover, and add primary border
-           // Monochrome primary (2026-10-24): near-white with black text in dark, ink with white text in light. No glow;
-           // hover steps the fill back a little (brightness would not move a white fill).
-           "bg-primary-solid text-primary-foreground font-semibold border border-transparent shadow-[inset_0_1px_0_rgb(255_255_255/0.2)] hover:not-disabled:bg-primary-solid/88 active:scale-[0.97]",
+           // Primary = the accent (index.css --action-*): the accent fill with its AA label when an accent colour is picked,
+           // a solid ring in the ink accent. The white / ink fill is the selected segment's alone (design audit).
+           "bg-[var(--action-bg)] text-[var(--action-fg)] font-semibold border border-[var(--action-border)] hover:not-disabled:bg-[var(--action-hover-bg)] active:scale-[0.97]",
         destructive:
           "border border-destructive/30 bg-destructive/12 text-destructive hover:not-disabled:bg-destructive/18",
         // Glass family: outline = hairline glass pill, secondary = thicker glass pill,

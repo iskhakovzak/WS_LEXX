@@ -1,5 +1,6 @@
 /**
- * The solid pill behind the active option of a segmented control / tab list. Every option renders it while active
+ * The solid pill behind the active option of a segmented control / tab list (the neutral «selected» fill — white in the
+ * dark themes, ink in the light ones — never the accent, which belongs to the primary button). Every option renders it while active
  * with the same `layoutId`, so framer-motion slides one pill from the old option to the new one (a short spring,
  * ~250 ms; follows «Движение и анимации» through lib/motion — off: it simply jumps). Put it first inside a `relative`
  * option and wrap the option's content in a `relative` span so it paints above the pill.
@@ -17,7 +18,7 @@ export function ActivePill({ layoutId, className }: { layoutId: string; classNam
       aria-hidden="true"
       layoutId={reduce ? undefined : layoutId}
       transition={PILL_SPRING}
-      className={cn("absolute inset-0 rounded-full bg-primary-solid shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]", className)}
+      className={cn("absolute inset-0 rounded-full bg-selected shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]", className)}
     />
   );
 }

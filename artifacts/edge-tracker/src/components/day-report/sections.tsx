@@ -9,7 +9,7 @@ import {
   AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock, ExternalLink, LineChart, ListChecks, ListOrdered, NotebookPen, Sparkles, Target,
 } from "lucide-react";
 import {
-  ACTIVE_DOT, CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, pnlPaint, tooltipProps, useChartMotion, useGlow,
+  ACTIVE_DOT, CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, pnlPaint, tooltipProps, useChartMotion,
 } from "@/components/shared/charts";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
@@ -107,7 +107,6 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
   };
   const motion = useChartMotion();
   const paint = React.useMemo(() => pnlPaint("dr-eq", data.map((d) => d.cum)), [data]);
-  const glow = useGlow("dr-eq");
   const srcLabel = e.timeSource === "executions" ? t("equity.srcExecutions") : e.timeSource === "snapshot" ? t("equity.srcSnapshot") : t("equity.srcOrder");
   return (
     <Panel
@@ -132,7 +131,6 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
               {paint.defs}
-              {glow.defs}
               <CartesianGrid {...GRID} />
               <XAxis
                 dataKey="x"
@@ -161,7 +159,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
                 }}
                 formatter={(v: number) => [fmtUsd(v, { signed: true }), t("equity.cumulative")]}
               />
-              <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" filter={glow.filter} fill={paint.fill} {...motion} dot={{ r: 2.5, strokeWidth: 1.5, stroke: CHART.surface, fill: CHART.fg, fillOpacity: 0.7 }} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} />
+              <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" fill={paint.fill} {...motion} dot={{ r: 2.5, strokeWidth: 1.5, stroke: CHART.surface, fill: CHART.fg, fillOpacity: 0.7 }} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} />
               {peakPt && <ReferenceDot x={peakPt.x} y={peakPt.cum} r={5} fill={CHART.up} stroke={CHART.surface} strokeWidth={2} />}
               {ddEnd && e.maxDrawdown.value > 0 && <ReferenceDot x={ddEnd.x} y={ddEnd.cum} r={5} fill={CHART.down} stroke={CHART.surface} strokeWidth={2} />}
             </AreaChart>
@@ -286,7 +284,7 @@ function BucketTable({ title, rows: input, ariaLabel, defaultSort = "order" }: {
   const max = Math.max(0, ...rows.map((r) => Math.abs(r.net)));
   return (
     <div className="min-w-0">
-      <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</h3>
       {rows.length === 0 ? (
         <p className="py-3 text-sm text-muted-foreground">{t("breakdown.noData")}</p>
       ) : (

@@ -126,7 +126,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
                         )}
                       >
                         {c.n > 0 && (
-                          <div className="whitespace-nowrap text-[11px] leading-tight tracking-tight">
+                          <div className="whitespace-nowrap text-2xs leading-tight tracking-tight">
                             <div className="font-semibold text-foreground">{valText(c)}</div>
                             <div className="text-2xs text-foreground/60">{sd(c.n)}</div>
                           </div>
@@ -136,7 +136,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
                   })}
                   <td className="rounded-[10px] border border-[var(--glass-border)] bg-[var(--glass-bg)] px-1 text-center tabular-nums">
                     {r.total.n > 0 ? (
-                      <div className="whitespace-nowrap text-[11px] leading-tight tracking-tight">
+                      <div className="whitespace-nowrap text-2xs leading-tight tracking-tight">
                         <div className={cn("font-semibold", toneCls(r.total.v))}>{valText(r.total)}</div>
                         <div className="text-2xs text-muted-foreground">{sd(r.total.n)}</div>
                       </div>
@@ -149,7 +149,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
                 {colTotals.map((c, i) => (
                   <td key={cols[i]} className="h-10 rounded-[10px] border border-[var(--glass-border)] bg-[var(--glass-bg)] px-1 text-center tabular-nums">
                     {c.n > 0 ? (
-                      <div className="whitespace-nowrap text-[11px] leading-tight tracking-tight">
+                      <div className="whitespace-nowrap text-2xs leading-tight tracking-tight">
                         <div className={cn("font-semibold", toneCls(c.v))}>{valText(c)}</div>
                         <div className="text-2xs text-muted-foreground">{sd(c.n)}</div>
                       </div>

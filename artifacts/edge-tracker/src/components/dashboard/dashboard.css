@@ -34,13 +34,11 @@
   gap: 0.75rem;
   padding-inline: 0.25rem;
 }
-/* Section labels sit on the canvas (or a «Вид» scene): a step stronger than a tile's label so they stay readable. */
-.dash-section-head > .ins-label { color: hsl(var(--foreground) / 0.78); }
+/* Section headings sit on the canvas (or a «Вид» scene): 15px, a step stronger than a tile's label. */
+.dash-section-head > .ins-label { font-size: var(--text-sm); color: hsl(var(--foreground) / 0.86); }
 .dash-section-hint {
   margin-left: 0.625rem;
-  letter-spacing: 0.06em;
-  text-transform: none;
-  font-family: var(--app-font-sans, inherit);
+  font-weight: 400;
   color: hsl(var(--muted-foreground));
 }
 

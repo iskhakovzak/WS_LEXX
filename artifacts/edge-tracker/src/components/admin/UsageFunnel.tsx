@@ -24,7 +24,7 @@ function DayHead({ day, today }: { day: string; today: boolean }) {
   const { t } = usageI18n.useT();
   return (
     <th scope="col" className={cn("px-1 pb-1 text-center font-medium text-muted-foreground", today && "text-foreground")}>
-      <span className="block text-2xs uppercase">{today ? t("funnel.today") : fmtWeekday(day, "short")}</span>
+      <span className="block text-2xs">{today ? t("funnel.today") : fmtWeekday(day, "short")}</span>
       <span className="block tabular-nums">{fmtDate(day, "dayMonthNumeric")}</span>
     </th>
   );

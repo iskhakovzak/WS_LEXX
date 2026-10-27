@@ -32,7 +32,7 @@ function Cell({ m, i, signed = false, className }: { m: CompareMetric; i: MeInte
   return (
     <span className={cn("inline-flex flex-col items-end tabular-nums", className)}>
       <span className="text-sm font-medium">{fmtMetric(m, i.point, signed)}</span>
-      <span className="text-[11px] text-muted-foreground">{fmtMetric(m, i.lo, signed)} … {fmtMetric(m, i.hi, signed)}</span>
+      <span className="text-2xs text-muted-foreground">{fmtMetric(m, i.lo, signed)} … {fmtMetric(m, i.hi, signed)}</span>
     </span>
   );
 }
@@ -74,7 +74,7 @@ export function CompareBlock({ data, isLoading, isError, hasPeriod }: { data: Co
         <div className="flex flex-col gap-3">
           <Verdict rows={data.rows} />
           <ul className="@container divide-y divide-[var(--glass-border)]">
-            <li className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_8rem_10rem] gap-x-4 gap-y-3 pb-2 text-right text-[11px] uppercase tracking-wide text-muted-foreground @xl:grid">
+            <li className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_8rem_10rem] gap-x-4 gap-y-3 pb-2 text-right text-2xs text-muted-foreground @xl:grid">
               <span className="text-left">&nbsp;</span><span>{t("compare.current")}</span><span>{t("compare.previous")}</span><span>{t("compare.diff")}</span><span />
             </li>
             {data.rows.map((r) => {
@@ -87,15 +87,15 @@ export function CompareBlock({ data, isLoading, isError, hasPeriod }: { data: Co
                     <Pill tone="neutral" className={cn(r.changed && "border-foreground/40 text-foreground")}>{r.changed ? t("compare.changed") : t("compare.noise")}</Pill>
                   </span>
                   <span className="flex flex-col items-start @xl:items-end">
-                    <span className="text-[11px] text-muted-foreground @xl:hidden">{t("compare.current")}</span>
+                    <span className="text-2xs text-muted-foreground @xl:hidden">{t("compare.current")}</span>
                     <Cell m={r.metric} i={r.current} className="items-start @xl:items-end" />
                   </span>
                   <span className="flex flex-col items-start @xl:items-end">
-                    <span className="text-[11px] text-muted-foreground @xl:hidden">{t("compare.previous")}</span>
+                    <span className="text-2xs text-muted-foreground @xl:hidden">{t("compare.previous")}</span>
                     <Cell m={r.metric} i={r.previous} className="items-start @xl:items-end" />
                   </span>
                   <span className="flex flex-col items-start @xl:items-end">
-                    <span className="text-[11px] text-muted-foreground @xl:hidden">{t("compare.diff")}</span>
+                    <span className="text-2xs text-muted-foreground @xl:hidden">{t("compare.diff")}</span>
                     <Cell m={r.metric} i={r.diff} signed className={cn("items-start @xl:items-end", toneText(tone))} />
                   </span>
                 </li>

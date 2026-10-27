@@ -6,6 +6,7 @@ export default {
   aria: "Trade breakdown: years, time, strategy, tags",
   open: "Show breakdown",
   close: "Hide breakdown",
+  allIn: "all in",
   hidden: { one: "{count} value hidden", other: "{count} values hidden" },
   dims: {
     years: "Years",

@@ -27,22 +27,6 @@ export function areaGradient(id: string, color: string, top = 0.28, flip = false
 }
 
 /**
- * Soft glow under a line (dark themes): `<path filter="url(#id)">`. One small blur merged under the stroke — cheap,
- * keeps the line's own (gradient) colours. Use on the one main series only.
- */
-export function glowFilter(id: string, blur = 3) {
-  return (
-    <defs>
-      <filter id={id} x="-5%" y="-20%" width="110%" height="140%" colorInterpolationFilters="sRGB">
-        <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="b" />
-        <feComponentTransfer in="b" result="g"><feFuncA type="linear" slope={0.6} /></feComponentTransfer>
-        <feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge>
-      </filter>
-    </defs>
-  );
-}
-
-/**
  * Vertical bar body: full colour at the data end, softer towards the zero base. `-up` / `-down` ids (negative bars
  * hang below zero, so their gradient is flipped; `downHangs: false` for loss-coloured bars that still grow upwards,
  * e.g. a histogram of losing days).

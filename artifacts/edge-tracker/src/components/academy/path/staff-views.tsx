@@ -78,7 +78,7 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
                         ].filter(Boolean).join(" · ")}
                       </span>
                       {p.failing.length > 0 && (
-                        <span className="line-clamp-2 text-[11px] text-muted-foreground">
+                        <span className="line-clamp-2 text-2xs text-muted-foreground">
                           {t("funnel.missing", { list: p.failing.map((l) => criterionLabelByText(l, p.stage)).join(", ") })}
                         </span>
                       )}
@@ -86,7 +86,7 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
                   )}
                   {p.stage && <StageDays days={p.stageDays} signal={p.stageSignal} />}
                   {p.binding && (
-                    <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
                       {t("realism.binding", { label: p.binding.label })}
                       {p.binding.kind === "infeasible_style" && <Pill tone="warn">{t("realism.neverMetBadge")}</Pill>}
                     </span>

@@ -1,7 +1,8 @@
 /**
  * The assistant's one-line suggestion chip («Review this trade?») — on the orb, and next to the trade sheet's assistant
  * button (the orb sits under the sheet there). A click asks the question at once with the page's context; × dismisses
- * it. Dismissals (and used suggestions) are remembered per browser for that subject (trade / day / page).
+ * it. Dismissals (and used suggestions) are remembered per browser for that subject (trade / day / page); the orb's
+ * floating hint shows at most once per session (claimSessionChip).
  */
 import * as React from "react";
 import { X } from "lucide-react";
@@ -35,6 +36,21 @@ export function dismissSuggestion(id: string): void {
 export function useDismissed(id: string | null | undefined): boolean {
   const list = React.useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l); }; }, snapshot, () => [] as string[]);
   return !!id && list.includes(id);
+}
+
+const SESSION_KEY = "ws_assistant_chip_session";
+
+/**
+ * The floating hint over the orb shows at most once per browser session: the first subject that gets it keeps it (it
+ * may re-appear on that same trade / day), every other page stays quiet until the next session. True = may show.
+ */
+export function claimSessionChip(id: string): boolean {
+  try {
+    const shown = sessionStorage.getItem(SESSION_KEY);
+    if (shown && shown !== id) return false;
+    if (!shown) sessionStorage.setItem(SESSION_KEY, id);
+    return true;
+  } catch { return true; }
 }
 
 export function SuggestionChip({ suggestion, context, className }: { suggestion: Suggestion; context?: PageContext | null; className?: string }) {

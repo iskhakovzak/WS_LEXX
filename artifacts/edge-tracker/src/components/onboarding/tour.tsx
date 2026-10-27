@@ -178,7 +178,7 @@ export function Tour({ steps, onFinish }: { steps: TourStep[]; onFinish: (kind: 
         style={cardStyle}
       >
         <div className="flex items-center justify-between gap-3">
-          <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{t("tour.stepOf", { n: index + 1, total: steps.length })}</p>
+          <p className="text-2xs font-medium text-muted-foreground">{t("tour.stepOf", { n: index + 1, total: steps.length })}</p>
           <ol className="flex items-center gap-1.5" aria-hidden="true">
             {steps.map((s, i) => (
               <li

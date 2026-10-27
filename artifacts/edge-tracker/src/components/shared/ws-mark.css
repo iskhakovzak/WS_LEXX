@@ -93,6 +93,22 @@
   .ws-orb-label, .ws-orb-keys { display: none; }
 }
 
+/* Desktop: once the page scrolls, the pill folds into the round orb (the mark only), so it covers as little data as
+   possible; hover / focus opens it again. The scroller's bottom padding (--orb-clear) keeps the last row free. */
+@media (min-width: 768px) {
+  .ws-orb-label, .ws-orb-keys {
+    max-width: 12rem;
+    opacity: 1;
+    transition: max-width var(--dur-3, .24s) var(--ease, ease), opacity var(--dur-2, .18s) var(--ease, ease);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .ws-orb-button { transition: transform var(--dur-2, .2s) var(--ease, ease), box-shadow var(--dur-2, .2s) var(--ease, ease), padding var(--dur-3, .24s) var(--ease, ease), gap var(--dur-3, .24s) var(--ease, ease); }
+  body:has(#main-content[data-scrolled]) .ws-orb-button:not(:hover, :focus-visible) { gap: 0; padding: 0 .75rem; }
+  body:has(#main-content[data-scrolled]) .ws-orb-button:not(:hover, :focus-visible) :is(.ws-orb-label, .ws-orb-keys) { max-width: 0; opacity: 0; padding-inline: 0; }
+}
+html[data-motion="off"] :is(.ws-orb-label, .ws-orb-keys) { transition: none; }
+
 /* The suggestion chip above the orb. */
 .ws-orb-chip {
   display: inline-flex;

@@ -88,7 +88,7 @@ function Row({ row, onOpen }: { row: TopRow; onOpen?: (alias: number) => void })
 function List({ title, icon, rows, empty, onOpen, staff }: { title: string; icon: React.ReactNode; rows: TopRow[]; empty: string; onOpen: (alias: number) => void; staff: boolean }) {
   return (
     <div className="min-w-0">
-      <h3 className="mb-1 flex items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h3 className="mb-1 flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground">
         {icon}
         {title}
       </h3>

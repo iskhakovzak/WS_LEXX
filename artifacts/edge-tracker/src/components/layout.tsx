@@ -188,7 +188,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <SidebarNav location={location} />
           </div>
         </Sidebar>
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* data-surface: the dashboard is the «face» (full photo); every other page is a work screen, where «Вид» →
+            «Рабочие экраны» dims the photo under the content column or swaps it for a flat canvas (index.css). */}
+        <main data-surface={routeKey === "/" ? "face" : "work"} className="content-scrim relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="shrink-0 pr-[var(--scroller-gutter,0px)]">
             <Header />
           </div>
@@ -196,7 +198,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             id="main-content"
             ref={scrollerRef}
             tabIndex={-1}
-            className="app-scroller min-h-0 flex-1 overflow-auto overscroll-contain px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] outline-none [scrollbar-gutter:stable] md:px-[var(--page-px)] md:pb-[calc(3rem+env(safe-area-inset-bottom))]"
+            className="app-scroller min-h-0 flex-1 overflow-auto overscroll-contain px-3 pb-[calc(var(--orb-clear-phone)+env(safe-area-inset-bottom))] outline-none [scrollbar-gutter:stable] md:px-[var(--page-px)] md:pb-[calc(var(--orb-clear)+env(safe-area-inset-bottom))]"
           >
             {/* Top padding lives here, not on the scroller: Chrome insets `position: sticky` by the scroller's
                 padding, so with it on #main-content every `.sticky-top` bar stuck 20px lower than --sticky-top

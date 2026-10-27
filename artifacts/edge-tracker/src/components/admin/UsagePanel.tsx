@@ -96,8 +96,8 @@ function ActivityPanel({ points }: { points: ActivityPoint[] }) {
   return (
     <Panel title={t("activity.title")} description={t("activity.description")} fill>
       <div className="mb-3 flex flex-wrap items-end gap-x-6 gap-y-2">
-        <div><p className="text-2xs uppercase text-muted-foreground">{t("activity.dauToday")}</p><p className="text-2xl font-semibold tabular-nums">{fmtCount(last?.dau ?? 0)}</p></div>
-        <div><p className="text-2xs uppercase text-muted-foreground">{t("activity.wau")}</p><p className="text-2xl font-semibold tabular-nums">{fmtCount(last?.wau ?? 0)}</p></div>
+        <div><p className="text-2xs text-muted-foreground">{t("activity.dauToday")}</p><p className="text-2xl font-semibold tabular-nums">{fmtCount(last?.dau ?? 0)}</p></div>
+        <div><p className="text-2xs text-muted-foreground">{t("activity.wau")}</p><p className="text-2xl font-semibold tabular-nums">{fmtCount(last?.wau ?? 0)}</p></div>
         <ul className="ml-auto flex flex-wrap gap-3 text-xs text-muted-foreground">
           {(["trader", "curator", "admin"] as const).map((r) => (
             <li key={r} className="inline-flex items-center gap-1.5"><span className={cn("h-2 w-2 rounded-sm", ROLE_BAR[r])} aria-hidden="true" />{t(`activity.roles.${r}`)}</li>

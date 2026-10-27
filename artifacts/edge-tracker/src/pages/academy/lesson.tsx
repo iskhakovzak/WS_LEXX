@@ -107,7 +107,7 @@ function OutlineNav({ nav, current, user }: { nav: Nav; current: { kind: ItemKin
       <ol className="flex flex-col gap-3">
         {nav.outline.map((m, mi) => (
           <li key={m.id}>
-            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{mi + 1}. {m.title}</p>
+            <p className="px-1 text-2xs font-semibold text-muted-foreground">{mi + 1}. {m.title}</p>
             <ol className="mt-1 flex flex-col">
               {m.items.map((i) => {
                 const active = i.kind === current.kind && i.id === current.id;
@@ -301,7 +301,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
         </div>
         {toc.length > 1 && (
           <nav aria-label={t("lesson.tocAria")} className="glass-panel sticky top-[var(--sticky-top)] hidden rounded-2xl p-3 xl:block">
-            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("lesson.inLesson")}</p>
+            <p className="px-1 text-2xs font-semibold text-muted-foreground">{t("lesson.inLesson")}</p>
             <ol className="mt-1 flex flex-col">
               {toc.map((h) => (
                 <li key={h.id}>

@@ -63,6 +63,10 @@ export const PANEL_MODES = ["glass", "frosted", "solid"] as const;
 export const BG_MOTIONS = ["on", "off"] as const;
 export type BgMotion = (typeof BG_MOTIONS)[number];
 export type PanelMode = (typeof PANEL_MODES)[number];
+/** «Рабочие экраны» (every page but the dashboard) while a photo / your image is on: the full photo, the photo under a
+ * dimmed content column (default: text never sits right on the photo), or a flat canvas. The dashboard keeps the photo. */
+export const WORK_BGS = ["photo", "dim", "flat"] as const;
+export type WorkBg = (typeof WORK_BGS)[number];
 export const DENSITIES = ["compact", "spacious"] as const;
 export type Density = (typeof DENSITIES)[number];
 export const GUARD_MODES = ["off", "streak", "daily"] as const;
@@ -119,7 +123,9 @@ export const appearanceSchema = z.object({
     /** «Яркость фона»: share (0…1) of the brightest a scene / image may show in this theme (lib/appearance/scenes). */
     brightness: z.number().finite().min(0).max(1).catch(0.7),
     motion: z.preprocess((v) => (v === "auto" ? "on" : v), z.enum(BG_MOTIONS)).catch("on"),
-  }).catch({ kind: "none", panels: "glass", brightness: 0.7, motion: "on" }),
+    /** Work screens under a photo (WORK_BGS); a block saved before this key reads as the default «dim». */
+    work: z.enum(WORK_BGS).catch("dim"),
+  }).catch({ kind: "none", panels: "glass", brightness: 0.7, motion: "on", work: "dim" }),
   density: z.enum(DENSITIES).catch("compact"),
   chips: z.object({
     strategy: chipGroupSchema("strategy"),
@@ -152,7 +158,7 @@ export const DEFAULT_APPEARANCE: Appearance = Object.freeze({
   font: "inter",
   money: { win: null, loss: null, be: null, beRange: 0 },
   guard: { mode: "off", color: null },
-  bg: { kind: "none", panels: "glass", brightness: 0.7, motion: "on" },
+  bg: { kind: "none", panels: "glass", brightness: 0.7, motion: "on", work: "dim" },
   density: "compact",
   chips: { strategy: { on: true, colors: {} }, tag: { on: true, colors: {} }, horizon: { on: true, colors: {} } },
 }) as Appearance;

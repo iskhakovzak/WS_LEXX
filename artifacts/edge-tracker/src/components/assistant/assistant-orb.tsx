@@ -3,7 +3,8 @@
  * phones. Inviting, not a banner: a new member sees it pulse three times once (remembered per browser), then it stays
  * calm (a slow sheen, the mark's breathing core). On a page with an «ask» context it offers ONE one-line suggestion
  * (lib/assistant/model suggestionFor: «Review this trade?», «Review this day?»…) after a short pause; the suggestion
- * is dismissible and a dismissal is remembered for that trade / day (suggestion-chip.tsx). Hidden while the panel is
+ * is dismissible and a dismissal is remembered for that trade / day, and only one hint shows per browser session
+ * (shared/assistant-suggestion.tsx). Once the page scrolls the pill folds into a round orb (ws-mark.css). Hidden while the panel is
  * open; it sits on the nav layer (z-nav), so sheets and dialogs cover it.
  */
 import * as React from "react";
@@ -12,7 +13,7 @@ import { assistantI18n } from "@/i18n/ns/assistant";
 import { getPageContext, isAssistantPanelOpen, openAssistant, subscribeAssistantPanel, subscribePageContext } from "@/lib/assistant/bus";
 import { pageKeyOf, suggestionFor } from "@/lib/assistant/model";
 import { WsMark } from "@/components/shared/ws-mark";
-import { SuggestionChip, useDismissed } from "@/components/shared/assistant-suggestion";
+import { SuggestionChip, claimSessionChip, useDismissed } from "@/components/shared/assistant-suggestion";
 import { ASSISTANT_KEYS } from "./keys";
 
 const SEEN_KEY = "ws_assistant_orb_seen";
@@ -32,6 +33,8 @@ export function AssistantOrb() {
   const published = React.useSyncExternalStore(subscribePageContext, getPageContext, () => null);
   const suggestion = suggestionFor(pageKeyOf(location, published), published);
   const dismissed = useDismissed(suggestion?.id);
+  const dismissedRef = React.useRef(dismissed);
+  React.useEffect(() => { dismissedRef.current = dismissed; }, [dismissed]);
   const [pulse, setPulse] = React.useState(() => !readSeen());
   const [chipReady, setChipReady] = React.useState(false);
 
@@ -40,7 +43,8 @@ export function AssistantOrb() {
   React.useEffect(() => {
     setChipReady(false);
     if (!sid) return undefined;
-    const id = window.setTimeout(() => setChipReady(true), CHIP_DELAY_MS);
+    // At most one floating hint per session (it covered data on every screen — design audit).
+    const id = window.setTimeout(() => setChipReady(!dismissedRef.current && claimSessionChip(sid)), CHIP_DELAY_MS);
     return () => window.clearTimeout(id);
   }, [sid]);
 

@@ -4,7 +4,6 @@
  */
 import type { ChartTheme } from "@/components/chart-engine/theme";
 import { CANVAS } from "@/components/shared/charts/theme";
-import { monotoneCurve } from "@/components/shared/charts/path";
 import { linear, type Domain } from "./scale";
 import type { Rect } from "./geometry";
 
@@ -54,9 +53,10 @@ export function rr4(ctx: CanvasRenderingContext2D, x: number, y: number, w: numb
   else ctx.rect(x, y, w, h);
 }
 
-/** Smooth monotone curve through the points (shared with the SVG sparklines). */
-export function monotonePath(path: Path2D, pts: readonly (readonly [number, number])[]) {
-  monotoneCurve(path, pts);
+/** Straight segments through the points: a P&L curve shows only the real day / trade results, never values a smooth
+ * curve would draw between them (design audit). */
+export function linePath(path: Path2D, pts: readonly (readonly [number, number])[]) {
+  pts.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)));
 }
 
 /** Ink for text on a solid colour pill: near-black on light fills, white on dark ones (AA on every theme). */
@@ -67,11 +67,6 @@ export function inkOn(rgba: string): string {
   const L = 0.2126 * lin(+m[0]) + 0.7152 * lin(+m[1]) + 0.0722 * lin(+m[2]);
   // Contrast with white vs with #111: pick the larger.
   return 1.05 / (L + 0.05) >= (L + 0.05) / 0.0559 ? "rgba(255,255,255,0.98)" : "rgba(17,18,20,0.94)";
-}
-
-/** Canvas blur filter support (Chrome / Firefox / Safari 18+); without it the glow is skipped, never drawn sharp. */
-export function canBlur(ctx: CanvasRenderingContext2D): boolean {
-  return typeof (ctx as { filter?: unknown }).filter === "string";
 }
 
 export const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);

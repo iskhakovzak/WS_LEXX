@@ -137,7 +137,7 @@ function RecCard({ rec, data }: { rec: OfficeRec; data: RecsResponse }) {
     <li className="tile flex min-w-0 flex-col gap-2.5 p-3.5 sm:p-4">
       <div className="flex items-center gap-2">
         <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", KIND_TONE[rec.kind])} aria-hidden="true"><Icon className="h-3.5 w-3.5" /></span>
-        <span className="min-w-0 flex-1 truncate text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-2xs font-medium text-muted-foreground">
           {t(`kinds.${rec.kind}`)}
           {rec.audience === "staff" && (
             <span className="ml-1.5 inline-flex items-center gap-0.5 normal-case tracking-normal" title={t("staffOnly")}>

@@ -49,11 +49,11 @@ export function EdgeMapPanel({ trader, className, title }: { trader: string | nu
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <section className="flex min-w-0 flex-col gap-1">
-                <h3 className="flex items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />{t("edgeMap.earn")}</h3>
+                <h3 className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />{t("edgeMap.earn")}</h3>
                 <EdgeVerdictList rows={v.earn} kind="earn" />
               </section>
               <section className="flex min-w-0 flex-col gap-1">
-                <h3 className="flex items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />{t("edgeMap.lose")}</h3>
+                <h3 className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground"><TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />{t("edgeMap.lose")}</h3>
                 <EdgeVerdictList rows={v.lose} kind="lose" />
               </section>
             </div>

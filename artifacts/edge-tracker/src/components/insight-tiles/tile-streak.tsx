@@ -1,5 +1,5 @@
 /**
- * «Серия» — the hero tile: the current streak as one giant numeral with «побед подряд» in italic, the last 20 closed
+ * «Серия» — the hero tile: the current streak as one giant numeral with «побед подряд» under it, the last 20 closed
  * trades as capsules diverging from a hairline (up = profit, down = loss, height = size of the net), what the current run
  * is worth in $, and the records. Each capsule is a link to the trade with a tooltip; the strip is one tab stop with
  * arrow keys / Home / End inside (roving tabindex). Phones show the last 10 capsules (≥ 24px targets).

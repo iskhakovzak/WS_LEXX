@@ -238,7 +238,7 @@ function ErrorRow({ row, onOpen }: { row: AppErrorRow; onOpen: () => void }) {
 function Field({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-2xs text-muted-foreground">{label}</dt>
       <dd className={cn("min-w-0 break-words text-sm text-foreground", mono && "font-mono text-xs")}>{children}</dd>
     </div>
   );

@@ -36,7 +36,7 @@ function Chip({ chip }: { chip: ToolChip }) {
 function AnswerTag({ m }: { m: ChatMessage }) {
   const { t } = assistantI18n.useT();
   return (
-    <p className="mb-1 flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+    <p className="mb-1 flex items-center gap-1.5 text-2xs text-muted-foreground">
       <WsMark className="h-3.5 w-3.5" still={m.status !== "streaming"} />
       <TierMark tier={m.tier} />
       {m.status === "stopped" ? <span>· {t("stopped")}</span> : null}

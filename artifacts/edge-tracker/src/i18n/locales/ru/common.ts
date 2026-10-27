@@ -349,6 +349,10 @@ export default {
   },
   /** components/ds.tsx, ds/states.tsx — shared design-system words. */
   ds: {
+    more: "ещё",
+    less: "свернуть",
+    allClear: "Всё чисто: {items}",
+    rowMore: "Ещё действия",
     trend: "Тренд: {from} → {to}",
     sortAsc: "по возрастанию",
     sortDesc: "по убыванию",

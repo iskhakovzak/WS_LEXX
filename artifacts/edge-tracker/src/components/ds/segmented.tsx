@@ -13,7 +13,8 @@ import { useEdgeFade } from "@/components/ds/edge-fade";
 export type SegmentOption<T extends string> = { value: T; label: React.ReactNode; count?: number; disabled?: boolean; /** Native tooltip (e.g. why the option is disabled). */ title?: string };
 
 /**
- * Segmented control: pill track, active segment solid accent. Single-select.
+ * Segmented control: pill track, active segment on the neutral «selected» fill. Single-select. For filters and modes
+ * only; the views of a page are SectionTabs.
  *
  * `T` is inferred from `value` only (options/onChange are `NoInfer`), so
  * `<Segmented value={tab} onChange={setTab} options={...} />` works with a
@@ -60,7 +61,7 @@ export function Segmented<T extends string>({
             className={cn(
               "press relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-1)] ease-smooth disabled:opacity-50",
               size === "sm" ? "h-6.5 px-2.5 text-xs [&_svg]:size-3.5 pointer-coarse:h-8.5" : "h-7 px-3 text-sm [&_svg]:size-4 pointer-coarse:h-9",
-              active ? "text-primary-foreground" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
+              active ? "text-selected-foreground" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
             )}
           >
             {active && <ActivePill layoutId={pill} />}

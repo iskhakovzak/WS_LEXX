@@ -300,7 +300,7 @@ export function DashboardHeader({
   const wide = "col-span-2 lg:col-span-3";
   return (
     <section aria-labelledby="dash-hero-title" className="ins-tile glass-panel dash-card gap-5!">
-      {/* Greeting: display type, the name in the intro's italic serif (the screen's one accent word). */}
+      {/* Greeting: display type, one family (the intro's italic serif stays on the intro and the lock screen). */}
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
           <p className="truncate text-xs text-muted-foreground">
@@ -309,7 +309,7 @@ export function DashboardHeader({
           </p>
           <h1 id="dash-hero-title" className="reveal mt-1 line-clamp-2 type-display text-foreground [overflow-wrap:anywhere]">
             {greeting(now)}
-            {userName ? <>, <em className="type-accent">{personName(userName)}</em></> : ""}
+            {userName ? <>, {personName(userName)}</> : ""}
           </h1>
         </div>
         {canChooseScope && !guest && (

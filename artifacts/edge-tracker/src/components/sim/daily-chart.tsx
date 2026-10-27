@@ -122,7 +122,7 @@ export function DailyChart({
         {pdc != null && gapPx != null && (
           <g data-testid="sim-daily-gap">
             <line x1={todayX + bw} x2={todayX + bw} y1={y(pdc)} y2={y(gapPx)} strokeWidth={2} className={gapPx >= pdc ? "stroke-up" : "stroke-down"} />
-            <text x={Math.max(0, todayX - 6)} y={y(gapPx) + (gapPx >= pdc ? -6 : 14)} textAnchor="end" className={cn("text-[11px] font-semibold tabular-nums", gapPx >= pdc ? "fill-up" : "fill-down")}>
+            <text x={Math.max(0, todayX - 6)} y={y(gapPx) + (gapPx >= pdc ? -6 : 14)} textAnchor="end" className={cn("text-2xs font-semibold tabular-nums", gapPx >= pdc ? "fill-up" : "fill-down")}>
               {t("dailyChart.gap", { value: fmtPct(gapPct, { decimals: 1 }) })}
             </text>
           </g>

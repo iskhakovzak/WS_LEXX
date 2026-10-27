@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, Bug, Database, Flag, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, SlidersHorizontal, Users } from "lucide-react";
+import { Activity, Bug, Database, Flag, Gauge, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, SlidersHorizontal, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/components/ds";
@@ -227,7 +227,7 @@ function AdminConsole() {
             { value: "moderation", label: t("page.tabs.moderation"), icon: Flag, count: openReports || undefined },
             ...(showRoles ? [{ value: "roles" as const, label: t("page.tabs.roles"), icon: KeyRound }] : []),
             ...(showSettings ? [{ value: "settings" as const, label: tSettings("tab"), icon: SlidersHorizontal }] : []),
-            ...(showUsage ? [{ value: "usage" as const, label: tUsage("tab"), icon: BarChart3 }] : []),
+            ...(showUsage ? [{ value: "usage" as const, label: tUsage("tab"), icon: Gauge }] : []),
             ...(showData ? [{ value: "data" as const, label: t("page.tabs.data"), icon: Database }] : []),
             ...(showAudit ? [{ value: "audit" as const, label: t("page.tabs.audit"), icon: ScrollText }] : []),
             ...(showErrors ? [{ value: "errors" as const, label: appErrorsI18n.t("tab"), icon: Bug }] : []),

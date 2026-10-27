@@ -130,9 +130,6 @@ export const CANVAS = {
   zeroAlpha: (dark: boolean) => (dark ? 0.36 : 0.34),
   fillTop: (dark: boolean) => (dark ? 0.3 : 0.2),
   fillMid: (dark: boolean) => (dark ? 0.1 : 0.07),
-  /** Glow under the main line (dark themes only): blur radius in px and its alpha. */
-  glowBlur: 10,
-  glowAlpha: 0.55,
   line: STROKE,
   lineDense: STROKE_THIN,
   fontSize: 11,

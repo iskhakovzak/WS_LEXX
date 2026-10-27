@@ -521,7 +521,7 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
                 className="tile tile-interactive press flex min-w-0 flex-col gap-0.5 p-2 text-left disabled:opacity-50"
                 title={m.days ? t("calendar.monthTitle", { month: monthLong(m.month - 1), value: fmtV(m.v, unit), green: m.green, red: m.red }) : t("calendar.monthEmpty", { month: monthLong(m.month - 1) })}
               >
-                <span className="text-2xs uppercase tracking-wide text-muted-foreground">{monthShort(m.month - 1)}</span>
+                <span className="text-2xs text-muted-foreground">{monthShort(m.month - 1)}</span>
                 <span className={cn("truncate text-sm font-semibold tabular-nums", (m.v ?? 0) > 0 ? "text-up" : (m.v ?? 0) < 0 ? "text-down" : "text-muted-foreground")}>{m.days ? fmtMonthTile(m.v, unit) : "—"}</span>
                 <span className="h-1 rounded-full" style={{ background: divergingCell(m.v, monthMax) }} aria-hidden="true" />
               </button>

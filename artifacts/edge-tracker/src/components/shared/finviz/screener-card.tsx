@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookMarked, Check, ChevronDown, ChevronUp, Plus, RefreshCw, ScanSearch } from "lucide-react";
-import { ErrorState, Panel, Segmented, SortableTh, DataTable, usePersistentState, toneOf, toneText } from "@/components/ds";
+import { ErrorState, Panel, RowActions as DsRowActions, Segmented, SortableTh, DataTable, usePersistentState, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToastAction } from "@/components/ui/toast";
@@ -44,40 +44,42 @@ function MoveCell({ r, preset }: { r: ScreenerRow; preset: ScreenerPreset }) {
   return <span className={cn("font-semibold tabular-nums", toneText(toneOf(m)))}>{fmtPct(m, 1)}</span>;
 }
 
+/**
+ * «В план» (the row's one action) + «В плейбук» in the «…» menu (components/ds RowActions): shown on row hover / focus
+ * on desktop, always on touch. A ticker already in the plan keeps its ✓ visible at all times.
+ */
 function Actions({ r, a, compact }: { r: ScreenerRow; a: RowActions; compact?: boolean }) {
   const { t } = finvizI18n.useT();
   const date = fmtDeskDate(a.planDate, "dayMonth");
   const has = a.inPlan(r.ticker);
   return (
     <div className="flex shrink-0 items-center justify-end gap-1">
-      {a.canPlan && (
-        <Button
-          type="button"
-          size="sm"
-          variant={has ? "ghost" : "outline"}
-          className="h-8 gap-1 px-2"
-          disabled={has || a.adding === r.ticker}
-          onClick={() => a.onAdd(r)}
-          title={has ? t("screener.inPlanTitle", { ticker: r.ticker, date }) : t("screener.toPlanTitle", { ticker: r.ticker, date })}
-          aria-label={has ? t("screener.inPlanTitle", { ticker: r.ticker, date }) : t("screener.toPlanTitle", { ticker: r.ticker, date })}
-        >
-          {has ? <Check className="h-4 w-4 text-up" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-          <span className={cn(compact && "sr-only")}>{has ? t("screener.inPlan") : t("screener.toPlan")}</span>
-        </Button>
+      {a.canPlan && has && (
+        <span className="inline-flex h-8 items-center gap-1 px-2 text-xs text-muted-foreground" title={t("screener.inPlanTitle", { ticker: r.ticker, date })}>
+          <Check className="h-4 w-4 text-up" aria-hidden="true" />
+          <span className={cn(compact && "sr-only")}>{t("screener.inPlan")}</span>
+        </span>
       )}
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="h-8 gap-1 px-2"
-        onClick={() => openSetupSheet()}
-        title={t("screener.toPlaybookTitle", { ticker: r.ticker })}
-        aria-label={t("screener.toPlaybookTitle", { ticker: r.ticker })}
-        aria-haspopup="dialog"
+      <DsRowActions
+        menuLabel={t("screener.toPlaybookTitle", { ticker: r.ticker })}
+        more={[{ label: t("screener.toPlaybook"), icon: BookMarked, onSelect: () => openSetupSheet() }]}
       >
-        <BookMarked className="h-4 w-4" aria-hidden="true" />
-        <span className="sr-only lg:not-sr-only">{t("screener.toPlaybook")}</span>
-      </Button>
+        {a.canPlan && !has && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 px-2"
+            disabled={a.adding === r.ticker}
+            onClick={() => a.onAdd(r)}
+            title={t("screener.toPlanTitle", { ticker: r.ticker, date })}
+            aria-label={t("screener.toPlanTitle", { ticker: r.ticker, date })}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            <span className={cn(compact && "sr-only")}>{t("screener.toPlan")}</span>
+          </Button>
+        )}
+      </DsRowActions>
     </div>
   );
 }

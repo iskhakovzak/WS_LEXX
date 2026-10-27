@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { BarChart3, CalendarClock, Plus, Star, Swords, Trophy, UserRound } from "lucide-react";
+import { CalendarClock, ListOrdered, Plus, Star, Swords, Trophy, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -106,7 +106,7 @@ export default function RatingsPage() {
   const pendingCount = isCurator ? ratingTraders.filter((name) => !ratings.some((r) => r.trader === name && r.week === thisWeek)).length : 0;
 
   const tabOptions = [
-    { value: "leaderboard" as const, label: <span className="inline-flex items-center gap-1.5"><BarChart3 className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabLeaderboard")}</span> },
+    { value: "leaderboard" as const, label: <span className="inline-flex items-center gap-1.5"><ListOrdered className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabLeaderboard")}</span> },
     {
       value: "curator" as const,
       label: <span className="inline-flex items-center gap-1.5"><Star className="hidden h-4 w-4 sm:block" aria-hidden="true" /><span className="sm:hidden">{t("page.tabCuratorShort")}</span><span className="hidden sm:inline">{t("page.tabCurator")}</span></span>,

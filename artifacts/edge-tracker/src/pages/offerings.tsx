@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
-  AlertTriangle, BarChart3, CalendarDays, CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Layers, RefreshCw, Sun, UserCheck,
+  AlertTriangle, CalendarDays, CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Layers, RefreshCw, Sun, User, UserCheck,
 } from "lucide-react";
 import {
   EmptyState, Page, PageHeader, Panel, SectionTabs, Segmented, StatCard, StatGrid, TableSkeleton, TermTooltip, UpdatedAgo,
@@ -414,7 +414,7 @@ export default function OfferingsPage() {
             { value: "week", label: t("page.tab.week"), icon: CalendarRange },
             { value: "ipo", label: t("page.tab.ipo"), icon: CalendarDays },
             { value: "insiders", label: t("page.tab.insiders"), icon: UserCheck },
-            { value: "mine", label: t("page.tab.mine"), icon: BarChart3 },
+            { value: "mine", label: t("page.tab.mine"), icon: User },
           ]}
         />
       </PageHeader>

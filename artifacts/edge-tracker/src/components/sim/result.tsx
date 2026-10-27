@@ -54,7 +54,7 @@ export function ResultSummary({ game, onAgain, onStart, starting, noAgain = fals
     <div className="flex flex-col gap-3">
       {series && <SeriesProgress series={series} gameId={game.meta.id} />}
       <div className="tile rounded-xl p-3">
-        <p className="text-2xs uppercase tracking-wide text-muted-foreground">{t("result.title")}</p>
+        <p className="text-2xs text-muted-foreground">{t("result.title")}</p>
         <p className="mt-0.5 text-xl font-semibold tracking-tight">{t("result.revealed", { ticker: r.ticker })}</p>
         {r.longName && <p className="truncate text-xs text-muted-foreground" title={r.longName}>{r.longName}</p>}
         <p className="mt-1 text-xs text-muted-foreground">{dayText(r)}</p>

@@ -6,6 +6,7 @@ export default {
   aria: "Savdo kesimlari: yillar, vaqt, strategiya, teglar",
   open: "Kesimlarni koʻrsatish",
   close: "Kesimlarni yashirish",
+  allIn: "hammasi",
   hidden: { one: "{count} ta qiymat yashirilgan", other: "{count} ta qiymat yashirilgan" },
   dims: {
     years: "Yillar",

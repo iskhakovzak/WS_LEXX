@@ -79,7 +79,7 @@ export function DraftCardView({ card }: { card: Card }) {
           const value = show(draft[f.key], f.kind);
           return (
             <div key={f.key} className="space-y-1">
-              <label htmlFor={id} className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{label}</label>
+              <label htmlFor={id} className="text-2xs font-medium text-muted-foreground">{label}</label>
               {f.kind === "area" || f.kind === "lines" ? (
                 <Textarea id={id} value={value} rows={Math.min(8, Math.max(2, value.split("\n").length + 1))} className="min-h-0 text-sm" onChange={(e) => set(f.key, parse(e.target.value, f.kind))} />
               ) : (
@@ -93,7 +93,7 @@ export function DraftCardView({ card }: { card: Card }) {
         ) : null}
         {inPlay.length ? (
           <div className="space-y-1">
-            <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{t("drafts.fields.inPlay")}</p>
+            <p className="text-2xs font-medium text-muted-foreground">{t("drafts.fields.inPlay")}</p>
             <ul className="space-y-1 text-xs">{inPlay.map((x, i) => <li key={i}><span className="font-semibold text-foreground">{String(x.ticker ?? "")}</span>{x.trigger ? ` — ${String(x.trigger)}` : ""}</li>)}</ul>
           </div>
         ) : null}

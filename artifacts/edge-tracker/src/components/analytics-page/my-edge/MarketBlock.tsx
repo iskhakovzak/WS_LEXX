@@ -95,13 +95,13 @@ export function MarketBlock({ data, isLoading, isError, filters }: { data: Marke
               : t("market.verdictNone")}
           </p>
           <div className="flex flex-col gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("market.index")}</h3>
+            <h3 className="text-xs font-semibold text-muted-foreground">{t("market.index")}</h3>
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {INDEX_DIMS.map((d) => <DimCard key={d} dim={d} data={data} filters={filters} cov={covOf(d)} />)}
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("market.ticker")}</h3>
+            <h3 className="text-xs font-semibold text-muted-foreground">{t("market.ticker")}</h3>
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {TICKER_DIMS.map((d) => <DimCard key={d} dim={d} data={data} filters={filters} cov={covOf(d)} />)}
             </div>

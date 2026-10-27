@@ -56,7 +56,7 @@ function AllSlices({ data, filters }: { data: StrengthsData; filters: AnalyticsF
         const scale = scaleOf(g.rows);
         return (
           <section key={g.dim} className="min-w-0">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{dimLabel(g.dim)}</h3>
+            <h3 className="text-xs font-semibold text-muted-foreground">{dimLabel(g.dim)}</h3>
             <ul className="@container divide-y divide-[var(--glass-border)]">
               {g.rows.map((r) => <EdgeRow key={r.key} row={r} scale={scale} filters={filters} typicalDay={data.typicalDay} showDim={false} />)}
             </ul>
@@ -98,11 +98,11 @@ export function StrengthsBlock({ data, isLoading, isError, filters }: { data: St
           ) : (
             <div className="grid grid-cols-1 gap-x-6 gap-y-4 xl:grid-cols-2">
               <section className="min-w-0">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("strengths.best")}</h3>
+                <h3 className="text-xs font-semibold text-muted-foreground">{t("strengths.best")}</h3>
                 <RowList rows={data.strengths} empty={t("strengths.emptyBest")} scale={scale} filters={filters} typicalDay={data.typicalDay} />
               </section>
               <section className="min-w-0">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("strengths.leaks")}</h3>
+                <h3 className="text-xs font-semibold text-muted-foreground">{t("strengths.leaks")}</h3>
                 <RowList rows={data.leaks} empty={t("strengths.emptyLeaks")} scale={scale} filters={filters} typicalDay={data.typicalDay} />
               </section>
             </div>

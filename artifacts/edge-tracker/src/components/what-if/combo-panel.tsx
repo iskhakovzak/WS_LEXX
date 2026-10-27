@@ -82,7 +82,7 @@ function ComboCard({ c, family, applied, own = false, onApply }: { c: ComboEval;
         </p>
       </div>
       <div className="flex flex-col gap-1.5">
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("combo.contrib")}</p>
+        <p className="text-2xs text-muted-foreground">{t("combo.contrib")}</p>
         <ul className="flex flex-col gap-1.5">
           {c.rules.map((r, i) => {
             const m = c.marginal[i] ?? 0;

@@ -98,7 +98,7 @@ export function TraderDaySheet({ date, alias, staff, onClose }: { date: string |
         ) : (
           <>
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("sheet.tickers")}</h3>
+              <h3 className="text-xs font-semibold text-muted-foreground">{t("sheet.tickers")}</h3>
               <ul className="flex flex-col gap-2">
                 {d.tickers.map((tk) => <TickerRow key={tk.ticker} tk={tk} date={d.date} alias={d.alias} />)}
               </ul>

@@ -272,7 +272,7 @@ export function RulesPopover({ rules, isAdmin }: { rules: Rules; isAdmin: boolea
           {t("rules.intro")}
           {isAdmin ? t("rules.admin") : t("rules.member")}
         </p>
-        <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("rules.strategiesNy")}</p>
+        <p className="mt-3 text-xs font-semibold text-muted-foreground">{t("rules.strategiesNy")}</p>
         <ul className="mt-1.5 flex flex-col gap-1.5">
           {rules.strategies.map((s) => (
             <li key={s.key} className="flex gap-2 text-xs">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { BarChart3, BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler } from "lucide-react";
+import { BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler, TrendingUp } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -127,7 +127,7 @@ export default function AcademyLearn() {
             tabs={[
               { value: "catalog", label: t("learn.tabCourses"), icon: BookOpenCheck },
               { value: "review", label: t("learn.tabReview"), icon: Inbox, count: pending || undefined },
-              { value: "progress", label: t("learn.tabProgress"), icon: BarChart3 },
+              { value: "progress", label: t("learn.tabProgress"), icon: TrendingUp },
             ]}
           />
         )}

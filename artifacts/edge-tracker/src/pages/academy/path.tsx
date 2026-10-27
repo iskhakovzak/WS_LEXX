@@ -7,7 +7,7 @@ import * as React from "react";
 import { useSearch } from "wouter";
 import { RefreshCw, Route as RouteIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Page, PageHeader, Segmented } from "@/components/ds";
+import { Page, PageHeader, SectionTabs } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
@@ -55,12 +55,13 @@ export default function AcademyPathPage() {
         </>}
       >
         {isCurator && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Segmented<View>
+          <div className="flex flex-col gap-3">
+            {/* The page's views are tabs (SectionTabs); Segmented is for filters and modes only (design audit). */}
+            <SectionTabs<View>
               ariaLabel={t("page.sectionAria")}
               value={view}
               onChange={setView}
-              options={[
+              tabs={[
                 { value: "funnel", label: t("page.views.funnel") },
                 { value: "person", label: t("page.views.person") },
                 { value: "requests", label: t("page.views.requests"), count: pending.data?.requests.length || undefined },
@@ -68,7 +69,7 @@ export default function AcademyPathPage() {
               ]}
             />
             {view === "person" && (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <label className="flex items-center gap-2 self-start text-sm text-muted-foreground">
                 <span>{t("page.student")}</span>
                 <PersonSelect value={target ?? me ?? ""} onValueChange={(v) => setTarget(v || null)} options={people} self={me}
                   placeholder={t("page.student")} ariaLabel={t("page.student")} className="h-9 w-56" />

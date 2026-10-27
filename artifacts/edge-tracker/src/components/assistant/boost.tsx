@@ -60,7 +60,7 @@ export function TierMark({ tier }: { tier: Tier | null }) {
   if (tier !== "boost" && tier !== "deep") return null;
   const label = tier === "boost" ? t("tier.boost") : t("tier.deep");
   return (
-    <span className="inline-flex items-center gap-0.5 text-[0.6875rem] font-medium text-muted-foreground" title={label} aria-label={label}>
+    <span className="inline-flex items-center gap-0.5 text-2xs font-medium text-muted-foreground" title={label} aria-label={label}>
       <BoltMark className={cn("h-3 w-3", tier === "boost" ? "text-foreground" : "text-muted-foreground")} />
     </span>
   );

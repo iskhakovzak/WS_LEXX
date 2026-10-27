@@ -112,7 +112,7 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="text-left text-2xs uppercase tracking-wide text-muted-foreground">
+              <tr className="text-left text-2xs text-muted-foreground">
                 <th className="px-2 py-1.5 font-medium">{t("col.job")}</th>
                 <th className="px-2 py-1.5 font-medium">{t("col.schedule")}</th>
                 <th className="px-2 py-1.5 font-medium">{t("col.status")}</th>

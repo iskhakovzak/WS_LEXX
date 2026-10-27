@@ -51,7 +51,7 @@ export function NoTradeVerdictCard({ verdict }: { verdict: NoTradeVerdict }) {
   const r = fmtR(verdict.bestR, { decimals: 1, signed: false });
   return (
     <div className={cn("tile rounded-xl p-3", verdict.correct ? "ring-1 ring-up/40" : "ring-1 ring-down/40")} role="status">
-      <p className="text-2xs uppercase tracking-wide text-muted-foreground">{t("verdict.title")}</p>
+      <p className="text-2xs text-muted-foreground">{t("verdict.title")}</p>
       <p className={cn("mt-1 flex items-start gap-1.5 text-base font-semibold leading-snug", verdict.correct ? "text-up" : "text-down")}>
         {verdict.correct ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
         {t(`verdict.${verdict.reasonKey}`, { r })}

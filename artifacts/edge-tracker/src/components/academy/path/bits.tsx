@@ -46,7 +46,7 @@ export function StageLadder({ stages, current, readyFor, counts }: {
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("stage.step", { n: i + 1 })}</span>
+              <span className="text-2xs font-medium text-muted-foreground">{t("stage.step", { n: i + 1 })}</span>
               <Icon className={cn("h-4 w-4", state === "done" && "text-up", state === "current" && "text-primary", state === "next" && "text-muted-foreground", state === "locked" && "text-muted-foreground")} aria-hidden="true" />
             </div>
             <div className="flex min-w-0 items-center gap-3">
@@ -241,7 +241,7 @@ export function Field({ label, htmlFor, children, hint }: { label: string; htmlF
     <div className="flex flex-col gap-1">
       <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-2xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

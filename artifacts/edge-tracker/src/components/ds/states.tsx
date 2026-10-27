@@ -67,20 +67,20 @@ export function SkeletonBlock({ className, ...rest }: React.HTMLAttributes<HTMLD
   return <div aria-hidden="true" className={cn("skeleton h-4 w-full", className)} {...rest} />;
 }
 
-/** Placeholder for a StatGrid of KPI cards (same min width, same height as StatCard). */
+/** Placeholder for a StatGrid: the same strip shape (one panel, hairline-divided cells: label, number, hint). */
 export function StatGridSkeleton({ count = 4, min = "11rem", className }: { count?: number; min?: string; className?: string }) {
   return (
     <div
       role="status"
       aria-label={commonI18n.t("ds.loadingKpis")}
-      className={cn("grid gap-[var(--grid-gap)]", className)}
+      className={cn("glass-panel grid overflow-hidden rounded-2xl", className)}
       style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}, 100%), 1fr))` }}
     >
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="glass-panel flex min-h-[104px] flex-col gap-2 rounded-2xl p-4">
+        <div key={i} className="flex flex-col gap-2 px-4 py-3 shadow-[-1px_0_0_var(--glass-border),0_-1px_0_var(--glass-border)]">
           <SkeletonBlock className="h-3 w-20" />
           <SkeletonBlock className="h-7 w-28" />
-          <SkeletonBlock className="mt-auto h-3 w-16" />
+          <SkeletonBlock className="h-3 w-16" />
         </div>
       ))}
     </div>
