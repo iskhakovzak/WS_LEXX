@@ -62,7 +62,7 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
               formatter={(v: number, name: string) => [usd(v), name]}
               labelFormatter={(_, p) => { const d = p?.[0]?.payload?.day; return typeof d === "string" ? fmtDeskDate(d, "medium") : ""; }}
             />
-            {hasScenario && <Legend verticalAlign="top" align="right" height={28} iconType="plainline" wrapperStyle={{ fontSize: 11 }} />}
+            {hasScenario && <Legend verticalAlign="top" align="right" height={28} iconType="plainline" wrapperStyle={{ fontSize: 12 }} />}
             <ReferenceLine {...ZERO_LINE} />
             {hasScenario ? (
               <Line type="linear" dataKey={SERIES_BASE} name={t("chart.base")} stroke={CHART.neutral} dot={false} strokeWidth={STROKE_THIN} strokeDasharray="4 3" activeDot={{ ...ACTIVE_DOT, fill: CHART.neutral }} {...motion} />
@@ -132,7 +132,7 @@ export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResul
             <XAxis dataKey="tick" {...X_AXIS} interval={0} />
             <YAxis {...Y_AXIS} allowDecimals={false} width={32} />
             <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} formatter={(v: number, name: string) => [t("chart.days", { count: v }), name]} labelFormatter={(_, p) => (p?.[0]?.payload?.label as string) ?? ""} />
-            {hasScenario && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />}
+            {hasScenario && <Legend wrapperStyle={{ fontSize: 12 }} iconSize={8} />}
             <Bar dataKey={SERIES_BASE} name={t("chart.base")} fill={hasScenario ? tint("muted-foreground", 0.45) : CHART.up} radius={BAR_RADIUS} {...motion}>
               {data.map((d, k) => <Cell key={d.i} fill={hasScenario ? tint(d.neg ? "down" : "up", 0.4) : `url(#${gid}-${d.neg ? "down" : "up"})`} fillOpacity={focus.opacity(k)} />)}
             </Bar>

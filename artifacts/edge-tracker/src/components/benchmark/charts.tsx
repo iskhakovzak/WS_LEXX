@@ -196,7 +196,7 @@ export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis
         return (
           <g key={a.key}>
             <line x1={c} y1={c} x2={x2} y2={y2} stroke={CHART.grid} strokeOpacity={0.45} />
-            <text x={lx} y={ly} textAnchor={Math.abs(lx - c) < 8 ? "middle" : lx > c ? "start" : "end"} dominantBaseline="middle" fontSize={11} fill={CHART.axis}>{a.label}</text>
+            <text x={lx} y={ly} textAnchor={Math.abs(lx - c) < 8 ? "middle" : lx > c ? "start" : "end"} dominantBaseline="middle" fontSize={12} fill={CHART.axis}>{a.label}</text>
           </g>
         );
       })}

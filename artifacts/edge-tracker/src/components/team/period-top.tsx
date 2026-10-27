@@ -14,8 +14,10 @@ import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, StatCard, StatGrid, Toolbar, toneOf, toneText, type SegmentOption } from "@/components/ds";
+import { EmptyState, FilterChip, Page, PageHeader, Panel, Pill, Segmented, StatCard, StatGrid, Toolbar, toneOf, toneText } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton } from "@/components/shared/filters/filter-toolbar";
+import { PeriodPicker, fmtDayRange, type WithCustom } from "@/components/shared/period/PeriodPicker";
+import { isYmd, parseDayRange, type DayRange } from "@/lib/period-range";
 import { http } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS, closeDate } from "@/lib/trade-math";
@@ -47,11 +49,43 @@ const VIEW_KEY = "ws_top_results_view_v2";
 type SavedView = { period: Period; metric: Metric; minTrades: number };
 type Side = "all" | "plus" | "minus";
 
+type TopPeriod = WithCustom<Period>;
 const PERIODS: Period[] = ["week", "month", "quarter", "all"];
 const METRICS: Metric[] = ["score", "net", "r", "expectancy", "pf", "consistency", "drawdown", "winrate"];
-/** Period options and «vs previous» labels are built at render time (current UI language). */
-const periodOptions = (): SegmentOption<Period>[] => PERIODS.map((value) => ({ value, label: ratingsI18n.t(`top.periods.${value}`) }));
-const prevLabel = (p: Period): string => (p === "all" ? "" : ratingsI18n.t(`top.prev.${p}`));
+const DEFAULT_METRIC: Metric = "score";
+const DEFAULT_MIN_TRADES = 5;
+/**
+ * The vocabulary words (Неделя · Месяц · Квартал · Всё) with their calendar meaning here: the desk leaderboard is a
+ * calendar week / month / quarter around the anchor date, stepped with ‹ ›. Built at render time (UI language).
+ */
+const periodOptions = () => PERIODS.map((value) => ({ value, label: commonI18n.t(`periodPicker.presets.${value}`), title: ratingsI18n.t(`top.periodHints.${value}`) }));
+const prevLabel = (p: TopPeriod): string => (p === "all" ? "" : ratingsI18n.t(`top.prev.${p}`));
+
+/** ?period=&anchor= (+ &from=&to= for «Период…»): the shown period is linkable; local storage keeps the last preset. */
+function readUrl(saved: Partial<SavedView>): { period: TopPeriod; anchor: string; custom: DayRange | null } {
+  const q = new URLSearchParams(window.location.search);
+  const today = todayNy();
+  const a = q.get("anchor");
+  const anchor = isYmd(a) && a <= today ? a : today;
+  const custom = parseDayRange(q.get("from"), q.get("to"));
+  const p = q.get("period");
+  if (p === "custom" && custom) return { period: "custom", anchor, custom };
+  const period = PERIODS.includes(p as Period) ? (p as Period) : PERIODS.includes(saved.period as Period) ? (saved.period as Period) : "week";
+  return { period, anchor, custom: null };
+}
+
+function writeUrl(period: TopPeriod, anchor: string, custom: DayRange | null) {
+  const p = new URLSearchParams(window.location.search);
+  if (period === "week") p.delete("period");
+  else p.set("period", period);
+  // The anchor only when it is not the current period (today's week / month / quarter is the default).
+  if (period !== "all" && period !== "custom" && periodRange(anchor, period).from !== periodRange(todayNy(), period).from) p.set("anchor", anchor);
+  else p.delete("anchor");
+  if (period === "custom" && custom) { p.set("from", custom.from); p.set("to", custom.to); }
+  else { p.delete("from"); p.delete("to"); }
+  const qs = p.toString();
+  window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
+}
 
 async function fetchDesk(params: URLSearchParams): Promise<DeskLeaderboard> {
   return http.get<DeskLeaderboard>(`/api/leaderboard?${params.toString()}`);
@@ -101,17 +135,29 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
   const { isCurator } = useAuth();
   const { t } = ratingsI18n.useT();
   const saved = useMemo(() => lsGet<Partial<SavedView>>(VIEW_KEY, {}), []);
-  const [period, setPeriod] = useState<Period>(PERIODS.includes(saved.period as Period) ? (saved.period as Period) : "week");
-  const [metric, setMetric] = useState<Metric>(METRICS.includes(saved.metric as Metric) ? (saved.metric as Metric) : "score");
-  const [minTrades, setMinTrades] = useState<number>(Number.isFinite(saved.minTrades) && (saved.minTrades as number) >= 1 ? (saved.minTrades as number) : 5);
-  const [anchor, setAnchor] = useState<string>(todayNy());
+  const initial = useMemo(() => readUrl(saved), [saved]);
+  const [period, setPeriod] = useState<TopPeriod>(initial.period);
+  const [custom, setCustom] = useState<DayRange | null>(initial.custom);
+  const [metric, setMetric] = useState<Metric>(METRICS.includes(saved.metric as Metric) ? (saved.metric as Metric) : DEFAULT_METRIC);
+  const [minTrades, setMinTrades] = useState<number>(Number.isFinite(saved.minTrades) && (saved.minTrades as number) >= 1 ? (saved.minTrades as number) : DEFAULT_MIN_TRADES);
+  const [anchor, setAnchor] = useState<string>(initial.anchor);
   const [side, setSide] = useState<Side>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [openTrade, setOpenTrade] = useState<Trade | null>(null);
 
-  useEffect(() => lsSet(VIEW_KEY, { period, metric, minTrades }), [period, metric, minTrades]);
+  useEffect(() => {
+    lsSet(VIEW_KEY, { period: period === "custom" ? lsGet<Partial<SavedView>>(VIEW_KEY, {}).period : period, metric, minTrades });
+  }, [period, metric, minTrades]);
+  useEffect(() => writeUrl(period, anchor, custom), [period, anchor, custom]);
 
-  const range = useMemo(() => periodRange(anchor, period), [anchor, period]);
+  // «Период…» is a plain from–to window (no stepping); `kind` is not read for it.
+  const range = useMemo(
+    () => (period === "custom" && custom ? { kind: "all" as const, from: custom.from, to: custom.to, label: fmtDayRange(custom) } : periodRange(anchor, period === "custom" ? "all" : period)),
+    [anchor, period, custom],
+  );
+  const stepped = period !== "all" && period !== "custom";
+  const resetRank = () => { setMetric(DEFAULT_METRIC); setMinTrades(DEFAULT_MIN_TRADES); };
+  const rankCount = (metric !== DEFAULT_METRIC ? 1 : 0) + (minTrades !== DEFAULT_MIN_TRADES ? 1 : 0);
   const params = useMemo(() => {
     const p = new URLSearchParams({ format: "desk", metric, minTrades: String(minTrades) });
     if (range.from && range.to) {
@@ -168,8 +214,8 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
   );
   const mostImproved = desk?.mostImproved ? rows.find((r) => r.trader === desk.mostImproved?.trader) ?? null : null;
 
-  const shift = useCallback((dir: -1 | 1) => setAnchor((a) => shiftAnchor(a, period, dir)), [period]);
-  const canGoNext = period !== "all" && !!range.to && range.to < todayNy();
+  const shift = useCallback((dir: -1 | 1) => { if (period !== "custom") setAnchor((a) => shiftAnchor(a, period, dir)); }, [period]);
+  const canGoNext = stepped && !!range.to && range.to < todayNy();
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -205,37 +251,24 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
 
   return (
     <Page>
-      <PageHeader
-        title={t("top.title")}
-        icon={Trophy}
-        description={t("top.description")}
-        actions={
-          <>
-            <label className="sr-only" htmlFor="tr-metric">{t("top.metricAria")}</label>
-            <Select value={metric} onValueChange={(v) => setMetric(v as Metric)}>
-              <SelectTrigger id="tr-metric" className="h-9 w-[170px] text-sm" aria-label={t("top.metricAria")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {METRICS.map((m) => (
-                  <SelectItem key={m} value={m}>{METRIC_LABEL[m]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {rows.length > 0 && (
-              <Button variant="outline" size="sm" onClick={exportCsv}>
-                <Download /> CSV
-              </Button>
-            )}
-          </>
-        }
-      >
+      <PageHeader title={t("top.title")} icon={Trophy} description={t("top.description")}>
         {tabs}
       </PageHeader>
 
+      {/* One row (design audit wave 3): the period (calendar, around the anchor) · ‹ › · date · «Рейтинг (n)» · CSV. */}
       <Toolbar className="gap-y-3">
-        <Segmented<Period> ariaLabel={t("top.periodAria")} options={periodOptions()} value={period} onChange={setPeriod} size="sm" />
-        {period !== "all" && (
+        <PeriodPicker<Period>
+          ariaLabel={t("top.periodAria")}
+          options={periodOptions()}
+          value={period}
+          custom={custom}
+          onPreset={setPeriod}
+          onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
+          presetRange={range.from && range.to ? { from: range.from, to: range.to } : null}
+          today={todayNy()}
+          size="sm"
+        />
+        {stepped && (
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("top.prevPeriod")} onClick={() => shift(-1)}>
               <ChevronLeft />
@@ -248,28 +281,48 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
             </Button>
           </div>
         )}
-        {period !== "all" && (
+        {stepped && (
           <>
             <label className="sr-only" htmlFor="tr-date">{t("top.date")}</label>
             <Input id="tr-date" type="date" value={anchor} max={todayNy()} onChange={(e) => e.target.value && setAnchor(e.target.value)} className="h-9 w-[150px] text-sm" />
           </>
         )}
-        <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{t("top.minTrades")}</span>
-          <Input
-            type="number"
-            min={1}
-            max={100}
-            value={minTrades}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isFinite(n) && n >= 1) setMinTrades(Math.min(100, Math.round(n)));
-            }}
-            className="h-9 w-[72px] text-sm tabular-nums"
-            aria-label={t("top.minTradesAria")}
-          />
-        </label>
+        <FiltersButton count={rankCount} onReset={resetRank} label={t("top.rankFilters")} width="md">
+          <FilterSection title={t("top.metricAria")}>
+            <div className="flex flex-wrap gap-1.5">
+              {METRICS.map((m) => (
+                <FilterChip key={m} size="sm" active={metric === m} onClick={() => setMetric(m)}>{METRIC_LABEL[m]}</FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+          <FilterSection title={t("top.minTrades")}>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={minTrades}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isFinite(n) && n >= 1) setMinTrades(Math.min(100, Math.round(n)));
+              }}
+              className="h-9 w-[88px] text-sm tabular-nums"
+              aria-label={t("top.minTradesAria")}
+            />
+          </FilterSection>
+        </FiltersButton>
+        {rows.length > 0 && (
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={exportCsv}>
+            <Download /> CSV
+          </Button>
+        )}
       </Toolbar>
+      <ActiveFilters
+        onReset={rankCount > 1 ? resetRank : undefined}
+        items={[
+          metric !== DEFAULT_METRIC && { key: "metric", label: t("top.metricChip", { metric: METRIC_LABEL[metric] }), onRemove: () => setMetric(DEFAULT_METRIC) },
+          minTrades !== DEFAULT_MIN_TRADES && { key: "min", label: t("top.minTradesChip", { count: minTrades }), onRemove: () => setMinTrades(DEFAULT_MIN_TRADES) },
+        ]}
+      />
 
       {deskQ.isError && <QueryError error={deskQ.error} onRetry={() => deskQ.refetch()} />}
 
@@ -337,9 +390,11 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
 
           <BestTradesPanel trades={bestTrades} prefer={prefer} loading={tradesQ.isLoading && !tradesQ.data} onOpen={setOpenTrade} />
 
-          <p className="hidden text-center text-xs text-muted-foreground sm:block">
-            <kbd className="chip px-1.5 py-0.5 text-2xs">←</kbd> <kbd className="chip px-1.5 py-0.5 text-2xs">→</kbd> {t("top.switchPeriod")}
-          </p>
+          {stepped && (
+            <p className="hidden text-center text-xs text-muted-foreground sm:block">
+              <kbd className="chip px-1.5 py-0.5 text-2xs">←</kbd> <kbd className="chip px-1.5 py-0.5 text-2xs">→</kbd> {t("top.switchPeriod")}
+            </p>
+          )}
         </>
       )}
 
@@ -351,7 +406,7 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
 type Kpi = ReturnType<typeof teamKpis>;
 type PrevKpi = { net: number | null; totalR: number | null; closed: number } | null;
 
-function PeriodKpis({ kpi, prevKpi, period, minTrades }: { kpi: Kpi; prevKpi: PrevKpi; period: Period; minTrades: number }) {
+function PeriodKpis({ kpi, prevKpi, period, minTrades }: { kpi: Kpi; prevKpi: PrevKpi; period: TopPeriod; minTrades: number }) {
   const { t } = ratingsI18n.useT();
   const unqualified = kpi.traders - kpi.qualified;
   return (
@@ -394,7 +449,7 @@ function PeriodKpis({ kpi, prevKpi, period, minTrades }: { kpi: Kpi; prevKpi: Pr
   );
 }
 
-function MostImprovedPanel({ row: mostImproved, period, onSelect: selectTrader }: { row: TraderRow; period: Period; onSelect: (trader: string) => void }) {
+function MostImprovedPanel({ row: mostImproved, period, onSelect: selectTrader }: { row: TraderRow; period: TopPeriod; onSelect: (trader: string) => void }) {
   const { t } = ratingsI18n.useT();
   return (
     <Panel title={t("top.mostImproved")} icon={TrendingUp} description={prevLabel(period) || t("top.toPrev")}>

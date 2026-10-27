@@ -163,7 +163,7 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
                     formatter={(v: number | number[], name: string) => [Array.isArray(v) ? `${fmt(v[0])} … ${fmt(v[1])}` : fmt(v), name === "outer" ? "5–95%" : name === "inner" ? "25–75%" : t("mc.median")]}
                   />
                   <ReferenceLine {...ZERO_LINE} />
-                  {ruinLevel != null && <ReferenceLine y={-ruinLevel} {...REF_LINE} stroke={CHART.down} label={{ value: t("mc.ruinLine"), fill: CHART.down, fontSize: 11, position: "insideBottomRight" }} />}
+                  {ruinLevel != null && <ReferenceLine y={-ruinLevel} {...REF_LINE} stroke={CHART.down} label={{ value: t("mc.ruinLine"), fill: CHART.down, fontSize: 12, position: "insideBottomRight" }} />}
                   <Area type="monotone" dataKey="outer" stroke="none" fill={CHART.accent} fillOpacity={0.1} activeDot={false} {...motion} />
                   <Area type="monotone" dataKey="inner" stroke="none" fill={CHART.accent} fillOpacity={0.2} activeDot={false} {...motion} />
                   <Line type="monotone" dataKey="p50" stroke={CHART.accent} dot={false} strokeWidth={STROKE} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} />

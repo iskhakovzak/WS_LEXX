@@ -33,7 +33,7 @@ function useNow(active: boolean): number {
 
 function GuardText({ e, left }: { e: GuardEvent; left: number | null }) {
   const { t } = leakGuardI18n.useT();
-  const usd = fmtUsd(e.costPerTrade ?? 0, { decimals: 0 });
+  const usd = fmtUsd(e.costPerTrade, { decimals: 0 });
   return (
     <>
       <p className="text-sm text-foreground">{t(`banner.body.${e.pattern}`, { usd })}</p>

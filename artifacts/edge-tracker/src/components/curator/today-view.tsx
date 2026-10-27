@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock, Archive, ArrowRight, BookCheck, CalendarX, ClipboardList, History, Inbox, Layers, ListChecks, ShieldAlert, Users,
 } from "lucide-react";
-import { BentoGrid, EmptyState, FilterChip, LimitBar, Panel, Pill, StatCard, StatGrid, Tile, usePersistentState } from "@/components/ds";
+import { BentoGrid, EmptyState, LimitBar, Panel, Pill, Segmented, StatCard, StatGrid, Tile, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -236,19 +236,13 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           )}
           <QuestEventChips events={data.questEvents} onOpenTrader={onOpenTrader} />
           {fullQueue.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t("today.kindAria")}>
-              <FilterChip size="sm" active={activeKind === "all"} onClick={() => setKindFilter("all")} count={fullQueue.length}>{t("today.all")}</FilterChip>
-              {QUEUE_KIND_ORDER.filter((k) => kindCounts[k] > 0).map((k) => (
-                <FilterChip key={k} size="sm" active={activeKind === k} onClick={() => setKindFilter(activeKind === k ? "all" : k)} count={kindCounts[k]}>
-                  {t(`queueFilter.${k}`)}
-                </FilterChip>
-              ))}
+            <QueueKindBar value={activeKind} onChange={setKindFilter} total={fullQueue.length} counts={kindCounts}>
               {activeKind === "eod" && eodTargets.length > 1 && (
                 <Button type="button" size="sm" className="ml-auto h-8" onClick={() => review.open(eodTargets[0])}>
                   <BookCheck className="h-3.5 w-3.5" /> {t("today.reviewInOrder")}
                 </Button>
               )}
-            </div>
+            </QueueKindBar>
           )}
           {queue.length === 0 ? (
             <EmptyState
@@ -366,6 +360,28 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
 
 const RISK_VISIBLE = 4;
 const QUEUE_KIND_ORDER: QueueKind[] = ["breach", "eod", "weekly", "academy"];
+
+/** The queue's main mode: all / one kind (only kinds that have items), with counts. */
+function QueueKindBar({ value, onChange, total, counts, children }: {
+  value: QueueKind | "all"; onChange: (v: QueueKind | "all") => void; total: number; counts: Record<QueueKind, number>; children?: React.ReactNode;
+}) {
+  const { t } = curatorI18n.useT();
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      <Segmented
+        size="sm"
+        ariaLabel={t("today.kindAria")}
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: "all", label: t("today.all"), count: total },
+          ...QUEUE_KIND_ORDER.filter((k) => counts[k] > 0).map((k) => ({ value: k, label: t(`queueFilter.${k}`), count: counts[k] })),
+        ]}
+      />
+      {children}
+    </div>
+  );
+}
 
 function GapList({ title, items, empty, onOpen }: {
   title: string;

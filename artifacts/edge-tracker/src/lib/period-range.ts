@@ -59,3 +59,53 @@ export function draftRange(custom: DayRange | null, preset: { from?: string | nu
   const from = isYmd(preset?.from) ? preset!.from! : shiftYmd(to, -29);
   return from <= to ? { from, to } : { from: to, to };
 }
+
+// ── The one period vocabulary (design audit wave 3) ─────────────────────────
+// Every period selector of the app speaks these words: Сегодня · Неделя · Месяц · Квартал · Год · Всё · Период….
+// The presets are windows that END TODAY (rolling): «Неделя» = the last 7 days, «Месяц» = 30, «Квартал» = 90,
+// «Год» = 365, so a comparison «к прошлому периоду» is the equally long window right before (prevDayRange) and a
+// window never shrinks to one day on the 1st of a month. Calendar-anchored reports (/office: a year, its quarters and
+// months) keep their own meaning and say so on screen.
+
+export const PERIOD_PRESETS = ["today", "week", "month", "quarter", "year", "all"] as const;
+export type PeriodPreset = (typeof PERIOD_PRESETS)[number];
+export type PeriodValue = PeriodPreset | "custom";
+
+/** Days in each preset window, today included («Всё» has no window). */
+export const PRESET_DAYS: Record<Exclude<PeriodPreset, "all">, number> = { today: 1, week: 7, month: 30, quarter: 90, year: 365 };
+
+/** Legacy values of the old period sets (7d / 30d / 90d / ytd, day counts, calendar words) → the vocabulary. */
+const LEGACY: Record<string, PeriodValue> = {
+  "1": "today", "1d": "today", day: "today",
+  "7": "week", "7d": "week", "5": "week", "14": "week", w: "week",
+  "30": "month", "30d": "month", m: "month",
+  "60": "quarter", "90": "quarter", "90d": "quarter", "120": "quarter", "180": "quarter", q: "quarter",
+  "365": "year", "250": "year", ytd: "year", "1y": "year", y: "year",
+  "0": "all", alltime: "all",
+};
+
+/** A stored / linked value read as the vocabulary (unknown → `fallback`). */
+export function normalizePeriod(v: unknown, fallback: PeriodValue): PeriodValue {
+  if (typeof v !== "string" || !v) return fallback;
+  if ((PERIOD_PRESETS as readonly string[]).includes(v) || v === "custom") return v as PeriodValue;
+  return LEGACY[v.toLowerCase()] ?? fallback;
+}
+
+/** The window of a preset ending `today` (null = «Всё»). */
+export function presetRange(p: PeriodPreset, today: string): DayRange | null {
+  if (p === "all") return null;
+  return { from: shiftYmd(today, -(PRESET_DAYS[p] - 1)), to: today };
+}
+
+/** The window of a period value: a preset's, the custom range, or null («Всё», or «custom» without a valid range). */
+export function periodWindow(p: PeriodValue, today: string, custom: DayRange | null): DayRange | null {
+  if (p === "custom") return custom;
+  return presetRange(p, today);
+}
+
+/** Days a period covers (null = «Всё»): the API's `days=N` for endpoints that take a count. */
+export function periodDays(p: PeriodValue, custom: DayRange | null): number | null {
+  if (p === "all") return null;
+  if (p === "custom") return custom ? rangeDays(custom) : null;
+  return PRESET_DAYS[p];
+}

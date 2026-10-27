@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { GradeChange, Highlight, KindPill, Marks, ReactionChip, RowActions, TargetChange } from "./ActionRow";
 import type { Row } from "./rows";
 import { dayTitle, nyKey, nyTime, sessionOf, WEIGHT_MIN_N } from "./lib";
-import { CARD_PAGE, cardPage, cardSignal, nextPageCount } from "./card-model";
+import { CARD_PAGE, cardPage, cardSignal, nextPageCount, rvolText } from "./card-model";
 import { analystI18n } from "@/i18n/ns/analyst";
 /** The table's props a card needs (no sorting / keyboard focus on a phone). */
 type CardsProps = {
@@ -82,7 +82,7 @@ function ActionCard({ r, query, today, canEdit, inPlan, addingWatch, addingPlan,
           <TargetChange action={a} price={r.quote?.price} showUpside={false} />
           <span className="flex items-center gap-2 text-xs">
             {s.gap != null ? <Delta value={s.gap} suffix="%" bare showIcon={false} /> : <span className="text-muted-foreground">—</span>}
-            {s.rvol != null && <span className={cn("tabular-nums", s.rvolStrong ? "font-medium text-foreground" : "text-muted-foreground")}>×{s.rvol.toFixed(1)}</span>}
+            {s.rvol != null && <span className={cn("tabular-nums", s.rvolStrong ? "font-medium text-foreground" : "text-muted-foreground")}>{rvolText(s.rvol)}</span>}
             <ReactionChip agg={r.reaction} />
           </span>
         </span>
@@ -99,7 +99,7 @@ function ActionCard({ r, query, today, canEdit, inPlan, addingWatch, addingPlan,
         onOpen={() => onOpen(r)}
         onFilterFirm={() => onFilterFirm(a.firm)}
         onFilterTicker={() => onFilterTicker(a.ticker)}
-        className="justify-end border-t border-[var(--glass-border)] pt-1 [&>a]:h-10 [&>a]:w-10 [&>button]:h-10 [&>button]:w-10"
+        className="justify-end border-t border-[var(--glass-border)] pt-1 [&_button]:h-10 [&_button]:w-10"
       />
     </li>
   );

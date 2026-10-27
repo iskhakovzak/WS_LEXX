@@ -225,7 +225,6 @@ export default {
     audienceAria: "Для кого тема",
     allThreads: "Все темы",
     forMe: "Для меня",
-    typeTickerAria: "Фильтр по типу и тикеру",
     typeAria: "Тип темы",
     allTypes: "Все типы",
     found: "Найдено: {count}",

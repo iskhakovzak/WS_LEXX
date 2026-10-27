@@ -277,7 +277,7 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
       ctx.fill();
       if (f.tag) {
         ctx.fillStyle = col;
-        ctx.font = `600 9px ${theme.font}`;
+        ctx.font = `600 12px ${theme.font}`;
         ctx.textAlign = "center";
         ctx.textBaseline = up ? "top" : "bottom";
         ctx.fillText(f.tag, x, up ? y + 4 + s * 1.6 : y - 4 - s * 1.6);
@@ -297,7 +297,7 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
       ctx.strokeStyle = theme.bg(1);
       ctx.stroke();
       ctx.fillStyle = "#fff";
-      ctx.font = `700 9px ${theme.font}`;
+      ctx.font = `700 12px ${theme.font}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(f.reason === "stop" ? "×" : f.reason === "target" ? "✓" : buy ? "B" : "S", x, y + 0.5);

@@ -64,7 +64,7 @@ export const BAR_RADIUS_H: [number, number, number, number] = [0, 5, 5, 0];
 /** Fill opacity of the bars that are NOT hovered while one is (focus + context). */
 export const BAR_DIM = 0.35;
 
-const AXIS_TEXT = { fontSize: 11, fill: CHART.axis, style: { fontVariantNumeric: "tabular-nums" } } as const;
+const AXIS_TEXT = { fontSize: 12, fill: CHART.axis, style: { fontVariantNumeric: "tabular-nums" } } as const;
 
 /** A few dotted horizontal guides only. */
 export const GRID = { vertical: false, stroke: CHART.grid, strokeOpacity: 0.7, strokeDasharray: "1 4" } as const;
@@ -73,7 +73,7 @@ export const GRID = { vertical: false, stroke: CHART.grid, strokeOpacity: 0.7, s
 export const X_AXIS = { tick: AXIS_TEXT, tickLine: false, axisLine: false, tickMargin: 8, minTickGap: 16 } as const;
 export const Y_AXIS = { tick: AXIS_TEXT, tickLine: false, axisLine: false, tickMargin: 6, width: 56, tickCount: 4 } as const;
 /** Axis text style for hand-drawn SVG charts (`<text {...AXIS_SVG_TEXT}>`). */
-export const AXIS_SVG_TEXT = { fontSize: 11, fill: CHART.axis, style: { fontVariantNumeric: "tabular-nums" } } as const;
+export const AXIS_SVG_TEXT = { fontSize: 12, fill: CHART.axis, style: { fontVariantNumeric: "tabular-nums" } } as const;
 
 /** The emphasised zero rule (where P&L crosses zero). */
 export const ZERO_LINE = { y: 0, stroke: CHART.fg, strokeOpacity: 0.32, strokeWidth: 1, shapeRendering: "crispEdges" } as const;
@@ -132,5 +132,5 @@ export const CANVAS = {
   fillMid: (dark: boolean) => (dark ? 0.1 : 0.07),
   line: STROKE,
   lineDense: STROKE_THIN,
-  fontSize: 11,
+  fontSize: 12,
 } as const;

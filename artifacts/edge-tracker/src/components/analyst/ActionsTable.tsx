@@ -8,6 +8,7 @@ import { VirtualRows } from "@/components/ds/virtual";
 import { cn } from "@/lib/utils";
 import { GradeChange, Highlight, KindPill, Marks, ReactionChip, RowActions, TargetChange } from "./ActionRow";
 import type { Row } from "./rows";
+import { rvolText } from "./card-model";
 import { dayTitle, gapOf, nyKey, nyTime, SESSION_LABEL, sessionOf, WEIGHT_MIN_N, type SortKey } from "./lib";
 import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
@@ -205,7 +206,7 @@ const ActionTr = React.memo(function ActionTr({
       <td className="text-right">
         {gap != null ? <Delta value={gap} suffix="%" bare showIcon={false} /> : <span className="text-xs text-muted-foreground">—</span>}
         {rvol != null && Number.isFinite(rvol) && (
-          <div className={cn("text-2xs tabular-nums", rvol >= 2 ? "font-medium text-foreground" : "text-muted-foreground")}>×{rvol.toFixed(1)}</div>
+          <div className={cn("text-2xs tabular-nums", rvol >= 2 ? "font-medium text-foreground" : "text-muted-foreground")}>{rvolText(rvol)}</div>
         )}
       </td>
       <td className="text-right"><ReactionChip agg={r.reaction} /></td>
@@ -222,10 +223,7 @@ const ActionTr = React.memo(function ActionTr({
           onOpen={() => onOpen(r)}
           onFilterFirm={() => onFilterFirm(a.firm)}
           onFilterTicker={() => onFilterTicker(a.ticker)}
-          className={cn(
-            "justify-end opacity-0 transition-opacity duration-[var(--dur-1)] group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-            focused && "opacity-100",
-          )}
+          forceShow={focused}
         />
       </td>
     </tr>

@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { CandlestickChart, Check, CheckCheck, ChevronDown, ListChecks, RefreshCw, Search, Sparkles, Users, X } from "lucide-react";
 import { EmptyState, FilterChip, Panel, Pill, Segmented, Toolbar, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
@@ -260,6 +260,7 @@ export function AuthorFeed({
   );
   const unread = notes.filter((n) => !n.read_by_me && n.trader !== me && !n.legacy);
   const legacy = notes.some((n) => n.legacy);
+  const resetFilters = () => { setUnreadOnly(false); setAuthor(null); };
 
   const patchRead = (id: number, read: boolean) => {
     qc.setQueryData<FeedNote[]>(key, (prev) =>
@@ -305,37 +306,44 @@ export function AuthorFeed({
 
   return (
     <div className="flex flex-col gap-4">
-      <Toolbar className="justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented
-            ariaLabel={t("author.feed.rangeAria")}
-            size="sm"
-            value={range}
-            onChange={onRangeChange}
-            options={[
-              { value: "day", label: tc("time.day") },
-              { value: "week", label: tc("time.last7") },
-              { value: "month", label: tc("time.last30") },
-            ]}
-          />
-          <div className="relative w-full sm:w-56">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape" && search) { e.stopPropagation(); setSearch(""); } }}
-              placeholder={t("author.feed.searchPlaceholder")}
-              aria-label={t("author.feed.searchAria")}
-              className="h-9 pl-8"
-            />
-          </div>
-          <FilterChip active={unreadOnly} onClick={() => setUnreadOnly((v) => !v)} count={unread.length}>{t("author.feed.unread")}</FilterChip>
-          {authors.length > 1 && authors.map((a) => (
-            <FilterChip key={a} active={author === a} onClick={() => setAuthor(author === a ? null : a)}>{personName(a)}</FilterChip>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Wave 3 filter pattern: search · one Segmented (the window: the picked day, or the week / month ENDING on it — not
+          «ending today», so the words are plain День / Неделя / Месяц) · «Фильтры» (unread, authors) · actions at the end. */}
+      <Toolbar>
+        <ToolbarSearch
+          value={search}
+          onChange={setSearch}
+          onKeyDown={(e) => { if (e.key === "Escape" && search) e.stopPropagation(); }}
+          placeholder={t("author.feed.searchPlaceholder")}
+          ariaLabel={t("author.feed.searchAria")}
+        />
+        <Segmented
+          ariaLabel={t("author.feed.rangeAria")}
+          size="sm"
+          value={range}
+          onChange={onRangeChange}
+          options={[
+            { value: "day", label: tc("time.day") },
+            { value: "week", label: tc("time.week") },
+            { value: "month", label: tc("time.month") },
+          ]}
+        />
+        <FiltersButton count={(unreadOnly ? 1 : 0) + (author ? 1 : 0)} onReset={resetFilters} resultCount={visible.length}>
+          <FilterSection>
+            <div className="flex flex-wrap gap-1.5">
+              <FilterChip active={unreadOnly} onClick={() => setUnreadOnly((v) => !v)} count={unread.length}>{t("author.feed.unread")}</FilterChip>
+            </div>
+          </FilterSection>
+          {authors.length > 1 && (
+            <FilterSection title={t("author.feed.authors")}>
+              <div className="flex flex-wrap gap-1.5">
+                {authors.map((a) => (
+                  <FilterChip key={a} active={author === a} onClick={() => setAuthor(author === a ? null : a)}>{personName(a)}</FilterChip>
+                ))}
+              </div>
+            </FilterSection>
+          )}
+        </FiltersButton>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {unread.length > 0 && (
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => markAll.mutate(unread.map((n) => n.id))} disabled={markAll.isPending}>
               <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />{t("author.feed.readAll")}
@@ -361,6 +369,13 @@ export function AuthorFeed({
           ))}
         </div>
       </Toolbar>
+      <ActiveFilters
+        items={[
+          unreadOnly && { key: "unread", label: t("author.feed.unread"), onRemove: () => setUnreadOnly(false) },
+          author ? { key: "author", label: personName(author), onRemove: () => setAuthor(null) } : null,
+        ]}
+        onReset={resetFilters}
+      />
 
       {legacy && (
         <p className="px-1 text-xs text-muted-foreground">{t("author.feed.legacy")}</p>

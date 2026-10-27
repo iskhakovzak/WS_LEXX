@@ -7,7 +7,7 @@ import { playbookI18n } from "@/i18n/ns/playbook";
 type HotkeyKey = keyof typeof import("@/i18n/locales/ru/playbook").default.page.hotkeys;
 const HOTKEYS: [string[], HotkeyKey][] = [
   [["Ctrl", "K"], "quickFindSetup"],
-  [["/"], "quickFind"],
+  [["/"], "focusSearch"],
   [["J", "K"], "nextPrev"],
   [["N"], "newSetup"],
   [["Ctrl", "S"], "saveForm"],

@@ -199,14 +199,14 @@ export function LineCanvas({
       ctx.restore();
       if (!compact) {
         const text = goalOff ? (goal.offLabel ?? goal.label) : goal.label;
-        ctx.font = `600 11px ${th.font}`;
+        ctx.font = `600 12px ${th.font}`;
         const w = ctx.measureText(text).width + 12;
         const lx = x0 + 6, ly = goalOff ? (goal.y > geo.max ? yTop + 10 : yBot - 10) : gy - 10;
         ctx.fillStyle = th.labelBg;
         roundRect(ctx, lx, ly - 9, w, 18, 9); ctx.fill();
         ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
         ctx.fillText(text, lx + 6, ly + 0.5);
-        ctx.font = `500 11px ${th.font}`;
+        ctx.font = `500 12px ${th.font}`;
       }
     }
     // series (context first, focus last)
@@ -243,7 +243,7 @@ export function LineCanvas({
     // end labels
     if (endLabels && !compact && series.length <= 4) {
       const placed: number[] = [];
-      ctx.font = `600 11px ${th.font}`;
+      ctx.font = `600 12px ${th.font}`;
       ctx.textAlign = "left"; ctx.textBaseline = "middle";
       for (const s of series) {
         const last = s.points[s.points.length - 1];

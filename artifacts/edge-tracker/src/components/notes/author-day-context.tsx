@@ -107,7 +107,7 @@ export function AuthorDayContext({
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-xl bg-[var(--glass-bg)] px-3 py-2">
               <div className="text-xs text-muted-foreground">{t("tradesCount")}</div>
-              <div className="text-lg font-semibold tabular-nums">{s?.count ?? 0}</div>
+              <div className="text-lg font-semibold tabular-nums">{s?.count != null ? s.count : <span className="text-muted-foreground">—</span>}</div>
             </div>
             <div className="rounded-xl bg-[var(--glass-bg)] px-3 py-2">
               <div className="text-xs text-muted-foreground">P&L net</div>
@@ -124,7 +124,7 @@ export function AuthorDayContext({
           ) : (
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-2">
-                <span className="micro-label">{t("author.day.dayTrades", { wins: s?.wins ?? 0, losses: s?.losses ?? 0 })}</span>
+                <span className="micro-label">{t("author.day.dayTrades", { wins: s?.wins ?? "—", losses: s?.losses ?? "—" })}</span>
                 {canInsert && (
                   <Button variant="ghost" size="sm" className="gap-1" title={t("author.day.insertTitle")} onClick={() => onInsertTrades(data.trades)}>
                     <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />

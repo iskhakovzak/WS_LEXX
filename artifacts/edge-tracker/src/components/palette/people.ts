@@ -3,7 +3,7 @@
  * and what can be opened for a person given the viewer's role. Texts: shell `palette.people.*`.
  */
 import * as React from "react";
-import { BookText, CandlestickChart, ClipboardList, IdCard, NotebookPen, UserRound, UsersRound } from "lucide-react";
+import { CandlestickChart, FileText, NotebookPen, IdCard, StickyNote, UserRound, UsersRound } from "lucide-react";
 import { personName } from "@/i18n";
 import { shellI18n } from "@/i18n/ns/shell";
 import { rankPeople, type DirectoryPerson, type SearchHit } from "@/components/people/search";
@@ -49,10 +49,10 @@ export function personActions(p: DirectoryPerson, ctx: { isCurator: boolean; me:
   if (ctx.isCurator && isTrader) out.push({ id: "profile", label: t("palette.people.profile"), icon: UserRound, path: `/curator?trader=${enc(p.name)}` });
   if (isTrader && (ctx.isCurator || self)) {
     out.push({ id: "trades", label: t("palette.people.trades"), icon: CandlestickChart, path: `/trades?trader=${enc(p.name)}` });
-    out.push({ id: "day", label: t("palette.people.day"), icon: ClipboardList, path: `/day-report?trader=${enc(p.name)}` });
-    out.push({ id: "journal", label: t("palette.people.journal"), icon: BookText, path: `/journal?trader=${enc(p.name)}` });
+    out.push({ id: "day", label: t("palette.people.day"), icon: FileText, path: `/day-report?trader=${enc(p.name)}` });
+    out.push({ id: "journal", label: t("palette.people.journal"), icon: NotebookPen, path: `/journal?trader=${enc(p.name)}` });
   }
-  if (ctx.isCurator && isTrader) out.push({ id: "notes", label: t("palette.people.notes"), icon: NotebookPen, path: `/curator?trader=${enc(p.name)}&tab=notes` });
+  if (ctx.isCurator && isTrader) out.push({ id: "notes", label: t("palette.people.notes"), icon: StickyNote, path: `/curator?trader=${enc(p.name)}&tab=notes` });
   const size = ctx.groupSize.get(p.name) ?? 0;
   if (ctx.isCurator && !isTrader && size > 0) out.push({ id: "group", label: t("palette.people.groupCount", { count: size }), icon: UsersRound, path: `/curator?view=traders&group=${enc(p.name)}` });
   return out;

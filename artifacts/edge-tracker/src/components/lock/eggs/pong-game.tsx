@@ -198,7 +198,7 @@ export default function PongGame({ stats, update, sound, reduced }: GameProps) {
           {(["player", "bot"] as const).map((side) => (
             <div key={side} className="flex flex-col items-center">
               <span className="text-5xl italic leading-none tabular-nums sm:text-6xl" style={{ fontFamily: SERIF, textShadow: "0 0 24px rgba(255,255,255,0.35)" }}>{score[side]}</span>
-              <span className="mt-1 text-[0.6rem] uppercase tracking-[0.28em] text-white/40">{side === "player" ? t("pong.you") : t("pong.bot")}</span>
+              <span className="mt-1 text-2xs uppercase tracking-[0.28em] text-white/40">{side === "player" ? t("pong.you") : t("pong.bot")}</span>
             </div>
           ))}
         </div>
@@ -243,7 +243,7 @@ export default function PongGame({ stats, update, sound, reduced }: GameProps) {
           <div className="flex gap-1.5"><dt>{t("pong.streak")}</dt><dd className="text-white">{stats.pong.winStreak}</dd></div>
         </dl>
       </div>
-      <p className="text-center text-[0.7rem] text-white/40">{t("pong.controls")}</p>
+      <p className="text-center text-2xs text-white/40">{t("pong.controls")}</p>
     </div>
   );
 }

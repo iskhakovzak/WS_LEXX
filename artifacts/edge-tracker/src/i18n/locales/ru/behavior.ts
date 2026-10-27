@@ -7,7 +7,6 @@
 export default {
   title: "Поведение и сетапы",
   description: "Где поведение стоит денег, что с этим делать и какой сетап стоит за сделкой. Правила без ИИ, деньги — нетто.",
-  period: { "30d": "30 дней", "90d": "90 дней", ytd: "С начала года", all: "Всё время" },
   periodAria: "Период",
   traderAria: "Трейдер",
   sectionsAria: "Разделы",
@@ -305,7 +304,7 @@ export default {
     fromPatternTitle: "Создан кнопкой «Сделать правилом» на карточке паттерна",
     fromPattern: "из паттерна «{pattern}»",
     editAria: "Изменить порог «{name}»",
-    deleteAria: "Удалить триггер «{name}»",
+    moreAria: "Ещё действия: {name}",
     save: "Сохранить",
     fires: { one: "За период сработал бы {count} раз в {days};", few: "За период сработал бы {count} раза в {days};", many: "За период сработал бы {count} раз в {days};", other: "За период сработал бы {count} раза в {days};" },
     under: "под триггером {trades} с нетто",

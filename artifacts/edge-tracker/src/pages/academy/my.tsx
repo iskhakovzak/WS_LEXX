@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, Loader2, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, Loader2, MessagesSquare, School, Target, UserCheck, Users } from "lucide-react";
 import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,7 +45,7 @@ export default function AcademyMyPage() {
   return (
     <Page>
       <PageHeader
-        icon={GraduationCap}
+        icon={School}
         title={shellI18n.t("nav.academyMy")}
         description={d?.viewingOther ? t("myPage.viewing", { name: personName(d.user) }) : t("myPage.description")}
         actions={isCurator ? (

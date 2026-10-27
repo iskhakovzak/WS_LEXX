@@ -162,6 +162,7 @@ export default {
     addTickers: "Добавить тикеры",
   },
   filters: {
+    section: "Сигналы",
     events: "События",
     eventsHint: "Отчёт сегодня / вчера AMC / в ближайшие 2 дня или новости за 24 ч",
     gap: "Гэп ≥ 3%",

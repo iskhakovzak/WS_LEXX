@@ -12,7 +12,8 @@ export default {
   noise: {
     hidden: { one: "{count} development error hidden (code reload)", other: "{count} development errors hidden (code reload)" },
     show: "Show",
-    hide: "Hide development noise",
+    toggle: "Show development noise",
+    chip: "With development noise",
     badge: "development",
     badgeTitle: "Looks like a trace of a developer’s code reload, not a user’s error",
   },

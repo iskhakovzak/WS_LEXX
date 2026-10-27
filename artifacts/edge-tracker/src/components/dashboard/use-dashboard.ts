@@ -12,8 +12,12 @@ import type { Horizon } from "@/lib/trade-math";
 import type { LiveInfo } from "@/components/shared/live-badge";
 
 export type Scope = "me" | "team";
-/** Server window of the dashboard equity curve (GET /api/dashboard/equity?period=). */
-export type EquityPeriod = "week" | "30d" | "90d" | "ytd" | "all";
+/**
+ * Server window of the dashboard equity curve (GET /api/dashboard/equity?period=): the period vocabulary (design audit
+ * wave 3). «week» = this calendar week from Monday (the curve equals the week card); month / quarter / year are the
+ * last 30 / 90 / 365 days.
+ */
+export type EquityPeriod = "week" | "month" | "quarter" | "year" | "all";
 export type EquityMetric = "r" | "pnl";
 export type { Horizon };
 
@@ -156,7 +160,7 @@ export type EquityDay = {
 };
 
 export type DashboardEquity = {
-  period: EquityPeriod | "7d";
+  period: EquityPeriod | "7d" | "30d" | "90d" | "ytd";
   scope: string;
   from: string;
   to: string;

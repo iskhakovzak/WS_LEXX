@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
-import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
+import { EmptyState, Panel, Pill, RowActions, toneOf, toneText } from "@/components/ds";
 import { Avatar, ScoreBar, Sparkline } from "./shared";
 import { CRITERIA, buildScorecards, criterionLabel, shiftWeek, tierLabel, weekLabel, weekOf, type Rating, type Scorecard } from "./scorecard-model";
 import { PersonSelect } from "@/components/people/person-select";
@@ -309,14 +309,15 @@ export function ScorecardsTab({
                               <time className="text-2xs text-muted-foreground" dateTime={r.createdAt}>{fmtDeskDateTime(r.createdAt, { style: "shortDateTime" })}</time>
                             </div>
                             {canManage && (
-                              <div className="flex shrink-0 gap-1 self-end sm:self-start">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("scorecards.editAria", { name: personName(r.trader) })} onClick={() => onEdit(r)}>
-                                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                              <RowActions
+                                className="self-end sm:self-start"
+                                menuLabel={t("scorecards.moreAria", { name: personName(r.trader) })}
+                                more={[{ label: tc("actions.delete"), icon: Trash2, onSelect: () => onDelete(r) }]}
+                              >
+                                <Button variant="ghost" size="icon-sm" aria-label={t("scorecards.editAria", { name: personName(r.trader) })} title={tc("actions.edit")} onClick={() => onEdit(r)}>
+                                  <Pencil aria-hidden="true" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-down" aria-label={t("scorecards.deleteAria", { name: personName(r.trader) })} onClick={() => onDelete(r)}>
-                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                </Button>
-                              </div>
+                              </RowActions>
                             )}
                           </li>
                         );

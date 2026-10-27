@@ -160,6 +160,7 @@ export default {
     addTickers: "Add tickers",
   },
   filters: {
+    section: "Signals",
     events: "Events",
     eventsHint: "Earnings today / yesterday AMC / in the next 2 days, or news in the last 24 h",
     gap: "Gap ≥ 3%",

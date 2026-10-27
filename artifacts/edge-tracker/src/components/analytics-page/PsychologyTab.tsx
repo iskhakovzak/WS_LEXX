@@ -180,7 +180,7 @@ export function PsychologyTab({
         />
         <StatCard
           label={t("psych.withGrade")}
-          value={cov?.tradesWithGrade ?? 0}
+          value={cov ? cov.tradesWithGrade : "—"}
           hint={cov && cov.trades ? t("psych.gradeShare", { share: fmtRate(cov.tradesWithGrade / cov.trades) }) : undefined}
           icon={Sparkles}
         />
@@ -307,7 +307,7 @@ export function PsychologyTab({
                     <XAxis dataKey="month" {...X_AXIS} tickFormatter={monthTick} />
                     <YAxis {...Y_AXIS} width={32} allowDecimals={false} />
                     <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} labelFormatter={(l: string) => monthTick(l)} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} iconType="circle" />
+                    <Legend wrapperStyle={{ fontSize: 12 }} iconSize={8} iconType="circle" />
                     {/* Good states in the profit hue, strained ones in warn / loss hues: polarity + strength, fixed order. */}
                     <Bar dataKey="sleepWell" name={t("psych.state.sleepWell")} stackId="a" fill={tint("up", 0.5)} stroke={CHART.surface} strokeWidth={1} {...motion} />
                     <Bar dataKey="focused" name={t("psych.state.focused")} stackId="a" fill={CHART.up} stroke={CHART.surface} strokeWidth={1} {...motion} />

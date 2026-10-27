@@ -144,7 +144,7 @@ export function TradePickerDialog({
             size="sm"
             value={period}
             onChange={setPeriod}
-            options={[{ value: "30", label: tr("picker.period.d30") }, { value: "90", label: tr("picker.period.d90") }, { value: "365", label: tr("picker.period.year") }, { value: "all", label: tr("picker.period.all") }]}
+            options={[{ value: "30", label: commonI18n.t("periodPicker.presets.month"), title: commonI18n.t("periodPicker.hints.month") }, { value: "90", label: commonI18n.t("periodPicker.presets.quarter"), title: commonI18n.t("periodPicker.hints.quarter") }, { value: "365", label: commonI18n.t("periodPicker.presets.year"), title: commonI18n.t("periodPicker.hints.year") }, { value: "all", label: commonI18n.t("periodPicker.presets.all") }]}
           />
           <Segmented<"" | "win" | "loss">
             ariaLabel={tr("picker.resultAria")}

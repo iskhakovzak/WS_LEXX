@@ -129,7 +129,7 @@ export function QualitySummaryLine({ q }: { q: TradeQuality }) {
           pct: fmtRate(eff),
           detail: mfeR != null && capturedR != null ? t("quality.ofAvailable", { got: fmtR(capturedR), max: fmtR(mfeR) })
             : q.captured?.usd != null && q.mfe.usd != null ? t("quality.ofAvailable", { got: usdA(q.captured.usd), max: usdA(q.mfe.usd) })
-            : t("quality.ofPerShare", { got: fmtUsd(q.captured?.perShare ?? 0), max: fmtUsd(q.mfe.perShare) }),
+            : t("quality.ofPerShare", { got: fmtUsd(q.captured?.perShare), max: fmtUsd(q.mfe.perShare) }),
         });
   return <p className="text-sm text-muted-foreground">{text}</p>;
 }

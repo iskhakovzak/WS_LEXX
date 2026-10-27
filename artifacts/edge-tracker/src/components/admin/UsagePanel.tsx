@@ -4,11 +4,13 @@
  * below, who comes (DAU by role / WAU) and the top screens and loop steps. Data: GET /api/admin/usage. Internal: no
  * third-party analytics, only route patterns and loop steps are stored; never used for rewards or rankings.
  */
-import { useState } from "react";
 import { Activity } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented, StatRow, StatusDot } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
+import { periodLabel, periodPresetOptions } from "@/components/shared/period/PeriodPicker";
+import { usePeriodParam } from "@/hooks/use-period-param";
+import type { PeriodPreset } from "@/lib/period-range";
 import { fmtCount, fmtDate, fmtWeekday } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { usageI18n } from "@/i18n/ns/usage";
@@ -16,7 +18,9 @@ import { useUsageOverview, type ActivityPoint, type UsageCount, type UsageOvervi
 import { actionDictKey, barScale, defaultFilter, filterTraders, neverOpened, pilotSummary, type PilotRow } from "./usage-model";
 import { FunnelPanel, InactivePanel } from "./UsageFunnel";
 
-type Period = "d7" | "d30";
+/** The server counts screens / actions for the last 7 and 30 days only: the vocabulary's «Неделя» / «Месяц». */
+const USAGE_PRESETS: readonly PeriodPreset[] = ["week", "month"];
+const DATA_KEY = { week: "d7", month: "d30" } as const;
 const ROLE_BAR: Record<UsageRole, string> = { trader: "bg-chart-1", curator: "bg-chart-5", admin: "bg-chart-3" };
 const ROLE_ORDER: readonly UsageRole[] = ["admin", "curator", "trader"]; // stacked top → bottom
 
@@ -96,8 +100,8 @@ function ActivityPanel({ points }: { points: ActivityPoint[] }) {
   return (
     <Panel title={t("activity.title")} description={t("activity.description")} fill>
       <div className="mb-3 flex flex-wrap items-end gap-x-6 gap-y-2">
-        <div><p className="text-2xs text-muted-foreground">{t("activity.dauToday")}</p><p className="text-2xl font-semibold tabular-nums">{fmtCount(last?.dau ?? 0)}</p></div>
-        <div><p className="text-2xs text-muted-foreground">{t("activity.wau")}</p><p className="text-2xl font-semibold tabular-nums">{fmtCount(last?.wau ?? 0)}</p></div>
+        <div><p className="text-2xs text-muted-foreground">{t("activity.dauToday")}</p><p className="text-2xl font-semibold tabular-nums">{last ? fmtCount(last.dau) : <span className="text-muted-foreground">—</span>}</p></div>
+        <div><p className="text-2xs text-muted-foreground">{t("activity.wau")}</p><p className="text-2xl font-semibold tabular-nums">{last ? fmtCount(last.wau) : <span className="text-muted-foreground">—</span>}</p></div>
         <ul className="ml-auto flex flex-wrap gap-3 text-xs text-muted-foreground">
           {(["trader", "curator", "admin"] as const).map((r) => (
             <li key={r} className="inline-flex items-center gap-1.5"><span className={cn("h-2 w-2 rounded-sm", ROLE_BAR[r])} aria-hidden="true" />{t(`activity.roles.${r}`)}</li>
@@ -164,12 +168,16 @@ function CountTable({ rows, head, label, sub }: {
 
 function TopPanels({ data, screenLabel }: { data: UsageOverview; screenLabel?: (key: string) => string | null }) {
   const { t } = usageI18n.useT();
-  const [period, setPeriod] = useState<Period>("d7");
+  // ?period=week|month (BRIEF §2). A Segmented of the vocabulary words, not the PeriodPicker: the server has no
+  // other windows, so «Период…» could not be served.
+  const per = usePeriodParam({ fallback: "week", presets: USAGE_PRESETS, allowCustom: false, storageKey: "admin.usage.period" });
+  const preset = per.period === "month" ? "month" : "week";
+  const period = DATA_KEY[preset];
   const screens = data.screens[period];
   const actions = data.actions[period];
   const toggle = (
-    <Segmented<Period> ariaLabel={t("screens.periodAria")} size="sm" value={period} onChange={setPeriod}
-      options={(["d7", "d30"] as const).map((v) => ({ value: v, label: t(`screens.period.${v}`) }))} />
+    <Segmented<PeriodPreset> ariaLabel={t("screens.periodAria")} size="sm" value={preset} onChange={per.setPreset}
+      options={periodPresetOptions(USAGE_PRESETS)} />
   );
   return (
     <div className="grid grid-cols-1 min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-2">
@@ -183,7 +191,7 @@ function TopPanels({ data, screenLabel }: { data: UsageOverview; screenLabel?: (
           />
         )}
       </Panel>
-      <Panel title={t("actions.title")} description={`${t("actions.description")} · ${t(`screens.period.${period}`)}`}>
+      <Panel title={t("actions.title")} description={`${t("actions.description")} · ${periodLabel(preset, null)}`}>
         {actions.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{t("actions.empty")}</p> : (
           <CountTable
             rows={actions}

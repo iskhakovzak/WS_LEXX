@@ -37,3 +37,26 @@ export function syncStale(lastAt: string | null | undefined, now: Date = new Dat
   if (Number.isNaN(at.getTime())) return { stale: false, days: 0 };
   return { stale: nyDate(at) < prevWeekday(nyDate(now)), days: Math.floor((now.getTime() - at.getTime()) / 86_400_000) };
 }
+
+/** Saturday or Sunday (a YYYY-MM-DD day). */
+export function isWeekend(date: string): boolean {
+  const wd = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return wd === 0 || wd === 6;
+}
+
+/** A session day: not a weekend and not in `closed` (market holidays, when known). */
+export function isSessionDay(date: string, closed?: ReadonlySet<string> | null): boolean {
+  return !isWeekend(date) && !(closed?.has(date) ?? false);
+}
+
+/** The next (dir 1) / previous (dir −1) session day, skipping weekends and the `closed` days. */
+export function stepSessionDay(date: string, dir: 1 | -1, closed?: ReadonlySet<string> | null): string {
+  let d = addDays(date, dir);
+  for (let i = 0; i < 14 && !isSessionDay(d, closed); i++) d = addDays(d, dir);
+  return d;
+}
+
+/** `date` itself when it is a session day, else the session day before it. */
+export function sessionDayOnOrBefore(date: string, closed?: ReadonlySet<string> | null): string {
+  return isSessionDay(date, closed) ? date : stepSessionDay(date, -1, closed);
+}

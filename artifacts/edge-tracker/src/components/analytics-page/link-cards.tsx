@@ -5,21 +5,25 @@
 import { useMemo } from "react";
 import { BarChart3, Brain, FlaskConical } from "lucide-react";
 import { PageLinkCard } from "@/components/shared/page-link-card";
-import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { periodLabel } from "@/components/shared/period/PeriodPicker";
 import { personName } from "@/i18n";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { behaviorHref, statsHref, whatIfHref } from "./links";
-import { DEFAULT_FILTERS, customRangeOf, type AnalyticsFilters } from "./metrics";
+import { customRangeOf, type AnalyticsFilters } from "./metrics";
 
-export function useAnalyticsLinkCards(filters: AnalyticsFilters, view: AnalyticsFilters, scope: { self: boolean; team: boolean; trader: string | null }) {
+/** «квартал» / «3–21 окт. 2026 г.» — the period of the view in a summary line. */
+export function analyticsPeriodText(f: AnalyticsFilters): string {
+  const custom = f.period === "custom" ? customRangeOf(f) : null;
+  return custom ? periodLabel("custom", custom) : periodLabel(f.period === "custom" ? "quarter" : f.period, null).toLowerCase();
+}
+
+export function useAnalyticsLinkCards(view: AnalyticsFilters, scope: { self: boolean; team: boolean; trader: string | null }) {
   const { t } = analyticsI18n.useT();
   return useMemo(() => {
-    const custom = filters.period === "custom" ? customRangeOf(filters) : null;
-    const preset = filters.period === "custom" ? DEFAULT_FILTERS.period : filters.period;
-    // What a card carries over: the person and the period («мои сделки · 90 дн»).
+    // What a card carries over: the person and the period («мои сделки · квартал»).
     const carried = [
       scope.self ? t("summary.mine") : scope.team ? t("summary.team") : personName(scope.trader),
-      custom ? fmtDayRange(custom) : t(`period.${preset as Exclude<typeof preset, "custom">}`).toLowerCase(),
+      analyticsPeriodText(view),
     ].join(" · ");
     const to = { trader: scope.trader, team: scope.team };
     return {
@@ -27,5 +31,5 @@ export function useAnalyticsLinkCards(filters: AnalyticsFilters, view: Analytics
       behavior: <PageLinkCard href={behaviorHref(view, to)} icon={Brain} title={t("links.behavior.title")} description={t("links.behavior.description")} scope={carried} />,
       whatIf: <PageLinkCard href={whatIfHref(view)} icon={FlaskConical} title={t("links.whatIf.title")} description={t("links.whatIf.description")} scope={carried} />,
     };
-  }, [filters, view, scope.self, scope.team, scope.trader, t]);
+  }, [view, scope.self, scope.team, scope.trader, t]);
 }

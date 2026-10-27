@@ -68,6 +68,8 @@ export default {
     patternsOff: "Patternlarsiz",
     cardSortAria: "Kartalarni saralash",
     cardSort: { attention: "Eʼtibor", pnl: "Hafta ↑", discipline: "Intizom ↑", name: "Ism" },
+    filterSections: { attention: "Diqqat", activity: "Faollik", tier: "Tir", cards: "Kartochkalar" },
+    chips: { idle: "Savdosiz ≥ {count} kun", tier: "Tir: {name}", sort: "Saralash: {value}" },
     filtersAria: "Guruh filtrlari",
     csvTitle: "Koʻrinib turgan qatorlarni yuklab olish",
     cols: {
@@ -478,6 +480,7 @@ export default {
     emptyHint: "Suhbat natijasi yoki kuzatishni yozing: faqat kuratorlar koʻradi.",
     pinned: "qadalgan",
     editText: "Matnni oʻzgartirish",
+    moreActions: "Qayd bilan boshqa amallar",
     archive: "Arxivga olish",
     archiveFailed: "Arxivga olib boʻlmadi",
     textAria: "Qayd matni",

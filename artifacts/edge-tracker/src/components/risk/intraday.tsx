@@ -56,7 +56,7 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
           <YAxis {...Y_AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 })} />
           {limit != null && <ReferenceArea y1={lo - pad} y2={-limit} fill={CHART.down} fillOpacity={0.08} ifOverflow="hidden" />}
           {limit != null && (
-            <ReferenceLine y={-limit} {...REF_LINE} stroke={CHART.down} label={{ value: t("day.stopLine", { amount: fmtUsd(-limit, { decimals: 0 }) }), position: "insideBottomLeft", fill: CHART.down, fontSize: 11 }} />
+            <ReferenceLine y={-limit} {...REF_LINE} stroke={CHART.down} label={{ value: t("day.stopLine", { amount: fmtUsd(-limit, { decimals: 0 }) }), position: "insideBottomLeft", fill: CHART.down, fontSize: 12 }} />
           )}
           {limit != null && <ReferenceLine y={-limit * 0.7} {...REF_LINE} stroke={tint("warn", 0.8)} strokeDasharray="2 4" />}
           <ReferenceLine {...ZERO_LINE} />
@@ -118,7 +118,7 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
               </td>
               <td className="px-3 py-1.5 text-right">{tr.qty ?? "—"}</td>
               <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.gross != null ? fmtUsd(tr.gross, { signed: true, decimals: 0 }) : "—"}</td>
-              <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.fees ? fmtUsd(tr.fees, { decimals: 2 }) : "—"}</td>
+              <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.fees != null ? fmtUsd(tr.fees, { decimals: 2 }) : "—"}</td>
               <td className={cn("px-3 py-1.5 text-right font-medium", (tr.net ?? 0) > 0 ? "text-up" : (tr.net ?? 0) < 0 ? "text-down" : "")} title={tr.fees ? t("day.feesTitle", { gross: fmtUsd(tr.gross, { signed: true, decimals: 0 }), fees: fmtUsd(tr.fees, { decimals: 0 }) }) : undefined}>
                 {tr.net != null ? fmtUsd(tr.net, { signed: true, decimals: 0 }) : "—"}
               </td>

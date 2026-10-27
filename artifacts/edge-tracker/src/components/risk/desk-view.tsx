@@ -1,10 +1,9 @@
 import * as React from "react";
-import { Briefcase, Moon, Search, ShieldAlert, Users, Wallet, Activity } from "lucide-react";
+import { Briefcase, Moon, ShieldAlert, Users, Wallet, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyState, ErrorState, LiveNumber, Panel, Segmented, StatCard, StatGrid, StatGridSkeleton, TableSkeleton, toneOf } from "@/components/ds";
+import { EmptyState, ErrorState, LiveNumber, Panel, Segmented, StatCard, StatGrid, StatGridSkeleton, TableSkeleton, Toolbar, toneOf } from "@/components/ds";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
 import { isNotFound } from "@/lib/api/errors";
 import { useRiskDesk, useRiskPositions } from "./use-risk";
 import { LevelBadge, useStoredState } from "./primitives";
@@ -84,24 +83,10 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const [showIdle, setShowIdle] = React.useState(false);
   const [statusFilter, setStatusFilter] = useStoredState<StatusFilter>("risk.desk.status", "all", STATUS_FILTERS);
   const [storedScope, setScope] = useStoredState<Scope>("risk.desk.scope", "mine", SCOPES);
-  const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (desk.dataUpdatedAt) onUpdatedAt?.(desk.dataUpdatedAt);
   }, [desk.dataUpdatedAt, onUpdatedAt]);
-
-  // "/" focuses trader search
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const allRows = React.useMemo(() => desk.data?.traders ?? [], [desk.data]);
   // A curator opens on their wards; without wards (or on an older server) the scope switch is hidden.
@@ -218,50 +203,35 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
 
       {!desk.isLoading && <ActionStrip rows={tableRows} onOpen={(t) => open(t)} />}
 
+      <Toolbar>
+        <ToolbarSearch value={query} onChange={setQuery} placeholder={t("desk.searchPlaceholder")} ariaLabel={t("desk.searchAria")} />
+        <Segmented
+          ariaLabel={t("desk.filterAria")}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: "all", label: c("states.all"), count: tableRows.length },
+            { value: "attention", label: t("desk.filterAttention"), count: tableRows.filter(attention).length },
+            { value: "no_limits", label: t("desk.filterNoLimits"), count: noLimitRows.length },
+          ]}
+        />
+        {wards > 0 && (
+          <Segmented
+            ariaLabel={t("desk.scopeAria")}
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: "mine", label: t("desk.scopeMine"), count: wards },
+              { value: "desk", label: t("desk.scopeDesk"), count: allRows.length },
+            ]}
+          />
+        )}
+      </Toolbar>
+
       <Panel
         title={t("desk.tradersTitle")}
         icon={Users}
         description={t("desk.tradersDesc")}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {wards > 0 && (
-              <Segmented
-                ariaLabel={t("desk.scopeAria")}
-                size="sm"
-                value={scope}
-                onChange={setScope}
-                options={[
-                  { value: "mine", label: t("desk.scopeMine"), count: wards },
-                  { value: "desk", label: t("desk.scopeDesk"), count: allRows.length },
-                ]}
-              />
-            )}
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input
-                ref={searchRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-                placeholder={t("desk.searchPlaceholder")}
-                aria-label={t("desk.searchAria")}
-                className="h-9 w-40 pl-9 pr-8"
-              />
-              <Kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
-            </div>
-            <Segmented
-              ariaLabel={t("desk.filterAria")}
-              size="sm"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={[
-                { value: "all", label: c("states.all"), count: tableRows.length },
-                { value: "attention", label: t("desk.filterAttention"), count: tableRows.filter(attention).length },
-                { value: "no_limits", label: t("desk.filterNoLimits"), count: noLimitRows.length },
-              ]}
-            />
-          </div>
-        }
         footer={
           noLimitRows.length > 0 && !desk.isLoading ? (
             <>

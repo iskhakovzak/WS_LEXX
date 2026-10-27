@@ -4,7 +4,6 @@ import type ru from "../ru/behavior";
 export default {
   title: "Behavior & setups",
   description: "Where behavior costs money, what to do about it, and which setup is behind a trade. Rule-based, no AI; money is net.",
-  period: { "30d": "30 days", "90d": "90 days", ytd: "Year to date", all: "All time" },
   periodAria: "Period",
   traderAria: "Trader",
   sectionsAria: "Sections",
@@ -302,7 +301,7 @@ export default {
     fromPatternTitle: "Created with “Make a rule” on a pattern card",
     fromPattern: "from pattern “{pattern}”",
     editAria: "Edit the threshold of “{name}”",
-    deleteAria: "Delete trigger “{name}”",
+    moreAria: "More actions: {name}",
     save: "Save",
     fires: { one: "In the period it would have fired {count} time over {days};", other: "In the period it would have fired {count} times over {days};" },
     under: "{trades} under the trigger with net",

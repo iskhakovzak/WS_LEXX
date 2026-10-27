@@ -98,8 +98,8 @@ export function DailyChart({
     const levelsSvg = lv.map(({ key, v, cls }, i) => (
       <g key={key} data-testid={`sim-daily-${key}`}>
         <line x1={0} x2={plotW} y1={y(v)} y2={y(v)} strokeWidth={1} strokeDasharray="5 4" strokeOpacity={0.7} className={cls} />
-        <text x={plotW + 4} y={labelY[i]} className="fill-muted-foreground text-[10px]">{t(`dailyChart.${key}`)}</text>
-        <text x={plotW + 4} y={labelY[i] + 11} className="fill-foreground text-[10px] tabular-nums">{fmtPrice(v)}</text>
+        <text x={plotW + 4} y={labelY[i]} className="fill-muted-foreground text-2xs">{t(`dailyChart.${key}`)}</text>
+        <text x={plotW + 4} y={labelY[i] + 11} className="fill-foreground text-2xs tabular-nums">{fmtPrice(v)}</text>
       </g>
     ));
     const todayX = today ? cx(bars.length - 1) : plotW - step / 2;
@@ -128,7 +128,7 @@ export function DailyChart({
           </g>
         )}
         {ticks.map((k) => (
-          <text key={k.back} x={Math.min(Math.max(cx(k.idx), 16), plotW - 4)} y={h - 4} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
+          <text key={k.back} x={Math.min(Math.max(cx(k.idx), 16), plotW - 4)} y={h - 4} textAnchor="middle" className="fill-muted-foreground text-2xs tabular-nums">
             {k.back === 0 ? t("dailyChart.today") : revealed ? fmtDate(new Date(bars[k.idx].t * 1000).toISOString().slice(0, 10), "dayMonth") : t("dailyChart.ago", { count: k.back })}
           </text>
         ))}

@@ -69,7 +69,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
             {tierDescription(me.tier) && <p className="text-xs text-muted-foreground">{tierDescription(me.tier)}</p>}
           </div>
           <div className="flex items-center gap-3">
-            <ProgressRing value={pct} size={72} stroke={6} tone={pct >= 100 ? "up" : "accent"} ariaLabel={t("progress.aria")} label={<span className="text-sm">{fmtRate(me.progress ?? 0)}</span>} />
+            <ProgressRing value={pct} size={72} stroke={6} tone={pct >= 100 ? "up" : "accent"} ariaLabel={t("progress.aria")} label={me.progress != null ? <span className="text-sm">{fmtRate(me.progress)}</span> : <span className="text-sm text-muted-foreground">—</span>} />
             <div className="min-w-0 max-w-[16rem] text-sm">
               <div className="font-medium text-foreground">{me.nextTier ? t("progress.toTier", { name: tierLabel(me.nextTier) }) : t("progress.topMine")}</div>
               <div className="text-xs text-muted-foreground">{t("progress.passedOf", { count: me.promoteTotal, passed: me.promotePassed })}</div>

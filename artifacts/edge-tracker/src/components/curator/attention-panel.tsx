@@ -66,7 +66,7 @@ function reasonDetail(r: Reason): string {
     return curatorI18n.tryT(`costQueue.detail.stop_${raw.scope}`, p) ?? curatorI18n.t("costQueue.detail.stop_breach", { scope: p.scope ?? "—", used: p.used ?? "—", limit: p.limit ?? "—" });
   }
   if ((r.kind === "focus_broken" || r.kind === "disputed") && !Number(raw.count)) return curatorI18n.t(`costQueue.detail.${r.kind}Day`, { mistake: p.mistake ?? "—" });
-  if (r.kind === "rule" && Number(raw.rules) > 1) return curatorI18n.t("costQueue.detail.ruleMany", { count: p.count ?? 0, rule: p.rule ?? "—", more: Number(raw.rules) - 1 });
+  if (r.kind === "rule" && Number(raw.rules) > 1) return curatorI18n.t("costQueue.detail.ruleMany", { count: p.count ?? "—", rule: p.rule ?? "—", more: Number(raw.rules) - 1 });
   return curatorI18n.tryT(r.text.key, p) ?? reasonLabel(r.kind);
 }
 

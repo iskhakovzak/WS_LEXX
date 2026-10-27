@@ -2,13 +2,13 @@
 // earnings and price reactions live in «Катализаторы» (/events), repeatable patterns in the Playbook.
 // Old notes stay readable and can be moved to the Playbook with «В плейбук»; nothing is written here — the API is
 // read-only since Волна 2 п. 2.15 (no create / edit / delete / pin / trade links).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useListResearch } from "@workspace/api-client-react";
-import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, Download, RefreshCw, Search, X } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel } from "@/components/ds";
+import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, Download, RefreshCw, Search } from "lucide-react";
+import { EmptyState, Page, PageHeader, Panel, Toolbar } from "@/components/ds";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -112,8 +112,7 @@ export default function ResearchArchivePage() {
     } catch { /* ignore */ }
   }, [selectedId, isLoading]);
 
-  // Keyboard: / — search, J/K or ↓/↑ — next/previous note (the selected row scrolls into view).
-  const searchRef = useRef<HTMLInputElement>(null);
+  // Keyboard: J/K or ↓/↑ — next/previous note (the selected row scrolls into view).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -121,7 +120,6 @@ export default function ResearchArchivePage() {
       if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
       if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
       const k = e.key.toLowerCase();
-      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       // J/K also on the Russian layout (О/Л are the same physical keys).
       const dir = k === "j" || k === "о" || e.key === "ArrowDown" ? 1 : k === "k" || k === "л" || e.key === "ArrowUp" ? -1 : 0; // i18n-ignore
       if (!dir || !list.length || !isDesktop) return;
@@ -153,23 +151,23 @@ export default function ResearchArchivePage() {
         icon={Archive}
         title={t("page.title")}
         description={t("page.description")}
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/events"><CalendarClock className="h-4 w-4" aria-hidden="true" /> {t("page.catalysts")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/playbook"><BookMarked className="h-4 w-4" aria-hidden="true" /> {t("page.playbook")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+            </Button>
+          </>
+        }
       />
 
-      <Panel>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 text-sm text-foreground">
-            {t("page.merged")} <span className="text-muted-foreground">{t("page.mergedHint")}</span>
-          </p>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/events"><CalendarClock className="h-4 w-4" /> {t("page.catalysts")} <ArrowRight className="h-3.5 w-3.5" /></Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/playbook"><BookMarked className="h-4 w-4" /> {t("page.playbook")} <ArrowRight className="h-3.5 w-3.5" /></Link>
-            </Button>
-          </div>
-        </div>
-      </Panel>
+      {(items.length > 3 || query) && (
+        <Toolbar>
+          <ToolbarSearch value={query} onChange={setQuery} placeholder={t("page.searchPlaceholder")} ariaLabel={t("page.searchAria")} />
+        </Toolbar>
+      )}
 
       <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <Panel
@@ -182,17 +180,6 @@ export default function ResearchArchivePage() {
             </Button>
           ) : undefined}
         >
-          {items.length > 3 && (
-            <div className="relative px-[var(--panel-p)] pt-3">
-              <Search className="pointer-events-none absolute left-[calc(var(--panel-p)+0.875rem)] top-1/2 mt-1.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("page.searchPlaceholder")} aria-label={t("page.searchAria")} className="pl-10 pr-10" />
-              {query && (
-                <button type="button" onClick={() => setQuery("")} aria-label={commonI18n.t("actions.clearSearch")} className="absolute right-[calc(var(--panel-p)+0.375rem)] top-1/2 mt-1.5 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          )}
           <div className="flex min-h-[200px] flex-col gap-0.5 px-2 pb-3 pt-3 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto">
             {isLoading && Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="space-y-2 px-2 py-2">

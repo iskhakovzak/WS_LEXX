@@ -5,10 +5,10 @@
  */
 import * as React from "react";
 import { Link } from "wouter";
-import { CalendarSearch, ChevronLeft, ChevronRight, ClipboardList, Crown, Lock, Printer } from "lucide-react";
+import { CalendarSearch, ChevronLeft, ChevronRight, Crown, FileText, Lock, Printer } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DayStepper } from "@/components/shared/day-stepper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
@@ -127,23 +127,8 @@ export default function DayReportPage() {
   // The API's `today` is the NY calendar date: on a weekend / holiday step back to the last trading day,
   // otherwise «Последний торговый день» jumped to an empty Saturday.
   const today = doc?.today && isTradingDay(doc.today, holidays) ? doc.today : doc?.today ? shiftTradingDay(doc.today, -1, holidays) : lastTradingDay(holidays);
-  const nextDay = shiftTradingDay(date, 1, holidays);
-  const canNext = nextDay <= today;
 
   const go = React.useCallback((d: string) => { if (isYmd(d)) { autoDate.current = false; setDate(d); } }, []);
-
-  // ← / → between trading days (ignored while typing in a field).
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key === "ArrowLeft") { e.preventDefault(); autoDate.current = false; setDate((d) => shiftTradingDay(d, -1, holidays)); }
-      if (e.key === "ArrowRight" && canNext) { e.preventDefault(); autoDate.current = false; setDate((d) => shiftTradingDay(d, 1, holidays)); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [holidays, canNext]);
 
   const traders = React.useMemo(() => {
     const list = [...(doc?.traders ?? [])];
@@ -159,7 +144,7 @@ export default function DayReportPage() {
     <PageHeader
       title={shellI18n.t("nav.dayReport")}
       description={t("page.desc", { trader: personName(trader) || "—", date: fmtDayLong(date) })}
-      icon={ClipboardList}
+      icon={FileText}
       meta={doc?.imx?.count ? <ImxLine total={doc.summary.net} imx={doc.imx} excluded={doc.imx.excluded} /> : undefined}
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
@@ -173,22 +158,16 @@ export default function DayReportPage() {
         </div>
       }
     >
-      <div className="flex flex-wrap items-center gap-2" data-print-hide>
-        <Button type="button" variant="outline" size="icon" aria-label={t("page.prev")} title={t("page.prev")} onClick={() => go(shiftTradingDay(date, -1, holidays))}>
-          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        <Input
-          type="date"
-          aria-label={t("page.date")}
-          value={date}
-          max={today}
-          onChange={(e) => go(e.target.value)}
-          className="h-9 w-[11.5rem] rounded-full tabular-nums"
-        />
-        <Button type="button" variant="outline" size="icon" aria-label={t("page.next")} title={t("page.next")} disabled={!canNext} onClick={() => go(nextDay)}>
-          <ChevronRight className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        {date !== today && <Button type="button" variant="ghost" size="sm" onClick={() => go(today)}>{t("page.latest")}</Button>}
+      <DayStepper
+        value={date}
+        onChange={go}
+        max={today}
+        home={today}
+        homeLabel={commonI18n.t("dayStepper.lastDay")}
+        homeTitle={commonI18n.t("dayStepper.lastDayKey")}
+        arrows
+        className="print:hidden"
+      >
         {nonTrading && <Pill tone="warn">{t("page.nonTrading")}</Pill>}
         {!nonTrading && (
           <Link href={links.topDay(date)} data-slot="button" className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary hover:bg-primary/10">
@@ -196,7 +175,7 @@ export default function DayReportPage() {
           </Link>
         )}
         {q.isFetching && <span className="text-xs text-muted-foreground" aria-live="polite">{t("page.refreshing")}</span>}
-      </div>
+      </DayStepper>
     </PageHeader>
   );
 

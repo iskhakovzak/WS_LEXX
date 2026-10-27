@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Lock, NotebookPen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
-import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Pill, RowActions, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -97,46 +97,37 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
           <EmptyState compact icon={NotebookPen} title={t("notes.empty")} description={t("notes.emptyHint")} />
         ) : (
           (compact ? shown.slice(0, 3) : shown).map((n) => (
-            <article key={n.id} className={cn("tile flex flex-col gap-1.5 p-3", n.pinned && "ring-1 ring-primary/30")}>
+            <article key={n.id} data-row className={cn("tile flex flex-col gap-1.5 p-3", n.pinned && "ring-1 ring-primary/30")}>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Pill tone={NOTE_KIND_TONE[n.kind] ?? "neutral"}>{NOTE_KIND_LABEL[n.kind] ?? n.kind}</Pill>
                 <span className="font-medium text-foreground">{personName(n.author)}</span>
                 <span className="tabular-nums">{fmtDeskDateTime(n.createdAt)}</span>
                 {n.pinned && <span className="inline-flex items-center gap-1 text-primary"><Pin className="h-3 w-3" aria-hidden="true" />{t("notes.pinned")}</span>}
                 {!compact && (
-                  <span className="ml-auto flex items-center gap-1">
+                  <RowActions
+                    className="ml-auto"
+                    menuLabel={t("notes.moreActions")}
+                    more={n.author === me ? [
+                      { label: t("notes.editText"), icon: Pencil, onSelect: () => setEditing({ id: n.id, body: n.body }) },
+                      {
+                        label: t("notes.archive"), icon: Trash2, disabled: archive.isPending,
+                        onSelect: () => archive.mutate(n.id, {
+                          onSuccess: () => setUndoId(n.id),
+                          onError: (e) => toast({ title: t("notes.archiveFailed"), description: (e as Error).message, variant: "destructive" }),
+                        }),
+                      },
+                    ] : undefined}
+                  >
                     <Button
-                      type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
+                      type="button" variant="ghost" size="icon-sm"
                       aria-label={n.pinned ? tc("actions.unpin") : tc("actions.pin")}
                       title={n.pinned ? tc("actions.unpin") : tc("actions.pin")}
                       disabled={patch.isPending}
                       onClick={() => patch.mutate({ id: n.id, pinned: !n.pinned })}
                     >
-                      {n.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                      {n.pinned ? <PinOff /> : <Pin />}
                     </Button>
-                    {n.author === me && (
-                      <Button
-                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
-                        aria-label={t("notes.editText")} title={t("notes.editText")}
-                        onClick={() => setEditing({ id: n.id, body: n.body })}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    {n.author === me && (
-                      <Button
-                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-down"
-                        aria-label={t("notes.archive")} title={t("notes.archive")}
-                        disabled={archive.isPending}
-                        onClick={() => archive.mutate(n.id, {
-                          onSuccess: () => setUndoId(n.id),
-                          onError: (e) => toast({ title: t("notes.archiveFailed"), description: (e as Error).message, variant: "destructive" }),
-                        })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </span>
+                  </RowActions>
                 )}
               </div>
               {editing?.id === n.id ? (

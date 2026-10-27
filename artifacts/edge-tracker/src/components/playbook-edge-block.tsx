@@ -330,7 +330,7 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         <div className="mt-2 space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Metric label={t("edge.winLoss")} value={`${o.wins} / ${o.losses}`} hint={be > 0 || o.open ? t("edge.beOpen", { be, open: o.open ?? 0 }) : undefined} />
-            <Metric label={t("edge.netPnl")} value={hasPnl ? fmtUsd(o.totalPnl, { signed: true, decimals: 0 }) : "—"} tone={toneOf(o.totalPnl)} hint={moneyHidden ? redactedAggHint() : hasPnl ? t("edge.pnlHint", { gross: fmtUsd(o.totalPnlGross, { signed: true, decimals: 0 }), fees: fmtUsd(o.fees ?? 0, { decimals: 0 }), count: o.pnlCount, total: n }) : t("edge.noPnl")} />
+            <Metric label={t("edge.netPnl")} value={hasPnl ? fmtUsd(o.totalPnl, { signed: true, decimals: 0 }) : "—"} tone={toneOf(o.totalPnl)} hint={moneyHidden ? redactedAggHint() : hasPnl ? t("edge.pnlHint", { gross: fmtUsd(o.totalPnlGross, { signed: true, decimals: 0 }), fees: o.fees != null ? fmtUsd(o.fees, { decimals: 0 }) : "—", count: o.pnlCount, total: n }) : t("edge.noPnl")} />
             <Metric label={t("edge.maxDd")} value={o.maxDrawdown != null ? fmtUsd(-o.maxDrawdown, { signed: true, decimals: 0 }) : "—"} tone={(o.maxDrawdown ?? 0) > 0 ? "down" : "neutral"} />
             <Metric label="Sharpe (R)" value={fmtNum(o.sharpe)} tone={toneOf(o.sharpe)} />
           </div>

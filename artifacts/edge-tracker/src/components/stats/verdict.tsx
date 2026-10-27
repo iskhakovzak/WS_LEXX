@@ -1,5 +1,5 @@
 /**
- * /stats — the one-line answer under the header (design audit, wave 2B): «+$1,240 нетто за последние 90 дней · на 23%
+ * /stats — the one-line answer under the header (design audit, wave 2B): «+$1,240 нетто за 90 дней · на 23%
  * лучше прошлых 90 дней». The figure is the report's total in the chosen metric; the comparison is against the equally
  * long previous window (the same numbers the KPI deltas use). A percentage only when both totals are positive (a % of
  * a loss reads backwards); otherwise the difference itself. The colour says good or bad (the sign of the total).
@@ -11,7 +11,7 @@ import { rich } from "@/i18n/rich";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtValue, type Kpis, type Metric, type StatsPeriod } from "./metrics";
 
-const PRESET_PREV = new Set(["7d", "30d", "90d"]);
+const PRESET_PREV = new Set(["week", "month", "quarter", "year"]);
 
 export function verdictParts(o: {
   net: number | null; prev: number | null; metric: Metric;
@@ -29,7 +29,7 @@ export function StatsVerdict({ k, prev, prevLoading, metric, period, curRange, p
   k: Kpis; prev: Kpis | null; prevLoading: boolean; metric: Metric; period: StatsPeriod;
   /** «3 окт — 21 окт» of the window (a custom period names it). */
   curRange: string;
-  /** «22 июн — 21 июл» of the previous window (custom / YTD comparisons). */
+  /** «22 июн — 21 июл» of the previous window (custom comparisons). */
   prevRange: string | null;
   className?: string;
 }) {
@@ -42,7 +42,7 @@ export function StatsVerdict({ k, prev, prevLoading, metric, period, curRange, p
     : rich(t("verdict.head", { value: "{value}", metric: t(`verdict.metric.${metric}`), period: periodText }), {
       value: <span className={cn("font-semibold tabular-nums", tone)}>{fmtValue(net, metric)}</span>,
     });
-  const preset = PRESET_PREV.has(period) ? (period as "7d" | "30d" | "90d") : null;
+  const preset = PRESET_PREV.has(period) ? (period as "week" | "month" | "quarter" | "year") : null;
   const prevName = preset ? t(`verdict.prev.${preset}`) : prevRange;
   const p = prev && prev.total > 0 && prev.valued > 0 ? verdictParts({ net, prev: prev.net, metric }) : null;
   let tail: string | null = null;

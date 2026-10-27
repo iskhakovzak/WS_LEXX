@@ -180,6 +180,7 @@ export default {
     queueDesc: "Rule-based recommendations and manual proposals; approval changes the risk limits right away",
     searchPlaceholder: "Find a trader (/)",
     searchAria: "Search traders",
+    filterAria: "Show traders",
     filterAction: "Needs a decision",
     filterPending: "In queue",
     tableDesc: "Current tier, rule-based recommendation and progress to the next stage (20-trading-day window)",

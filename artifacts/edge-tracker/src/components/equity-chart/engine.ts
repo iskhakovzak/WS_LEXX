@@ -343,7 +343,7 @@ export class EquityEngine {
 
   private makeFrame(d: Data, i0: number, i1: number): Frame {
     // The axis is sized to its widest label (domain edges and the current value pill).
-    this.bctx.font = `600 11px ${this.th.font}`;
+    this.bctx.font = `600 12px ${this.th.font}`;
     const ym = this.yMain!;
     const last = d.bars[d.bars.length - 1].close;
     const widest = Math.max(

@@ -38,7 +38,6 @@ export default {
   },
   noMatch: { title: "Filtrlarga mos savdo topilmadi", description: "Davrni kengaytiring yoki ayrim filtrlarni olib tashlang." },
 
-  period: { "7d": "7 kun", "30d": "30 kun", "90d": "90 kun", ytd: "Yil boshidan", all: "Butun davr" },
   horizon: { intraday: "Intraday", overnight: "Overnight", swing: "Swing" },
   unit: { r: "R da", usd: "sof, $", usdShort: "sof $" },
 
@@ -55,8 +54,7 @@ export default {
     account: "Hisob",
     allAccounts: "Barcha hisoblar",
     ticker: "Tiker",
-    reset: "Tozalash",
-    resetAria: "Filtrlarni tozalash",
+    chip: "{label}: {value}",
     unit: "Natija birligi",
   },
 

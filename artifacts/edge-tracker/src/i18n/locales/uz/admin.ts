@@ -19,6 +19,7 @@ export default {
   never: "hech qachon",
   you: "(siz)",
   namesMore: "{names} va yana {count} kishi",
+  shownOf: "{total} tadan {shown} tasi ko‘rsatilgan",
   notDeployed: "{what} API qayta ishga tushirilgandan keyin ishlaydi (yangi admin-console routeri).",
   needRestart: "API ni qayta ishga tushirish kerak",
 

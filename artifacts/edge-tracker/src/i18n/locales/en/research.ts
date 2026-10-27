@@ -5,8 +5,6 @@ export default {
   page: {
     title: "Research archive",
     description: "Old notes stay here to read. New ones go to the Playbook; earnings and reactions live in Catalysts.",
-    merged: "This section has been merged.",
-    mergedHint: "If a note describes a repeatable setup, move it with “To playbook” in the card on the right.",
     catalysts: "Catalysts",
     playbook: "Playbook",
     notes: "Notes",
@@ -14,7 +12,7 @@ export default {
     inArchive: "{count} in archive · J/K to browse",
     csvFound: "Download found notes as CSV",
     csvAll: "Download the archive as CSV",
-    searchPlaceholder: "Search: words, #tag, $TICKER  ( / )",
+    searchPlaceholder: "Search: words, #tag, $TICKER",
     searchAria: "Search the archive",
     loadFailed: "Couldn’t load the archive",
     tryOtherWords: "Try other words.",

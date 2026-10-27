@@ -17,3 +17,12 @@ const twMerge = extendTailwindMerge({
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+
+/** Whether a page shortcut should be ignored: the key went to a field, an editable, a dialog, a list box or a menu. */
+export function isTypingTarget(el: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return !!el.closest("[role=dialog],[role=listbox],[role=menu]");
+}

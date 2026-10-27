@@ -435,6 +435,38 @@ export default {
     missing: "Укажите обе даты",
     order: "Дата «с» позже даты «по»",
     prevNote: "Сравнение — с таким же отрезком до него: {range}",
+    aria: "Период",
+    presets: { today: "Сегодня", week: "Неделя", month: "Месяц", quarter: "Квартал", year: "Год", all: "Всё" },
+    hints: { today: "Только сегодня", week: "Последние 7 дней", month: "Последние 30 дней", quarter: "Последние 90 дней", year: "Последние 365 дней", all: "Вся история" },
+  },
+  /** One filter pattern (components/shared/filters): «Фильтры (n)» → popover / bottom sheet, the active chips row. */
+  filters: {
+    button: "Фильтры",
+    buttonAria: "Фильтры",
+    buttonAriaActive: "Фильтры: активно {count}",
+    title: "Фильтры",
+    activeAria: "Активные фильтры",
+    remove: "Убрать фильтр «{label}»",
+    reset: "Сбросить",
+    resetAll: "Сбросить фильтры",
+    show: "Показать",
+    showCount: "Показать: {count}",
+    search: "Поиск",
+    searchKey: "Поиск (/)",
+    clear: "Очистить поиск",
+  },
+  /** The one day switcher (components/shared/day-stepper): ← date + calendar →, «Сегодня», keys [ ] T. */
+  dayStepper: {
+    nav: "Выбор дня",
+    prev: "Предыдущий день",
+    next: "Следующий день",
+    prevKey: "Предыдущий день ([)",
+    nextKey: "Следующий день (])",
+    pick: "Выбрать дату: {date}",
+    today: "Сегодня",
+    todayKey: "К сегодняшнему дню (T)",
+    lastDay: "Последний день",
+    lastDayKey: "К последнему торговому дню (T)",
   },
   /** The one primary action of an empty state (components/ds/empty-state.tsx) when a page has nothing to show yet. */
   emptyActions: {

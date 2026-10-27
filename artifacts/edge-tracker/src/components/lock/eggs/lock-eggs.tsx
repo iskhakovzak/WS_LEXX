@@ -116,7 +116,7 @@ export function LockEggs({ owner, dim }: { owner: string | null; dim: boolean })
             aria-label={t("trigger")}
             className="absolute bottom-12 right-0 w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-black/75 p-1.5 text-white shadow-[0_16px_60px_rgba(0,0,0,0.6)] backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1"
           >
-            <p className="px-3 pb-1 pt-2 text-[0.65rem] font-medium uppercase tracking-[0.24em] text-white/45">{t("launcher.title")}</p>
+            <p className="px-3 pb-1 pt-2 text-2xs font-medium uppercase tracking-[0.24em] text-white/45">{t("launcher.title")}</p>
             {GAMES.map((id) => {
               const Icon = ICONS[id];
               return (
@@ -138,7 +138,7 @@ export function LockEggs({ owner, dim }: { owner: string | null; dim: boolean })
                 </button>
               );
             })}
-            <p className="px-3 pb-1.5 pt-1 text-[0.65rem] text-white/35">{t("launcher.hint")}</p>
+            <p className="px-3 pb-1.5 pt-1 text-2xs text-white/35">{t("launcher.hint")}</p>
           </div>
         )}
         <button

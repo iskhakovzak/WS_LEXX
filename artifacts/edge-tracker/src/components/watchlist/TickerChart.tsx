@@ -77,7 +77,7 @@ export function TickerChart({
     const chart: IChartApi = createChart(el, {
       width: el.clientWidth,
       height,
-      layout: { background: { color: "transparent" }, textColor: th.muted(), fontSize: 11, fontFamily: th.font, attributionLogo: false },
+      layout: { background: { color: "transparent" }, textColor: th.muted(), fontSize: 12, fontFamily: th.font, attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: th.border(0.35) } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.2 } },
       timeScale: {

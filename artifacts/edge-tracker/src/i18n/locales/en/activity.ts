@@ -10,7 +10,7 @@ export default {
   unread: { one: "{count} new", other: "{count} new" },
   markRead: "Mark as read",
   refresh: "Refresh the feed",
-  searchPlaceholder: "Ticker, setup, comment…  /",
+  searchPlaceholder: "Ticker, setup, comment…",
   searchAria: "Search the feed",
   actionTypeAria: "Action type",
   sectionsAria: "Sections",
@@ -21,7 +21,6 @@ export default {
   emptyHint: "Trades, playbook setups, ideas, mentor reviews and team comments will show up here.",
   loadMore: "Load more",
   end: "That's all, nothing earlier",
-  digestDay: "{day} · {date} (NY)",
   sections: {
     trades: "Trades",
     "trade-ideas": "Ideas",
@@ -142,8 +141,6 @@ export default {
   },
   digest: {
     title: "Daily digest",
-    prevDay: "Previous day",
-    nextDay: "Next day",
     unavailable: "The daily summary is not available yet: update the API server.",
     teamActions: "Team actions",
     socialHint: { one: "{count} review or reaction", other: "{count} reviews and reactions" },

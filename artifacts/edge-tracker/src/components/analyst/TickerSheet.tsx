@@ -368,7 +368,7 @@ export function TickerSheet({
                           y={c.avg}
                           {...REF_LINE}
                           stroke={CHART.accent}
-                          label={{ value: tf("sheet.consensus", { value: fmtUsd(c.avg, { decimals: "trim" }) }), position: "insideTopRight", fill: CHART.axis, fontSize: 11 }}
+                          label={{ value: tf("sheet.consensus", { value: fmtUsd(c.avg, { decimals: "trim" }) }), position: "insideTopRight", fill: CHART.axis, fontSize: 12 }}
                         />
                       )}
                       <Line type="monotone" dataKey="c" name="c" stroke={CHART.fg} strokeWidth={STROKE_THIN} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} isAnimationActive={false} />

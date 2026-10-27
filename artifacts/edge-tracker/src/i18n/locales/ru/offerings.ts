@@ -177,6 +177,7 @@ export default {
     ideaTitle: "Создать идею (I)",
     secAria: "Открыть заявку {ticker} на SEC",
     secTitle: "Заявка на SEC",
+    moreAria: "Ещё действия: {ticker}",
     openAria: "Открыть {ticker}",
     withdrawn: "отозв.",
     capacityTitle: "Ёмкость шелфа / программы",

@@ -228,6 +228,8 @@ export default {
     avgCompare: "a trade with a violation averages {broken} vs {clean}",
   },
   violations: {
+    ruleTitle: "Rule",
+    archiveChip: "With archive",
     filters: { all: "All", open: "New", acknowledged: "Acknowledged", resolved: "Resolved" },
     showArchive: "Show archive",
     archiveEmpty: "The archive is empty",
@@ -273,6 +275,8 @@ export default {
     reopen: "Reopen",
   },
   log: {
+    catsTitle: "Category",
+    moreActions: "More entry actions",
     deleted: "Entry deleted",
     restoreAlt: "Restore the entry",
     restoreFailed: "Couldn’t restore the entry",

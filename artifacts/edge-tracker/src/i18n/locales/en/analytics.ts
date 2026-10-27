@@ -38,7 +38,6 @@ export default {
   },
   noMatch: { title: "No trades match the filters", description: "Widen the period or clear some filters." },
 
-  period: { "7d": "7d", "30d": "30d", "90d": "90d", ytd: "Year to date", all: "All time" },
   horizon: { intraday: "Intraday", overnight: "Overnight", swing: "Swing" },
   unit: { r: "in R", usd: "net, $", usdShort: "net $" },
 
@@ -55,8 +54,7 @@ export default {
     account: "Account",
     allAccounts: "All accounts",
     ticker: "Ticker",
-    reset: "Reset",
-    resetAria: "Reset filters",
+    chip: "{label}: {value}",
     unit: "Result units",
   },
 

@@ -3,8 +3,8 @@ import type ru from "../ru/myReview";
 
 export default {
   title: "My review",
-  description: "Your trades of the last {days} days: where you earn, where you lose and one rule for tomorrow.",
-  period: { aria: "Review period", d30: "30 days", d90: "90 days" },
+  description: "Your trades of the last {days}: where you earn, where you lose and one rule for tomorrow.",
+  period: { aria: "Review period" },
   totals: "{trades} · {net} · {winRate} wins",
   totalsR: "{trades} · {net} · {r} · {winRate} wins",
   more: "Details",
@@ -24,7 +24,7 @@ export default {
   openTrades: "Open the trades: {label}",
   openBehavior: "Open behaviour",
   empty: {
-    title: "No trades in {days} days",
+    title: "No trades in {days}",
     description: "The review appears after the first trades from PropReports.",
   },
   loadFailed: "Could not load the review",

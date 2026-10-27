@@ -4,11 +4,12 @@ import { DEFAULT_FILTERS, activeFilterCount, periodRange, withHotkeys } from "./
 import { entryMinutesOf, toSimTrades } from "./edge-api";
 
 describe("analytics defaults (DEV-01, MAKSIM-32)", () => {
-  it("opens on 90 days; the default period is not an «active filter»", () => {
-    expect(DEFAULT_FILTERS.period).toBe("90d");
+  it("opens on «Квартал» (90 days); the period (scope) is not an «active filter»", () => {
+    expect(DEFAULT_FILTERS.period).toBe("quarter");
     expect(activeFilterCount(DEFAULT_FILTERS)).toBe(0);
-    expect(activeFilterCount({ ...DEFAULT_FILTERS, period: "all" })).toBe(1);
-    const r = periodRange("90d", new Date(2026, 9, 19))!;
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, period: "all" })).toBe(0);
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, side: "long" })).toBe(1);
+    const r = periodRange("quarter", new Date(2026, 9, 19))!;
     expect([r.from, r.prevFrom, r.prevTo]).toEqual(["2026-07-22", "2026-04-23", "2026-07-21"]);
   });
 

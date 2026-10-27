@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { GradeChange, KindPill, Marks, RowActions, TargetChange } from "./ActionRow";
 import { REACTION_KIND_LABEL, REACTION_MIN_N, type Row } from "./rows";
 import { gapOf, nyTime, shortDay, SESSION_LABEL, sessionOf } from "./lib";
+import { rvolText } from "./card-model";
 import { fmtPct } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
@@ -199,7 +200,7 @@ function PremarketCard({
           )}
           {q?.relativeVolume != null && Number.isFinite(q.relativeVolume) && (
             <span className={cn(q.relativeVolume >= 2 ? "font-medium text-foreground" : "text-muted-foreground")} title={analystI18n.t("premarket.rvolTitle")}>
-              ×{q.relativeVolume.toFixed(1)}
+              {rvolText(q.relativeVolume)}
             </span>
           )}
         </div>

@@ -1,12 +1,11 @@
 import * as React from "react";
-import { BookOpen, Search, X } from "lucide-react";
+import { BookOpen, Search } from "lucide-react";
 import {
   CartesianGrid, ComposedChart, Bar, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { EmptyState, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
 import { ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, tint, tooltipProps, useChartMotion } from "@/components/shared/charts";
-import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -61,25 +60,11 @@ export function JuniorHistory({
   const [q, setQ] = React.useState("");
   const [filter, setFilterState] = React.useState<Filter>(readFilter);
   const [openId, setOpenId] = React.useState<number | null>(null);
-  const searchRef = React.useRef<HTMLInputElement>(null);
 
   const setFilter = (f: Filter) => {
     setFilterState(f);
     try { localStorage.setItem(FILTER_KEY, f); } catch { /* ignore */ }
   };
-
-  // "/" focuses search.
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (e.key === "/" && !(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const counts = React.useMemo(() => ({
     all: history.length,
@@ -171,26 +156,7 @@ export function JuniorHistory({
       </Panel>
 
       <Toolbar>
-        <div className="relative min-w-0 flex-1 basis-56">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            ref={searchRef}
-            type="search"
-            aria-label={t("searchNotes")}
-            placeholder={t("junior.history.searchPlaceholder")}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
-            className="pl-10 pr-10"
-          />
-          {q ? (
-            <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : (
-            <Kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
-          )}
-        </div>
+        <ToolbarSearch value={q} onChange={setQ} ariaLabel={t("searchNotes")} placeholder={t("junior.history.searchPlaceholder")} />
         <Segmented
           ariaLabel={t("junior.history.filterAria")}
           size="sm"

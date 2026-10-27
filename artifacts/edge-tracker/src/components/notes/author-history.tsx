@@ -1,11 +1,10 @@
 import * as React from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BookOpen, Flame, MoreHorizontal, PenLine, Search, Sparkles, Trash2, X } from "lucide-react";
-import { EmptyState, FilterChip, Panel, Pill, StatCard, StatGrid } from "@/components/ds";
+import { BookOpen, Flame, MoreHorizontal, PenLine, Search, Sparkles, Trash2 } from "lucide-react";
+import { EmptyState, FilterChip, Panel, Pill, StatCard, StatGrid, Toolbar } from "@/components/ds";
 import { ACTIVE_DOT, CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, areaGradient, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -49,19 +48,6 @@ export function AuthorHistory({
   const [moodFilter, setMoodFilter] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<AuthorNote | null>(null);
   const [showAi, setShowAi] = React.useState(false);
-  const searchRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const real = React.useMemo(() => notes.filter((n) => n.raw_text?.trim() || n.refined_text), [notes]);
   const today = localToday();
@@ -98,6 +84,7 @@ export function AuthorHistory({
       return n.raw_text.toLowerCase().includes(q) || (n.refined_text ?? "").toLowerCase().includes(q) || n.note_date.includes(q);
     });
   }, [real, query, moodFilter]);
+  const moodChip = moodFilter ? MOODS.find((m) => m.value === moodFilter) ?? null : null;
 
   const groups = React.useMemo(() => {
     const out: { month: string; items: AuthorNote[] }[] = [];
@@ -185,35 +172,24 @@ export function AuthorHistory({
         </Panel>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } }}
-            placeholder={t("author.history.searchPlaceholder")}
-            aria-label={t("searchNotes")}
-            className="pl-10 pr-16"
-          />
-          {query ? (
-            <button type="button" onClick={() => setQuery("")} aria-label={tc("actions.clearSearch")} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : (
-            <Kbd className="absolute right-3 top-1/2 -translate-y-1/2">/</Kbd>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("author.history.moodFilterAria")}>
-          {MOODS.map((m) => (
-            <FilterChip key={m.value} active={moodFilter === m.value} onClick={() => setMoodFilter(moodFilter === m.value ? null : m.value)}>
-              <span aria-hidden="true">{m.emoji}</span>
-              <span className="sr-only">{m.label}</span>
-            </FilterChip>
-          ))}
-        </div>
-      </div>
+      <Toolbar>
+        <ToolbarSearch value={query} onChange={setQuery} placeholder={t("author.history.searchPlaceholder")} ariaLabel={t("searchNotes")} />
+        <FiltersButton count={moodFilter ? 1 : 0} onReset={() => setMoodFilter(null)} resultCount={filtered.length}>
+          <FilterSection title={t("author.history.moodFilterAria")}>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("author.history.moodFilterAria")}>
+              {MOODS.map((m) => (
+                <FilterChip key={m.value} active={moodFilter === m.value} onClick={() => setMoodFilter(moodFilter === m.value ? null : m.value)}>
+                  <span aria-hidden="true">{m.emoji}</span> {m.label}
+                </FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+        </FiltersButton>
+      </Toolbar>
+      <ActiveFilters
+        items={[moodChip && { key: "mood", label: `${moodChip.emoji} ${moodChip.label}`, removeLabel: moodChip.label, onRemove: () => setMoodFilter(null) }]}
+        onReset={() => setMoodFilter(null)}
+      />
 
       {filtered.length === 0 ? (
         <Panel>

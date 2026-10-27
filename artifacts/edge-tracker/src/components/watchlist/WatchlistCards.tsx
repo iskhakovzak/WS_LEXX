@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { toneOf, toneText } from "@/components/ds";
 import { fmtPct, fmtPrice } from "@/lib/format";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
-import { LIST_LABELS, rowWritable } from "./lib";
+import { LIST_LABELS, fmtRvol, rowWritable } from "./lib";
 import { EventMarks, HistoryCell, LevelCell } from "./bits";
 import { RowMenu, type RowActions } from "./WatchlistRow";
 import { cardFacts, type CardMetric, type WlRow } from "./card-model";
@@ -64,7 +64,7 @@ function Card({ r, showList, canEdit, me, actions, scoring, levelsLoading, quote
           </span>
           <span className="grid w-full grid-cols-3 gap-2">
             <Metric label={t("table.gap")} m={f.gap} fmt={(v) => fmtPct(v, 1)} />
-            <Metric label="rVol" m={f.rvol} fmt={(v) => `${v.toFixed(1)}×`} />
+            <Metric label="rVol" m={f.rvol} fmt={(v) => fmtRvol(v)} />
             <Metric label="ATR" m={f.atrPct} fmt={(v) => fmtPct(v, { decimals: 1, signed: false })} />
           </span>
           {item.notes && <span className="line-clamp-2 w-full text-xs text-muted-foreground">{item.notes}</span>}

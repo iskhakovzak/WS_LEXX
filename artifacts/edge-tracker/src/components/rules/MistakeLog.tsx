@@ -2,9 +2,9 @@ import { forwardRef, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { links } from "@/lib/links";
 import { CheckCircle2, Circle, Download, NotebookPen, Pencil, Search, Trash2 } from "lucide-react";
-import { EmptyState, FilterChip, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
+import { EmptyState, FilterChip, Panel, Pill, RowActions, Segmented, Toolbar } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +58,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   const [lessonFor, setLessonFor] = useState<number | null>(null);
   const [lessonDraft, setLessonDraft] = useState("");
   const [limit, setLimit] = useState(PAGE);
+  const toggleCat = (c: string) => setCats((xs) => (xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c]));
 
   const catCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -164,21 +165,10 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   return (
     <div className="flex flex-col gap-3">
       <Toolbar>
-        <div className="relative min-w-[180px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("log.searchPlaceholder")}
-            aria-label={t("log.searchAria")}
-            className="pl-9"
-            onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-          />
-        </div>
+        {/* «/» is bound by the page (it also switches to this tab), so the box's own hotkey is off. */}
+        <ToolbarSearch inputRef={searchRef} hotkey={false} value={query} onChange={setQuery} placeholder={t("log.searchPlaceholder")} ariaLabel={t("log.searchAria")} />
         <Segmented<Status>
           ariaLabel={t("log.statusAria")}
-          size="sm"
           value={status}
           onChange={setStatus}
           options={[
@@ -187,29 +177,28 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
             { value: "done", label: t("log.done"), count: mistakes.length - openCount },
           ]}
         />
-        <Button variant="outline" size="icon" aria-label={t("log.export")} title={t("log.export")} onClick={exportCsv}>
+        {catCounts.length > 1 && (
+          <FiltersButton count={cats.length} onReset={() => setCats([])} resultCount={filtered.length}>
+            <FilterSection title={t("log.catsTitle")}>
+              <div className="flex flex-wrap gap-1.5">
+                {catCounts.map(([c, n]) => (
+                  <FilterChip key={c} size="sm" active={cats.includes(c)} count={n} onClick={() => toggleCat(c)}>
+                    {mistakeLabel(c)}
+                  </FilterChip>
+                ))}
+              </div>
+            </FilterSection>
+          </FiltersButton>
+        )}
+        <span className="ml-auto" />
+        <Button variant="ghost" size="icon" aria-label={t("log.export")} title={t("log.export")} onClick={exportCsv}>
           <Download />
         </Button>
       </Toolbar>
-
-      {catCounts.length > 1 && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("log.catsAria")}>
-          {catCounts.slice(0, 12).map(([c, n]) => (
-            <FilterChip
-              key={c}
-              active={cats.includes(c)}
-              count={n}
-              className="min-h-7 px-2.5 text-xs"
-              onClick={() => setCats((xs) => (xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c]))}
-            >
-              {mistakeLabel(c)}
-            </FilterChip>
-          ))}
-          {cats.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setCats([])}>{commonI18n.t("actions.reset")}</Button>
-          )}
-        </div>
-      )}
+      <ActiveFilters
+        items={cats.map((c) => ({ key: c, label: mistakeLabel(c), onRemove: () => toggleCat(c) }))}
+        onReset={() => setCats([])}
+      />
 
       {filtered.length === 0 ? (
         <Panel><EmptyState icon={Search} title={commonI18n.t("states.nothingFound")} description={t("log.changeFilters")} /></Panel>
@@ -306,14 +295,14 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                       </button>
                     )}
                   </div>
-                  <div className="flex shrink-0 gap-0.5">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("log.edit")} title={t("log.edit")} onClick={() => onEdit(m)}>
-                      <Pencil className="!size-3.5" />
+                  <RowActions
+                    menuLabel={t("log.moreActions")}
+                    more={[{ label: commonI18n.t("actions.delete"), icon: Trash2, disabled: busy, onSelect: () => void remove(m) }]}
+                  >
+                    <Button variant="ghost" size="icon-sm" aria-label={t("log.edit")} title={t("log.edit")} onClick={() => onEdit(m)}>
+                      <Pencil />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-down" aria-label={commonI18n.t("actions.delete")} title={commonI18n.t("actions.delete")} disabled={busy} onClick={() => remove(m)}>
-                      <Trash2 className="!size-3.5" />
-                    </Button>
-                  </div>
+                  </RowActions>
                 </div>
               </li>
             );

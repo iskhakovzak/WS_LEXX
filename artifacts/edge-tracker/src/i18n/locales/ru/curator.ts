@@ -71,6 +71,8 @@ export default {
     patternsOff: "Без паттернов",
     cardSortAria: "Сортировка карточек",
     cardSort: { attention: "Внимание", pnl: "Неделя ↑", discipline: "Дисциплина ↑", name: "Имя" },
+    filterSections: { attention: "Внимание", activity: "Активность", tier: "Тир", cards: "Карточки" },
+    chips: { idle: "Без сделок ≥ {count} дн.", tier: "Тир: {name}", sort: "Сортировка: {value}" },
     filtersAria: "Фильтры группы",
     csvTitle: "Скачать видимые строки",
     cols: {
@@ -481,6 +483,7 @@ export default {
     emptyHint: "Запишите итог разговора или наблюдение — увидят только кураторы.",
     pinned: "закреплено",
     editText: "Изменить текст",
+    moreActions: "Ещё действия с заметкой",
     archive: "Убрать в архив",
     archiveFailed: "Не удалось убрать",
     textAria: "Текст заметки",

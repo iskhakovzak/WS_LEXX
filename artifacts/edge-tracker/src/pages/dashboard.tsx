@@ -109,12 +109,12 @@ function useDashboardModel(editing: boolean) {
   const on = (id: SectionId) => allowed(id) && inScope(id) && board.layout.items.some((it) => it.id === id);
 
   // «Кривая капитала»: a week without closed trades shows 30 days instead of an empty card (with a note) — until the
-  // viewer picks «1Н» by hand in this visit.
+  // viewer picks «Неделя» by hand in this visit.
   const [weekPinned, setWeekPinned] = useState(false);
   const todayQ = useDashboardToday(scope, authed);
   const equityQ = useDashboardEquity(scope, prefs.period, on("equity"));
   const weekEmpty = prefs.period === "week" && !weekPinned && !!equityQ.data && !equityQ.isPlaceholderData && equityQ.data.totals.trades === 0;
-  const widenedQ = useDashboardEquity(scope, "30d", on("equity") && weekEmpty);
+  const widenedQ = useDashboardEquity(scope, "month", on("equity") && weekEmpty);
   const widened = weekEmpty && !!widenedQ.data && widenedQ.data.totals.trades > 0;
   const onPeriodChange = (period: EquityPeriod) => {
     if (period === "week") setWeekPinned(true);
@@ -129,7 +129,7 @@ function useDashboardModel(editing: boolean) {
   // the trend chips. Also while editing (the gallery previews them).
   const edgeShown = board.layout.items.some((it) => isEdge(it.id));
   const insightsOn = authed && scope === "me" && (edgeShown || editing);
-  const insightRanges = useMemo(() => periodRanges("90d"), []);
+  const insightRanges = useMemo(() => periodRanges("quarter"), []);
   const insightWindow = insightRanges.cur;
   const insightTrader = staff ? userName : null;
   const insightQ = useTradesWindow({ from: insightWindow.from, to: insightWindow.to, trader: insightTrader }, { enabled: insightsOn });
@@ -138,7 +138,7 @@ function useDashboardModel(editing: boolean) {
     { enabled: insightsOn && insightQ.isSuccess && !!insightRanges.prev },
   );
   const insightScope = useMemo<InsightScope>(
-    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "90d", periodLong: periodTexts("90d", null).long }),
+    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "quarter", periodLong: periodTexts("quarter", null).long }),
     [insightWindow, insightTrader],
   );
   const eodQ = useEodStatus(authed && scope === "team");
@@ -248,7 +248,7 @@ export default function Dashboard() {
       isLoading={equityQ.isLoading || (m.weekEmpty && widenedQ.isLoading)}
       isError={equityQ.isError}
       onRetry={() => equityQ.refetch()}
-      period={m.widened ? "30d" : prefs.period}
+      period={m.widened ? "month" : prefs.period}
       onPeriodChange={m.onPeriodChange}
       metric={prefs.metric}
       onMetricChange={(metric) => m.update({ metric })}

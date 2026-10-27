@@ -1,12 +1,13 @@
 /**
  * «Команда» — the team activity feed as a tab of /notifications (design audit wave 2: /activity was a second inbox with
- * its own three rows of filters). The shared FeedToolbar on top (search · «Непрочитанные» · «Прочитать всё»), then one
- * quiet row of this feed's own filters: sections with 30-day counts, the action type as a select, the trader (staff).
+ * its own three rows of filters). One row (design audit wave 3): the shared FeedToolbar (search · «Все / Непрочитанные»
+ * · «Фильтры (n)» · refresh · «Прочитать всё»); the sections with 30-day counts, the action type and the trader (staff)
+ * sit behind «Фильтры», each active one as a removable chip under the row.
  * The day digest and the feed itself are unchanged. /activity redirects here (App.tsx), keeping ?trader= / ?section=.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Activity, Loader2, RefreshCw, X } from "lucide-react";
+import { Activity, Loader2, RefreshCw } from "lucide-react";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { links } from "@/lib/links";
@@ -15,25 +16,23 @@ import { useAuth } from "@/contexts/auth-context";
 import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { EmptyState, FilterChip, Panel, Pill } from "@/components/ds";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState, Panel, Pill } from "@/components/ds";
 import { FeedToolbar } from "@/components/shared/feed-toolbar";
+import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
+import { DEFAULT_FILTERS, TeamFiltersButton, type Filters } from "@/components/team/team-filters";
 import { BurstRow, DigestCard, FeedRow } from "@/components/team/activity-feed";
 import {
   ACTION_GROUPS,
   SECTION_META,
   actionGroupLabel,
   capFirst,
-  deskDayLabel,
   groupFeed,
   sectionMeta,
-  type ActionGroup,
   type ActivitySummary,
   type FeedItem,
   type FeedPage,
 } from "@/components/team/activity-model";
 import { lsGet, lsSet } from "@/components/team/utils";
-import { PersonSelect } from "@/components/people/person-select";
 import { activityI18n } from "@/i18n/ns/activity";
 import { commonI18n } from "@/i18n/ns/common";
 import { notificationsI18n } from "@/i18n/ns/notifications";
@@ -43,8 +42,6 @@ const FILTER_KEY = "ws_activity_filters";
 const SEEN_KEY = "ws_activity_seen_at";
 const PAGE_SIZE = 40;
 
-type Filters = { group: ActionGroup; sections: string[]; trader: string | null };
-const DEFAULT_FILTERS: Filters = { group: "all", sections: [], trader: null };
 
 /** Saved filters; `?trader=` / `?section=` in the URL (cross-links from other pages) win over the saved ones. */
 function loadFilters(staff: boolean): Filters {
@@ -220,8 +217,6 @@ export function TeamActivity() {
     staleTime: 60_000,
   });
 
-  const shiftDigest = (dir: -1 | 1) => setDigestDay((d) => (d ? addDays(d, dir) : d));
-  const digestIsToday = digestDay ? digestDay >= nyDate() : true;
 
   // Infinite scroll sentinel.
   const sentinel = useRef<HTMLDivElement>(null);
@@ -261,8 +256,9 @@ export function TeamActivity() {
     return [...set].sort(comparePersonNames);
   }, [facets, filters.trader, me]);
 
-  const activeFilterCount =
-    (filters.group !== "all" ? 1 : 0) + (filters.sections.length ? 1 : 0) + (staff && filters.trader ? 1 : 0) + (q ? 1 : 0) + (unreadOnly ? 1 : 0);
+  // «Фильтры (n)»: what sits inside the popover (sections, action type, trader).
+  const popoverCount = filters.sections.length + (filters.group !== "all" ? 1 : 0) + (staff && filters.trader ? 1 : 0);
+  const activeFilterCount = popoverCount + (q ? 1 : 0) + (unreadOnly ? 1 : 0);
   const resetFilters = () => {
     setFilters(DEFAULT_FILTERS);
     setSearch("");
@@ -278,69 +274,60 @@ export function TeamActivity() {
         searchAria={t("searchAria")}
         unreadOnly={unreadOnly}
         onUnreadOnly={setUnreadOnly}
+        allLabel={tn("page.allFilter")}
         unreadLabel={tn("page.unreadFilter")}
+        modeAria={tn("page.modeAria")}
         unreadCount={unreadCount}
+        filters={
+          <TeamFiltersButton
+            filters={filters}
+            setFilters={setFilters}
+            count={popoverCount}
+            sectionKeys={sectionKeys}
+            sectionCounts={sectionCounts}
+            countsHint={!!facets}
+            staff={staff}
+            me={me}
+            traderOptions={traderOptions}
+          />
+        }
+        end={
+          <>
+            {!staff && me && <Pill tone="neutral" dot>{t("onlyMine")}</Pill>}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("refresh")}
+              title={t("refresh")}
+              onClick={() => { feed.refetch(); summary.refetch(); }}
+              disabled={feed.isFetching && !feed.isFetchingNextPage}
+            >
+              <RefreshCw className={feed.isRefetching && !feed.isFetchingNextPage ? "animate-spin motion-reduce:animate-none" : undefined} />
+            </Button>
+          </>
+        }
         onReadAll={unreadCount > 0 ? markRead : undefined}
         readAllLabel={tn("bell.readAll")}
-      >
-        <div className="flex flex-col gap-2">
-        {/* Phones: the sections scroll sideways in one line instead of four wrapped rows. */}
-        <div className="-mx-2 flex items-center gap-1.5 overflow-x-auto px-2 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0" role="group" aria-label={t("sectionsAria")}>
-          {sectionKeys.map((s) => {
-            const m = sectionMeta(s);
-            const Icon = m.icon;
-            return (
-              <FilterChip key={s} size="sm" active={filters.sections.includes(s)} onClick={() => toggleSection(s)} count={sectionCounts.get(s)} title={facets ? t("counts30d") : undefined}>
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                {m.label}
-              </FilterChip>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Select value={filters.group} onValueChange={(g) => setFilters((f) => ({ ...f, group: g as ActionGroup }))}>
-            <SelectTrigger aria-label={t("actionTypeAria")} className="h-8 w-auto min-w-[9rem] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {(Object.keys(ACTION_GROUPS) as ActionGroup[]).map((k) => <SelectItem key={k} value={k}>{actionGroupLabel(k)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {staff && (
-            <PersonSelect value={filters.trader ?? ""} onValueChange={(v) => pickTrader(v || null)} options={traderOptions} allLabel={tc("fields.allTraders")} self={me} ariaLabel={tc("fields.trader")} className="h-8 w-full text-xs sm:w-[180px]" />
-          )}
-          {staff && me && (
-            <FilterChip size="sm" active={filters.trader === me} onClick={() => pickTrader(filters.trader === me ? null : me)}>
-              {t("onlyMineFilter")}
-            </FilterChip>
-          )}
-          {!staff && me && <Pill tone="neutral" dot>{t("onlyMine")}</Pill>}
-          {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={resetFilters}>
-              <X /> {tc("actions.resetFilters")}
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="ml-auto"
-            aria-label={t("refresh")}
-            title={t("refresh")}
-            onClick={() => { feed.refetch(); summary.refetch(); }}
-            disabled={feed.isFetching && !feed.isFetchingNextPage}
-          >
-            <RefreshCw className={feed.isRefetching && !feed.isFetchingNextPage ? "animate-spin motion-reduce:animate-none" : undefined} />
-          </Button>
-        </div>
-        </div>
-      </FeedToolbar>
+      />
+      <ActiveFilters
+        onReset={resetFilters}
+        items={[
+          ...filters.sections.map((s) => ({ key: `section:${s}`, label: sectionMeta(s).label, onRemove: () => toggleSection(s) })),
+          filters.group !== "all" && { key: "group", label: actionGroupLabel(filters.group), onRemove: () => setFilters((f) => ({ ...f, group: "all" })) },
+          staff && !!filters.trader && {
+            key: "trader",
+            label: filters.trader === me ? t("onlyMineFilter") : personName(filters.trader),
+            onRemove: () => pickTrader(null),
+          },
+        ]}
+      />
 
       <DigestCard
         summary={summary.data}
         loading={!digestDay || summary.isLoading}
         unavailable={summary.isError}
-        dayLabel={digestDay ? t("digestDay", { day: capFirst(deskDayLabel(digestDay)), date: digestDay }) : "…"}
-        canNext={!digestIsToday}
-        onPrev={() => shiftDigest(-1)}
-        onNext={() => shiftDigest(1)}
+        day={digestDay}
+        onDay={setDigestDay}
         onPickSection={pickSection}
         onPickTrader={(t) => pickTrader(t)}
         tradesHref={digestDay ? `${links.trades({ from: digestDay, to: digestDay })}${staff && filters.trader ? `&trader=${encodeURIComponent(filters.trader)}` : ""}` : undefined}

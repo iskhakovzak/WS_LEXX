@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
+import { DayStepper } from "@/components/shared/day-stepper";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
 import { fmtDate, fmtDeskDate } from "@/lib/format";
@@ -46,15 +47,24 @@ function PickForm({ ticker, date, onGo }: { ticker: string; date: string; onGo: 
   React.useEffect(() => { setTk(ticker); }, [ticker]);
   React.useEffect(() => { if (date) setD(date); }, [date]);
   const valid = TICKER_RE.test(tk.trim().toUpperCase()) && YMD_RE.test(d);
+  // The day (wave 3: the shared DayStepper, outside the <form> so its buttons never submit it) opens that day of the
+  // shown ticker at once; a new ticker still goes through «Показать».
+  const pickDay = (next: string) => {
+    setD(next);
+    const tkOk = TICKER_RE.test(tk.trim().toUpperCase());
+    if (tkOk) onGo(tk.trim().toUpperCase(), next);
+  };
   return (
-    <form
-      className="flex flex-wrap items-center gap-2"
-      onSubmit={(e) => { e.preventDefault(); if (valid) onGo(tk.trim().toUpperCase(), d); }}
-    >
-      <Input aria-label={t("form.ticker")} placeholder={t("form.ticker")} value={tk} onChange={(e) => setTk(e.target.value.toUpperCase())} className="h-9 w-28 rounded-full uppercase" maxLength={11} />
-      <Input type="date" aria-label={t("form.date")} value={d} max={nyDate()} onChange={(e) => setD(e.target.value)} className="h-9 w-[11.5rem] rounded-full tabular-nums" />
-      <Button type="submit" size="sm" disabled={!valid}><Search className="h-4 w-4" aria-hidden="true" /> {t("form.show")}</Button>
-    </form>
+    <div className="flex flex-wrap items-center gap-2">
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => { e.preventDefault(); if (valid) onGo(tk.trim().toUpperCase(), d); }}
+      >
+        <Input aria-label={t("form.ticker")} placeholder={t("form.ticker")} value={tk} onChange={(e) => setTk(e.target.value.toUpperCase())} className="h-9 w-28 rounded-full uppercase" maxLength={11} />
+        <Button type="submit" size="sm" disabled={!valid}><Search className="h-4 w-4" aria-hidden="true" /> {t("form.show")}</Button>
+      </form>
+      <DayStepper value={d} onChange={pickDay} max={nyDate()} />
+    </div>
   );
 }
 

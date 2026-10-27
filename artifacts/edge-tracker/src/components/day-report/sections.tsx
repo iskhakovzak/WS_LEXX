@@ -144,7 +144,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
               />
               <YAxis {...Y_AXIS} width={64} tickFormatter={(v: number) => fmtUsd(v)} />
               <ReferenceLine {...ZERO_LINE} />
-              {doc.dailyLossLimit != null && <ReferenceLine y={-doc.dailyLossLimit} {...REF_LINE} stroke={CHART.down} label={{ value: t("equity.dailyLimit"), fill: CHART.down, fontSize: 11, position: "insideBottomLeft" }} />}
+              {doc.dailyLossLimit != null && <ReferenceLine y={-doc.dailyLossLimit} {...REF_LINE} stroke={CHART.down} label={{ value: t("equity.dailyLimit"), fill: CHART.down, fontSize: 12, position: "insideBottomLeft" }} />}
               <Tooltip
                 {...tooltipProps("line")}
                 content={<GlassTooltip

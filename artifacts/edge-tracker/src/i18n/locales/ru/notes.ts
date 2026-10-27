@@ -224,6 +224,7 @@ export default {
       searchPlaceholder: "Тикер или текст…",
       searchAria: "Поиск по сводкам: тикер, текст или автор",
       unread: "Непрочитанные",
+      authors: "Авторы",
       readAll: "Прочитать все",
       teamSummaryCount: "Общая сводка · {count}",
       teamSummary: "AI-сводка команды",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, Bug, Database, Flag, Gauge, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, SlidersHorizontal, Users } from "lucide-react";
+import { Activity, Bug, Database, Flag, Gauge, KeyRound, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/components/ds";
@@ -150,6 +150,8 @@ function AdminConsole() {
       localStorage.setItem(TAB_KEY, t);
       const url = new URL(window.location.href);
       if (t === "overview") url.searchParams.delete("tab"); else url.searchParams.set("tab", t);
+      // ?period=&from=&to= belong to the tab that set them (Аудит, Использование).
+      for (const k of ["period", "from", "to"]) url.searchParams.delete(k);
       window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
   }, []);
@@ -208,7 +210,7 @@ function AdminConsole() {
   return (
     <Page>
       <PageHeader
-        icon={Shield}
+        icon={ShieldCheck}
         title={t("page.title")}
         description={t("page.description")}
         actions={

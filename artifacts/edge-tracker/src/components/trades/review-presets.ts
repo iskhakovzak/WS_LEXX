@@ -18,6 +18,8 @@ export const REVENGE_WINDOW_MIN = 10;
 export type PresetMeta = {
   key: Preset;
   label: string;
+  /** One word for the mode switch of the toolbar («Разобрать», «Скальп»…). */
+  short: string;
   /** One line under the bar: why this view is worth a look. */
   why: string;
   /** Default ordering of the view. */
@@ -39,6 +41,7 @@ export const PRESET_META: Record<Preset, PresetMeta> = Object.fromEntries(
   PRESETS.map((key) => [key, {
     key,
     get label() { return tradesI18n.t(`presets.${key}.label`); },
+    get short() { return tradesI18n.t(`presets.${key}.short`); },
     get why() { return tradesI18n.t(`presets.${key}.why`); },
     ...PRESET_BASE[key],
   }]),

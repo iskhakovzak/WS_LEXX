@@ -6,14 +6,32 @@
 import { fmtPct, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
 import { addDays } from "@/lib/trading-date";
+import { periodDays, rangeDays, shiftYmd, type DayRange } from "@/lib/period-range";
 import { displayTicker } from "@/lib/option-symbol";
 import { commonI18n } from "@/i18n/ns/common";
 import { myReviewI18n } from "@/i18n/ns/myReview";
 import type { MyReview, ReviewBucket, ReviewDimension } from "./api";
 
-export const PERIODS = [30, 90] as const;
-export type Period = (typeof PERIODS)[number];
-export const isPeriod = (v: unknown): v is Period => v === 30 || v === 90;
+/** The periods of the review: GET /api/my-review takes days ∈ [7, 90], a window that ends today. */
+export const REVIEW_PRESETS = ["week", "month", "quarter"] as const;
+export type ReviewPreset = (typeof REVIEW_PRESETS)[number];
+const MIN_DAYS = 7;
+const MAX_DAYS = 90;
+const clampDays = (n: number) => Math.min(MAX_DAYS, Math.max(MIN_DAYS, Math.round(n)));
+
+/** Days the API is asked for (presets 7 / 30 / 90; «Период…» → its length, clamped). */
+export function reviewDays(period: ReviewPreset | "custom", custom: DayRange | null): number {
+  return clampDays(periodDays(period, custom) ?? 30);
+}
+
+/**
+ * «Период…» here can only be a window that ends today (the rule is for tomorrow): a picked range becomes the last
+ * N days of its length (7–90), so the picker shows exactly the window the review covers.
+ */
+export function reviewRange(r: DayRange, today: string): DayRange {
+  const n = clampDays(rangeDays(r));
+  return { from: shiftYmd(today, -(n - 1)), to: today };
+}
 
 export const DIMENSIONS: readonly ReviewDimension[] = ["setup", "ticker", "hour"];
 

@@ -220,6 +220,7 @@ export default {
       searchPlaceholder: "Ticker or text…",
       searchAria: "Search notes: ticker, text or author",
       unread: "Unread",
+      authors: "Authors",
       readAll: "Mark all read",
       teamSummaryCount: "Combined summary · {count}",
       teamSummary: "Team AI summary",

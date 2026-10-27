@@ -6,7 +6,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookMarked, Check, ChevronDown, ChevronUp, Plus, RefreshCw, ScanSearch } from "lucide-react";
+import { BookMarked, Check, ChevronDown, ChevronUp, Plus, RefreshCw, ScanLine } from "lucide-react";
 import { ErrorState, Panel, RowActions as DsRowActions, Segmented, SortableTh, DataTable, usePersistentState, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +24,7 @@ import { finvizI18n } from "@/i18n/ns/finviz";
 import { screenerQuery, useFinvizRefresh, useFinvizStatus, usePlanTickerDoc } from "./api";
 import { useAddToPlan } from "../add-to-plan";
 import { EarningsFlagPill, FinvizOff, useMinuteClock } from "./earnings";
+import { syncStale } from "@/lib/trading-date";
 import {
   DEFAULT_SORT, PLAN_MAX_TICKERS, SCREENER_PRESETS, catalystLine, earningsFlagOf, morningState, planTickers, rowMove, rvolValue, screenerSummary, sortRows,
   type ScreenerPreset, type ScreenerRow, type ScreenerSortKey,
@@ -31,8 +32,6 @@ import {
 
 /** Rows before «Показать все»: the screener is a side block of the morning, not the plan (design audit wave 2B). */
 const SHOW = 5;
-/** Older than this the table is yesterday's gap list: dimmed, with a «устарело» mark next to its time. */
-const STALE_MS = 18 * 60 * 60 * 1000;
 
 type RowActions = {
   inPlan: (ticker: string) => boolean;
@@ -268,7 +267,8 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   const shown = all ? rows : rows.slice(0, SHOW);
   const actions: RowActions = { inPlan: (x) => inPlanSet.has(x.toUpperCase()), canPlan, adding, onAdd: (r) => onAdd(r, preset), planDate };
   const updated = q.data?.asOf ? t("screener.updated", { ago: fmtRelative(q.data.asOf) }) : t("screener.notYet");
-  const stale = !!q.data?.asOf && now.getTime() - new Date(q.data.asOf).getTime() > STALE_MS;
+  // One freshness rule for every «последнее обновление» (lib/trading-date syncStale, design audit wave 2A/3).
+  const stale = syncStale(q.data?.asOf, now).stale;
   const onSort = (k: ScreenerSortKey) =>
     setSort((s) => {
       const cur = s ?? sort;
@@ -283,7 +283,7 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   if (!open) {
     return (
       <section aria-label={t("screener.aria")} className={cn("glass-panel flex min-w-0 items-center gap-3 rounded-2xl px-[var(--panel-p)] py-2", className)}>
-        <ScanSearch className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <ScanLine className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="-my-1 min-h-10 min-w-0 flex-1 truncate rounded-md text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8">
           <span className="font-semibold">{t("screener.title")}</span>
           <span className="text-muted-foreground">
@@ -328,7 +328,7 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
       aria-label={t("screener.aria")}
       title={t("screener.title")}
       description={<>{t(`screener.presetHint.${preset}`)} · {stale ? <span className="font-medium text-warn">{t("screener.stale", { ago: fmtRelative(q.data!.asOf!) })}</span> : updated}</>}
-      icon={ScanSearch}
+      icon={ScanLine}
       className={className}
       actions={
         <>

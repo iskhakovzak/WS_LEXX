@@ -1,8 +1,8 @@
 /**
  * /notifications — the one place for feeds (design audit wave 2): tabs «Входящие» · «Команда» (the team activity feed,
  * formerly /activity) · «Архив», the notification settings behind the gear in the header. Every feed tab starts with the
- * same toolbar (components/shared/feed-toolbar: search · «Непрочитанные» · «Прочитать всё»); its own filters
- * (severity, group/type) sit in a quieter row under it. Bulk read/archive, keyboard navigation (↑/↓ or J/K, Enter, R,
+ * same one-row toolbar (components/shared/feed-toolbar: search · «Все / Непрочитанные» · «Фильтры (n)» · «Прочитать
+ * всё»); the inbox filters (severity, group/type) sit behind «Фильтры», active ones as chips under the row. Bulk read/archive, keyboard navigation (↑/↓ or J/K, Enter, R,
  * E, X, Esc). Reads ?tab=inbox|team|archive|prefs, ?unread=1, ?q=, ?type=a,b, ?severity=warn,critical from the URL.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,7 +18,8 @@ import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NotificationItem } from "@/components/notifications/notification-item";
 import { NotificationPrefsPanel } from "@/components/notifications/notification-prefs";
-import { ALL_GROUPS, InboxFilters, type GroupPick } from "@/components/notifications/inbox-filters";
+import { ALL_GROUPS, InboxFiltersButton, InboxKeysHint, inboxActiveFilters, type GroupPick } from "@/components/notifications/inbox-filters";
+import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
 import {
   TYPES, groupByDay, type ListFilters, type Notification, type Severity,
 } from "@/components/notifications/model";
@@ -210,6 +211,7 @@ export default function NotificationsPage() {
 
   const filtersOn = !!(unreadOnly || q || severities.length || group !== ALL_GROUPS || types.length);
   const resetAll = () => { setUnreadOnly(false); setSearch(""); setSeverities([]); setGroup(ALL_GROUPS); setTypes([]); };
+  const inboxFilterProps = { severities, setSeverities, group, setGroup, types, setTypes };
 
   return (
     <Page>
@@ -266,14 +268,17 @@ export default function NotificationsPage() {
             searchAria={t("page.searchAria")}
             unreadOnly={tab === "inbox" ? unreadOnly : null}
             onUnreadOnly={setUnreadOnly}
+            allLabel={t("page.allFilter")}
             unreadLabel={t("page.unreadFilter")}
+            modeAria={t("page.modeAria")}
             unreadCount={unread}
+            filters={<InboxFiltersButton {...inboxFilterProps} />}
+            end={<InboxKeysHint />}
             onReadAll={tab === "inbox" && unread > 0 ? () => actions.readAll.mutate(undefined) : undefined}
             readAllLabel={t("bell.readAll")}
             readAllPending={actions.readAll.isPending}
-          >
-          <InboxFilters severities={severities} setSeverities={setSeverities} group={group} setGroup={setGroup} types={types} setTypes={setTypes} filtersOn={filtersOn} onReset={resetAll} />
-          </FeedToolbar>
+          />
+          <ActiveFilters items={inboxActiveFilters(inboxFilterProps)} onReset={resetAll} />
 
           {selected.size > 0 && (
             <div className="glass-panel sticky-top flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2">

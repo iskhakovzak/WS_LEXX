@@ -31,7 +31,7 @@ describe("trader's own row", () => {
   });
 
   it("no rank, no team wording; the period in words", () => {
-    const html = render(createElement(SelfRow, { row, metric: "pnl", periodFor: ratingsI18n.t("leaderboard.periodFor.p30"), titles: {} }));
+    const html = render(createElement(SelfRow, { row, metric: "pnl", periodFor: ratingsI18n.t("leaderboard.periodFor.month"), titles: {} }));
     expect(html).toContain("Ваша строка");
     expect(html).toContain("за 30 дней");
     expect(html).not.toContain("#1");
@@ -40,8 +40,8 @@ describe("trader's own row", () => {
 
   it("empty text: no raw period key in UZ / RU", async () => {
     await setLang("uz", { source: "init" });
-    expect(ratingsI18n.t("leaderboard.emptyPeriod", { period: ratingsI18n.t("leaderboard.periodFor.p30") })).toBe("Savdolar yoʻq — soʻnggi 30 kunda");
+    expect(ratingsI18n.t("leaderboard.emptyPeriod", { period: ratingsI18n.t("leaderboard.periodFor.month") })).toBe("Savdolar yoʻq — soʻnggi 30 kunda");
     await setLang("ru", { source: "init" });
-    expect(ratingsI18n.t("leaderboard.emptyPeriod", { period: ratingsI18n.t("leaderboard.periodFor.p30") })).toBe("Нет сделок за 30 дней");
+    expect(ratingsI18n.t("leaderboard.emptyPeriod", { period: ratingsI18n.t("leaderboard.periodFor.month") })).toBe("Нет сделок за 30 дней");
   });
 });
