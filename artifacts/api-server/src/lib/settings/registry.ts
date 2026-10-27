@@ -159,6 +159,10 @@ export const SETTINGS = {
 
   // Plateau detector (roadmap R6, lib/plateau.ts): active days at a stage before «not at the pace yet» is judged.
   "academy.plateau.minTenure": { group: "academy", type: "number", default: 120, min: 40, max: 500, step: 10, unit: "days" },
+  // «Цена джуна до безубытка» (lib/juniorCost): the desk's cost of one seat per month (software, data, desk; 0 = only the
+  // trading loss counts) and the window of own trading days the cumulative net must stay ≥ 0 to count as breakeven.
+  "academy.juniorCost.seatUsdMonth": { group: "academy", type: "number", default: 0, min: 0, max: 100000, step: 50, unit: "usd" },
+  "academy.juniorCost.stableDays": { group: "academy", type: "number", default: 20, min: 5, max: 60, step: 1, unit: "days" },
 
   // Telegram push budget per person and New York day (roadmap R3; lib/notificationCore pushVerdict, lib/pushBudget):
   // all non-risk pushes, of them coaching nudges; a contract alert waits while a risk alert is this fresh. Risk alerts

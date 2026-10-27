@@ -7,9 +7,12 @@ import { fmtNum, fmtRate, fmtUsd } from "@/lib/format";
 import { sliceLabel } from "@/components/shared/edge-map/model";
 import { commonI18n } from "@/i18n/ns/common";
 import { officeRecsI18n } from "@/i18n/ns/officeRecs";
+import { juniorCostI18n } from "@/i18n/ns/juniorCost";
 import type { OfficeRec, RecAction } from "./recs-api";
 import { isRegimeKey } from "@/lib/market-regime";
 import { regimeName } from "@/components/shared/regime/labels";
+import { factorLabel } from "@/components/shared/junior-cost/model";
+import type { FactorKey } from "@/components/shared/junior-cost/api";
 
 /** Keys built at runtime (`attention.${sub}`, `confidence.l${n}` …): tryT with the key itself as the last resort. */
 const t = (k: string, p?: Record<string, string | number>): string => officeRecsI18n.tryT(k, p) ?? k;
@@ -20,6 +23,7 @@ const share = (v: number | string | null | undefined) => fmtRate(typeof v === "n
 const num = (v: number | string | null | undefined) => (typeof v === "number" ? v : Number(v ?? 0));
 const bps = (v: number) => fmtNum(v, { decimals: Math.abs(v) >= 10 ? 0 : 1, signed: true });
 const trades = (n: number) => commonI18n.t("units.trades", { count: n });
+const juniors = (n: number) => juniorCostI18n.t("juniorsCount", { count: n });
 
 /** «$5–10», «< $5». */
 export function bandLabel(band: string): string {
@@ -51,6 +55,7 @@ export function recTitle(r: OfficeRec): string {
     }
     case "readiness": return t(p.sub === "ready" ? "readiness.ready" : "readiness.close", { count: r.affected.count });
     case "regime": return t("regime.title", { regime: isRegimeKey(p.regime) ? regimeName(p.regime) : String(p.regime) });
+    case "juniorCost": return t("juniorCost.title", { practice: lower(factorLabel({ factor: String(p.factor) as FactorKey, threshold: num(p.threshold) })) });
   }
 }
 
@@ -115,6 +120,16 @@ export function recWhy(r: OfficeRec, blocker: BlockerLabel = (m) => m): string[]
     case "regime": {
       const days = commonI18n.t("units.tradingDays", { count: num(p.days) });
       return [m ? t("regime.whyUsd", { mean: usd(m.mean), lo: usd(m.lo), hi: usd(m.hi), days }) : t("regime.whyPlain", { days }), t("regime.action")];
+    }
+    case "juniorCost": {
+      // $ only for partners (the server drops `…Usd` params for everyone else); the share of the other group's median otherwise.
+      const groups = { yes: juniors(num(p.yes)), no: num(p.no) };
+      const lines = [p.costDiffUsd != null
+        ? t("juniorCost.whyUsd", { ...groups, usd: usdAbs(num(p.costDiffUsd)), lo: usd(num(p.costLoUsd)), hi: usd(num(p.costHiUsd)) })
+        : t("juniorCost.whyShare", { ...groups, share: share(Math.abs(rel?.mean ?? 0)), lo: share(rel?.lo), hi: share(rel?.hi) })];
+      if (num(p.days) > 0) lines.push(t("juniorCost.days", { days: commonI18n.t("units.tradingDays", { count: num(p.days) }) }));
+      lines.push(t("juniorCost.caveat"));
+      return lines;
     }
   }
 }

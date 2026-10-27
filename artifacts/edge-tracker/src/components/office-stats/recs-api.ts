@@ -8,9 +8,9 @@ import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { addDaysYmd } from "./pulse";
 
-export type RecKind = "leak" | "rule" | "fees" | "crowding" | "practice" | "attention" | "readiness" | "regime";
+export type RecKind = "leak" | "rule" | "fees" | "crowding" | "practice" | "attention" | "readiness" | "regime" | "juniorCost";
 export type Interval = { mean: number; lo: number; hi: number };
-export type RecAction = { kind: "whatif" | "rules" | "curator" | "academy" | "risk" | "benchmark" | "myReview" | "trades"; href: string };
+export type RecAction = { kind: "whatif" | "rules" | "curator" | "academy" | "risk" | "benchmark" | "myReview" | "trades" | "office"; href: string };
 
 export type OfficeRec = {
   id: string;

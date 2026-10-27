@@ -20,6 +20,7 @@ import { HeroLink, ProfileHero } from "./profile-hero";
 import { ShareCardButton } from "./share-card-dialog";
 import { YearHeat } from "./year-heat";
 import { RegimeEdgePanel } from "@/components/shared/regime/regime-edge";
+import { JuniorCostPanel } from "@/components/shared/junior-cost/junior-cost-panel";
 
 export function ProfileSkeleton() {
   const { t } = profileI18n.useT();
@@ -87,6 +88,8 @@ function ProfileBody({ p }: { p: ProfileResponse }) {
           <AttributeCard attrs={p.attributes} windowDays={p.window.days} />
           {/* «Характеристика» → how the person trades each desk regime (hidden when the viewer may not see that book). */}
           <RegimeEdgePanel trader={p.person.self ? null : p.person.name} self={p.person.self} hideEmpty />
+          {/* …and what the path to breakeven cost (own numbers; staff see their wards'; 403 hides it). */}
+          <JuniorCostPanel trader={p.person.self ? null : p.person.name} hideEmpty />
           <KeyStats stats={p.stats} />
           <BentoGrid>
             <EquityPanel equity={p.equity} className="lg:col-span-8" />

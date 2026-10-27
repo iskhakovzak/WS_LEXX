@@ -15,7 +15,7 @@ export default {
     achievements: { title: "Yutuqlar", description: "Bosqich chegaralari: 1 — bronza, 2 — kumush, 3 — oltin, 4 — platina." },
     telegram: { title: "Telegram", description: "Bot ish kunlari yuboradi. Vaqt — Nyu-York vaqti, yonida — Toshkent vaqti." },
     curator: { title: "Kurator navbati", description: "Pul boʻyicha muammolar navbatida nima qoladi." },
-    academy: { title: "Akademiya: surʼat", description: "Treyder bosqich surʼatiga hali chiqmagan deb qachon hisoblanadi (faqat kuratorlar koʻradi)." },
+    academy: { title: "Akademiya: surʼat va junior narxi", description: "Treyder bosqich surʼatiga hali chiqmagan deb qachon hisoblanadi va juniorning zararsizlikkacha yoʻli narxi qanday hisoblanadi (faqat kuratorlar va hamkorlar koʻradi)." },
     privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi va desk tashqarisida nimani koʻrsata oladi." },
     trainer: { title: "Trenajyor", description: "Simulyatorda ijro (spred, sirpanish, 1R), «Kun vazifasi» va «Kirishni top»." },
     gamification: { title: "Geymifikatsiya", description: "Mavsumlar, kuratorlar ligasi, eʼtirof, setap mahorati va seriyani muzlatish." },
@@ -288,6 +288,10 @@ export default {
       capacity: { label: "Kurator roʻyxatidagi qadamlar", help: "Nechta «Keyingi qadam» koʻrsatiladi (shoshilinchlari — buzilishlar va stop — doim tepada). Qolgani kechki xulosaga tushadi." },
     },
     academy: {
+      juniorCost: {
+        seatUsdMonth: { label: "Oyiga bitta oʻrin narxi", help: "Dastur, maʼlumotlar, stol — desk bitta oʻringa qancha sarflaydi. Juniorning zararsizlikkacha yoʻli narxiga qoʻshiladi (Ofis → «Junior narxi»). 0 — faqat savdo zarari hisoblanadi." },
+        stableDays: { label: "Zararsizlik oynasi", help: "Zararsizlik oʻtilgan deb hisoblanishi uchun komissiyalardan keyingi jamgʻarilgan natija ketma-ket nechta oʻz savdo kunida ≥ 0 boʻlib turishi kerak." },
+      },
       plateau: { minTenure: { label: "Surʼat baholanguncha bosqichdagi kunlar", help: "Kurator «surʼat kerakligidan past»ni koʻrishidan oldin bosqichda nechta savdo kuni kerak. Treyderga koʻrsatilmaydi." } },
     },
     nav: {

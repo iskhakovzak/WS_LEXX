@@ -71,6 +71,7 @@ import edgeRouter from "./edge";
 import myEdgeRouter from "./my-edge";
 import marketRegimeRouter from "./market-regime";
 import profileRouter from "./profile";
+import juniorCostRouter from "./junior-cost";
 import statsAggregateRouter from "./stats-aggregate";
 import permissionsRouter from "./permissions";
 import whatifRouter from "./whatif";
@@ -185,6 +186,7 @@ router.use(edgeRouter);
 router.use(myEdgeRouter); // «Мой edge и рынок» (analytics)
 router.use(marketRegimeRouter); // desk market regime: day, limit multiplier, playbook tags, edge by regime, reflection
 router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)
+router.use(juniorCostRouter); // «Цена джуна до безубытка»: own / ward path, staff desk view (cohorts, «что окупается»)
 router.use(statsAggregateRouter); // GET /stats/aggregate — staff /stats and /analytics without raw trades
 router.use(permissionsRouter);
 router.use(whatifRouter);

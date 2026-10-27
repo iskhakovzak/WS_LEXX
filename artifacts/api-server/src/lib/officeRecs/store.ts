@@ -14,6 +14,7 @@ import type { EdgeTrade } from "../edgeMap";
 import { regimeDaysMap } from "../marketRegime/store";
 import { buildDeskRecs, type BuildResult } from "./build";
 import { activeSince, type AttentionInput, type ReadinessRow } from "./people";
+import { deskJuniorCost } from "../juniorCost/store";
 
 const FRESH_MS = 30 * 60_000;
 const STALE_MAX_MS = 6 * 60 * 60_000;
@@ -98,13 +99,14 @@ async function build(asOf: string): Promise<BuildResult> {
   const t0 = Date.now();
   const sim = await loadSimTrades(null, addDays(asOf, -LOAD_CALENDAR_DAYS), asOf);
   const edge = sim.map(toEdgeTrade).filter((t): t is EdgeTrade => t != null);
-  const [edgeLeaks, attention, regimes] = await Promise.all([
+  const [edgeLeaks, attention, regimes, juniorCost] = await Promise.all([
     loadEdgeLeaks(), loadAttention(asOf).catch(() => null),
     regimeDaysMap(addDays(asOf, -LOAD_CALENDAR_DAYS), asOf).catch(() => new Map<string, string>()),
+    deskJuniorCost().then((d) => d.attribution).catch(() => null),
   ]);
   const readiness = attention ? await loadReadiness(attention.active, asOf).catch(() => null) : null;
   const res = buildDeskRecs({
-    asOf, sim, edge, edgeLeaks, attention, readiness, regimes,
+    asOf, sim, edge, edgeLeaks, attention, readiness, regimes, juniorCost,
     fee: { minTrades: setting("coach.feeBandMinTrades"), ratioMin: setting("coach.feeBandRatioMin") },
   });
   logger.info({ ms: Date.now() - t0, trades: sim.length, recs: res.recs.length }, "office-recs: built");

@@ -9,11 +9,13 @@ import { deskCrowding, deskFees } from "./fees";
 import { deskLeaks, topPractices } from "./leaks";
 import { curatorAttention, readinessPipeline, type AttentionInput, type ReadinessRow } from "./people";
 import { deskRegimeLeaks } from "./regime";
+import { juniorCostRecs } from "./juniorCost";
+import type { FactorResult } from "../juniorCost/attribution";
 import { deskRules } from "./rules";
 import { windowDays } from "./slices";
 import { REC_WINDOW_DAYS, type OfficeRec, type RecKind } from "./types";
 
-export const KIND_ORDER: readonly RecKind[] = ["rule", "leak", "regime", "attention", "readiness", "fees", "crowding", "practice"];
+export const KIND_ORDER: readonly RecKind[] = ["rule", "leak", "regime", "attention", "readiness", "juniorCost", "fees", "crowding", "practice"];
 
 export type BuildInput = {
   asOf: string;
@@ -24,6 +26,8 @@ export type BuildInput = {
   readiness?: readonly ReadinessRow[] | null;
   /** NY day → desk regime key (desk_regime_days) for «в боковике деск теряет». */
   regimes?: ReadonlyMap<string, string>;
+  /** «Что окупается» of «Цена джуна до безубытка» (lib/juniorCost) — at most one staff card. */
+  juniorCost?: readonly FactorResult[] | null;
   /** Bootstrap draws (tests use fewer). */
   B?: number;
   fee?: FeeModelOpts;
@@ -60,6 +64,7 @@ export function buildDeskRecs(x: BuildInput): BuildResult {
     ...deskCrowding(sim, { from, to, days: days.length, B: x.B }),
     ...(x.attention ? curatorAttention(x.attention, { from, to }) : []),
     ...(x.readiness ? readinessPipeline(x.readiness, { from, to }) : []),
+    ...(x.juniorCost ? juniorCostRecs(x.juniorCost, { from, to }) : []),
   ];
   return { asOf: x.asOf, window: { from, to, days: days.length }, recs: orderRecs(recs) };
 }
