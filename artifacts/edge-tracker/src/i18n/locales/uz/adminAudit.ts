@@ -46,6 +46,7 @@ export default {
     jobs: "Vazifalar",
     playbook: "Pleybuk",
     login: "Kirish",
+    regime: "Bozor rejimi",
   },
 
   text: {
@@ -124,6 +125,7 @@ export default {
     rulesUpdate: "masshtablash qoidalarini oʻzgartirdi",
     permissionsUpdate: "huquqlar matritsasini oʻzgartirdi",
     deskSettingUpdate: "«{setting}» desk sozlamasini oʻzgartirdi",
+    regimeSet: "{day} uchun bozor rejimini belgiladi",
     deskSettingReset: "«{setting}» desk sozlamasini standart qiymatga qaytardi",
 
     seedDemo: "akademiya uchun demo sinovlarni yaratdi",

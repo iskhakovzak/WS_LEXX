@@ -54,6 +54,7 @@ export default {
     practice: "Practice",
     attention: "Curator attention",
     readiness: "Promotion pipeline",
+    regime: "Market regime",
   },
   leak: {
     title: "The desk loses: {slice}",
@@ -80,6 +81,12 @@ export default {
     why: "Fees are {share} of the band's gross (80%: {lo} … {hi}); it carries {deskShare} of all desk fees.",
     whyAll: "The band's gross does not cover its fees at all; it carries {deskShare} of all desk fees.",
     usd: "After fees — on average {mean} per trade (80%: {lo} … {hi}).",
+  },
+  regime: {
+    title: "The desk loses in «{regime}»",
+    whyUsd: "On average {mean} a day over {days} of this regime (80%: {lo} … {hi}).",
+    whyPlain: "The desk is down on the days of this regime ({days}), with the whole interval below zero.",
+    action: "Lower this regime’s limit multiplier: Admin → Settings → «Market regime and limits».",
   },
   crowding: {
     title: "Crowded tickers lose",

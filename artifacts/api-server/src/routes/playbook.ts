@@ -107,6 +107,7 @@ const PLAYBOOK_SELECT_FIELDS = `
   screenshot_url    AS "screenshotUrl",
   screenshot_notes  AS "screenshotNotes",
   tags,
+  regimes,
   source_type       AS "sourceType",
   source_id         AS "sourceId",
   trader,

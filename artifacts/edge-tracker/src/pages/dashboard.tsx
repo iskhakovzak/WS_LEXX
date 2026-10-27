@@ -2,7 +2,8 @@
 // скомпонуй»), and customisable right on the page (the same day: remove, add back, move, resize — components/dashboard
 // board). Top to bottom:
 //   «Сегодня»      — the hero strip (fixed): greeting + date, «Мои / Команда», four equal cells. Nothing else.
-//   «План на день» — the plan card (next step, a slot for one recommended action, the day frame, progress) beside
+//   «План на день» — the desk's market regime across (name, playbook hint, limit multiplier; staff confirm the
+//                    system's suggestion), then the plan card (next step, a slot for one recommended action, the day frame, progress) beside
 //                    «Кривая капитала» (an empty week shows 30 days instead, with a note); the morning check-in under
 //                    them before the open.
 //   «Ваш edge»     — the insight tiles, own trades («Мои») only; each tile has a compact / medium / large layout.
@@ -30,6 +31,8 @@ import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { DashBoard, type BoardSectionDef, type BoardTileDef } from "@/components/dashboard/board";
 import { TilePlaceholder } from "@/components/dashboard/board-section";
+import { DashCard } from "@/components/dashboard/dash-card";
+import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { useDashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { addItem, TILE_SPECS, type BoardSection, type TileVariant } from "@/components/dashboard/layout-model";
 import { DayLine, DayProgress } from "@/components/daily/day-line";
@@ -266,6 +269,12 @@ export default function Dashboard() {
   const tile = (id: SectionId): BoardTileDef => {
     if (isEdge(id)) return { ready: true, render: (v) => insight(id, v) };
     switch (id) {
+      // The desk regime of the day (shared with the plan / risk headers); staff confirm the system's suggestion here.
+      case "regime":
+        return {
+          ready: m.authed,
+          render: (v) => <DashCard fill title={t("sections.regime.label")}><RegimeDayView variant={v === "l" ? "row" : "tile"} /></DashCard>,
+        };
       case "attention": return { ready: true, render: () => plan };
       case "equity": return { ready: true, render: equity };
       case "positions": return { ready: !!today?.positions?.length, render: () => (today ? lazyExtra(<PositionsPanel data={today} />) : null) };

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { INDICATOR_BY_ID, MIN_DAYS, type Analogue, type AlertRule, type BucketStats, type IndicatorId, type Reading } from "./engine";
+import { INDICATOR_BY_ID, MIN_DAYS, type Analogue, type AlertRule, type BucketStats, type IndicatorId, type Reading } from "@/components/shared/market/engine";
 import { NetBar, type DimResult } from "./EdgeByRegime";
 import { dayLabel, toneOfMoney, usd } from "./format";
 import { fmtRate } from "@/lib/format";

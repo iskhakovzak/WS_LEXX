@@ -26,6 +26,7 @@ export default {
     newsChannel: { title: "WS_NEWS channel", description: "Market briefs in the WS_NEWS Telegram channel on trading days: premarket, from the open, day recap. Without NEWS_CHANNEL_BOT_TOKEN and NEWS_CHANNEL_CHAT_ID on the server all of it is off." },
     assistant: { title: "WS Assistant", description: "AI helper for the site (the ✦ button in the header, Ctrl+J). The key is the server variable AI_INTEGRATIONS_ANTHROPIC_API_KEY; without it the assistant shows how to enable it. Who may use it: «Roles and rights», the «WS Assistant» right." },
     aiBatch: { title: "Overnight AI reviews", description: "At night, in one batch, at half price (Message Batches API): when the day closes — everyone who traded closed the EOD, at the latest the set time — everyone gets an AI review of the day, and a “Day review ready” notice in the morning. Traders' personal assistant budgets are not spent — only the desk's nightly cap." },
+    regime: { title: "Market regime and limits", description: "The daily loss limit multiplier of each desk market regime. By default it is a suggestion: the risk screen and the trader’s day show «base × multiplier». «Apply automatically» makes the stops use it; stored limits never change, so switching it off restores the base at once." },
     access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
     other: { title: "Other", description: "Settings without a group." },
   },
@@ -128,6 +129,17 @@ export default {
     unknown: "No such trader — remove or fix the name",
   },
   settings: {
+    regime: {
+      mult: {
+        theme_bull: { label: "Theme bull", help: "Daily limit multiplier in the «Theme bull» regime." },
+        macro: { label: "Macro market", help: "Daily limit multiplier in the «Macro market» regime." },
+        range: { label: "Range", help: "Daily limit multiplier in a range: trade less and with less risk." },
+        panic: { label: "Panic", help: "Daily limit multiplier in the «Panic» regime." },
+        idiosyncratic: { label: "Single names / sector", help: "Daily limit multiplier when one stock or one sector is moving." },
+        euphoria: { label: "Euphoria", help: "Daily limit multiplier in the «Euphoria» regime." },
+      },
+      applyLimits: { label: "Apply automatically", help: "Off — the multiplier only suggests the day’s limit. On — the risk stops count «base limit × the day’s regime multiplier». Every switch is in the settings log." },
+    },
     assistant: {
       enabled: { label: "Assistant on", help: "Off — the button stays, but the assistant answers that it is switched off." },
       defaultModel: { label: "Default model", help: "Answers ordinary questions and calls the tools. Haiku costs a small fraction of the others.", options: { "claude-haiku-5-5": "Haiku 5.5 · fast", "claude-sonnet-5-5": "Sonnet 5.5 · smarter", "claude-opus-5-5": "Opus 5.5 · strongest" } },

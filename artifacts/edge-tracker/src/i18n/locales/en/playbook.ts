@@ -104,6 +104,7 @@ export default {
     },
     filter: {
       all: { label: "All setups", short: "All setups" },
+      regime: { label: "Fits today", short: "Fits regime" },
       today: { label: "Used today", short: "Today" },
       edge: { label: "With positive edge", short: "With edge" },
       untested: { label: "No trades", short: "No trades" },

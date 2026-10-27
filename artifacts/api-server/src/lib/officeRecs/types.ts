@@ -11,7 +11,7 @@
  *   trader           — anonymised desk aggregates only; staff-only kinds (curator load, readiness) are dropped.
  */
 
-export const REC_KINDS = ["leak", "rule", "fees", "crowding", "practice", "attention", "readiness"] as const;
+export const REC_KINDS = ["leak", "rule", "fees", "crowding", "practice", "attention", "readiness", "regime"] as const;
 export type RecKind = (typeof REC_KINDS)[number];
 
 /** desk = any member may see the (anonymised) aggregate; staff = curators and partners only. */

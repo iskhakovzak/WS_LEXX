@@ -26,6 +26,7 @@ export default {
     newsChannel: { title: "WS_NEWS kanali", description: "Savdo kunlari WS_NEWS Telegram kanaliga bozor sharhlari: premarket, ochilishdan beri, kun yakuni. Serverda NEWS_CHANNEL_BOT_TOKEN va NEWS_CHANNEL_CHAT_ID boʻlmasa, hammasi oʻchiq." },
     assistant: { title: "WS Yordamchi", description: "Sayt boʻyicha AI yordamchi (sarlavhadagi ✦ tugmasi, Ctrl+J). Kalit — serverdagi AI_INTEGRATIONS_ANTHROPIC_API_KEY oʻzgaruvchisi; usiz yordamchi uni qanday yoqishni koʻrsatadi. Kim foydalana oladi: «Rollar va huquqlar», «WS Yordamchi» huquqi." },
     aiBatch: { title: "Tungi AI-tahlillar", description: "Kechasi, bitta paketda va yarim narxda (Message Batches API): kun yopilganda — savdo qilganlarning hammasi EOD ni yopgan, lekin belgilangan vaqtdan kechikmay — har kim kunning AI-tahlilini oladi, ertalab «Kun tahlili tayyor» bildirishnomasi keladi. Treyderlarning shaxsiy yordamchi limiti sarflanmaydi — faqat deskning tungi limiti." },
+    regime: { title: "Bozor rejimi va limitlar", description: "Deskning har bir bozor rejimida kunlik zarar limiti koeffitsiyenti. Standart holatda bu maslahat: risk ekrani va treyder kunida «asos × koeffitsiyent» koʻrinadi. «Avtomatik qoʻllash» stoplarni shu boʻyicha hisoblaydi; saqlangan limitlar oʻzgarmaydi, oʻchirish asosiylarini darhol qaytaradi." },
     access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
@@ -128,6 +129,17 @@ export default {
     unknown: "Bunday treyder yoʻq — olib tashlang yoki ismni tuzating",
   },
   settings: {
+    regime: {
+      mult: {
+        theme_bull: { label: "Tematik buqa", help: "«Tematik buqa» rejimida kunlik limit koeffitsiyenti." },
+        macro: { label: "Makro bozor", help: "«Makro bozor» rejimida kunlik limit koeffitsiyenti." },
+        range: { label: "Yonbosh bozor", help: "Yonbosh bozorda kunlik limit koeffitsiyenti: kamroq va kamroq risk bilan savdo." },
+        panic: { label: "Vahima", help: "«Vahima» rejimida kunlik limit koeffitsiyenti." },
+        idiosyncratic: { label: "Alohida qogʻozlar / sektor", help: "Bitta qogʻoz yoki bitta sektor harakatlanganda kunlik limit koeffitsiyenti." },
+        euphoria: { label: "Eyforiya", help: "«Eyforiya» rejimida kunlik limit koeffitsiyenti." },
+      },
+      applyLimits: { label: "Avtomatik qoʻllash", help: "Oʻchiq — koeffitsiyent faqat kunlik limitni taklif qiladi. Yoqilgan — risk stoplari «asosiy limit × kun rejimi koeffitsiyenti» ni hisoblaydi. Har bir almashtirish sozlamalar jurnalida." },
+    },
     assistant: {
       enabled: { label: "Yordamchi yoqilgan", help: "Oʻchirilgan — tugma qoladi, lekin yordamchi oʻchirilganini aytadi." },
       defaultModel: { label: "Standart model", help: "Oddiy savollarga javob beradi va asboblarni chaqiradi. Haiku boshqalardan bir necha barobar arzon.", options: { "claude-haiku-5-5": "Haiku 5.5 · tez", "claude-sonnet-5-5": "Sonnet 5.5 · aqlliroq", "claude-opus-5-5": "Opus 5.5 · kuchliroq" } },

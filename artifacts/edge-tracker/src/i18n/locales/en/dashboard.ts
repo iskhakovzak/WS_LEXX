@@ -3,6 +3,7 @@ import type ru from "../ru/dashboard";
 
 export default {
   sections: {
+    regime: { label: "Market regime", hint: "The desk's regime today: what to trade, how much risk, the day's limit" },
     attention: { label: "Plan for the day", hint: "Next step, focus and contract, the day's tasks, progress" },
     equity: { label: "Equity curve", hint: "From a week to all time, net or R" },
     recent: { label: "Recent trades", hint: "Short feed → trade card" },

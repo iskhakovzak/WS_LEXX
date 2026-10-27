@@ -8,11 +8,12 @@ import type { SimTrade } from "../whatIfTypes";
 import { deskCrowding, deskFees } from "./fees";
 import { deskLeaks, topPractices } from "./leaks";
 import { curatorAttention, readinessPipeline, type AttentionInput, type ReadinessRow } from "./people";
+import { deskRegimeLeaks } from "./regime";
 import { deskRules } from "./rules";
 import { windowDays } from "./slices";
 import { REC_WINDOW_DAYS, type OfficeRec, type RecKind } from "./types";
 
-export const KIND_ORDER: readonly RecKind[] = ["rule", "leak", "attention", "readiness", "fees", "crowding", "practice"];
+export const KIND_ORDER: readonly RecKind[] = ["rule", "leak", "regime", "attention", "readiness", "fees", "crowding", "practice"];
 
 export type BuildInput = {
   asOf: string;
@@ -21,6 +22,8 @@ export type BuildInput = {
   edgeLeaks?: ReadonlyMap<string, readonly string[]>;
   attention?: AttentionInput | null;
   readiness?: readonly ReadinessRow[] | null;
+  /** NY day → desk regime key (desk_regime_days) for «в боковике деск теряет». */
+  regimes?: ReadonlyMap<string, string>;
   /** Bootstrap draws (tests use fewer). */
   B?: number;
   fee?: FeeModelOpts;
@@ -51,6 +54,7 @@ export function buildDeskRecs(x: BuildInput): BuildResult {
   const recs: OfficeRec[] = [
     ...deskLeaks(edge, ctx, x.edgeLeaks),
     ...topPractices(edge, ctx),
+    ...(x.regimes?.size ? deskRegimeLeaks(edge, x.regimes, { from, to, B: x.B }) : []),
     ...deskRules(sim, { from, to, iters: x.B ? Math.min(400, x.B) : 400 }),
     ...deskFees(sim, { from, to, days: days.length, B: x.B, fee: x.fee }),
     ...deskCrowding(sim, { from, to, days: days.length, B: x.B }),

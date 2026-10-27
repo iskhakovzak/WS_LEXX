@@ -113,6 +113,7 @@ export default {
     },
     filter: {
       all: { label: "Все сетапы", short: "Все сетапы" },
+      regime: { label: "Подходит сегодня", short: "Под режим" },
       today: { label: "В работе сегодня", short: "Сегодня" },
       edge: { label: "С плюсовым edge", short: "С edge" },
       untested: { label: "Без сделок", short: "Без сделок" },

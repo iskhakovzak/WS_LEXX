@@ -46,6 +46,8 @@ const INSIGHT: readonly TileSize[] = ["s", "m", "l"];
 
 /** In the default order: the composed dashboard of 2026-10-25, packed without holes (see pack.test fixtures). */
 export const TILE_SPECS: Record<SectionId, TileSpec> = {
+  // The desk regime (2026-10-27) leads the plan as a strip across: how to read the day comes before the day's tasks.
+  regime: { section: "plan", sizes: ALL, size: "xl", on: true },
   attention: { section: "plan", sizes: ALL, size: "s", on: true },
   equity: { section: "plan", sizes: ALL, size: "m", on: true },
   leaks: { section: "edge", sizes: ALL, tall: ["m", "l"], size: "l", rows: 2, on: true, meOnly: true },
@@ -73,20 +75,36 @@ export const TILE_SPECS: Record<SectionId, TileSpec> = {
 export const TILE_ORDER = Object.keys(TILE_SPECS) as SectionId[];
 const KNOWN = new Set<string>(TILE_ORDER);
 
+/**
+ * Tiles that existed before a stored layout carried its `known` list (2026-10-27). A layout without the list knew
+ * exactly these, so a newer on-by-default tile is added to it once; a tile the person removed stays removed.
+ */
+export const LEGACY_TILES: readonly string[] = [
+  "attention", "equity", "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "weekdays", "positions", "recent",
+  "desk", "brief", "checkin", "sectors", "macro", "dna", "quote", "psychology",
+];
+
 export type LayoutItem = { id: SectionId; size: TileSize; rows?: 2 };
 export type DashLayout = { v: 1; items: LayoutItem[] };
+
+const TILE_ID = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/);
 
 /** The stored block (users.settings.dashboardLayout). Ids stay strings so an older client never rejects a newer tile. */
 export const StoredLayoutSchema = z.object({
   v: z.literal(1),
   items: z.array(z.object({
-    id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/),
+    id: TILE_ID,
     size: z.enum(["s", "m", "l", "xl"]),
     rows: z.literal(2).optional(),
   })).max(48),
+  /** Every tile id the saving client knew: an on-by-default tile missing from it is new to this layout. */
+  known: z.array(TILE_ID).max(64).optional(),
   updatedAt: z.string().max(40).optional(),
 });
 export type StoredLayout = z.infer<typeof StoredLayoutSchema>;
+
+/** A layout as it is stored (account and local copy): with the tiles this client knows. */
+export const toStored = (l: DashLayout): DashLayout & { known: string[] } => ({ ...l, known: [...TILE_ORDER] });
 
 export const isTall = (it: Pick<LayoutItem, "rows">) => it.rows === 2;
 export const canBeTall = (id: SectionId, size: TileSize) => !!TILE_SPECS[id].tall?.includes(size);
@@ -107,7 +125,10 @@ export function defaultLayout(): DashLayout {
   return { v: 1, items: TILE_ORDER.filter((id) => TILE_SPECS[id].on).map((id) => itemOf(id)) };
 }
 
-/** Anything stored → a valid layout: unknown ids dropped, sizes clamped to the tile's own, duplicates removed. */
+/**
+ * Anything stored → a valid layout: unknown ids dropped, sizes clamped to the tile's own, duplicates removed, and an
+ * on-by-default tile the saving client did not know yet (`known`, else LEGACY_TILES) added at its default place.
+ */
 export function sanitizeLayout(raw: unknown): DashLayout | null {
   const parsed = StoredLayoutSchema.safeParse(raw);
   if (!parsed.success) return null;
@@ -118,7 +139,15 @@ export function sanitizeLayout(raw: unknown): DashLayout | null {
     seen.add(it.id);
     items.push(itemOf(it.id as SectionId, it.size, it.rows));
   }
-  return { v: 1, items: bySection(items) };
+  let layout: DashLayout = { v: 1, items: bySection(items) };
+  const known = new Set(parsed.data.known ?? LEGACY_TILES);
+  for (const id of TILE_ORDER) {
+    if (!TILE_SPECS[id].on || known.has(id) || seen.has(id)) continue;
+    const before = TILE_ORDER.slice(0, TILE_ORDER.indexOf(id));
+    const index = sectionItems(layout, TILE_SPECS[id].section).filter((it) => before.includes(it.id)).length;
+    layout = addItem(layout, id, { index });
+  }
+  return layout;
 }
 
 /**

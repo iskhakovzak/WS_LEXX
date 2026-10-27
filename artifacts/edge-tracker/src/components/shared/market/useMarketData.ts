@@ -26,11 +26,13 @@ async function fetchBars(symbol: string, signal?: AbortSignal): Promise<Bar[]> {
 
 export const MARKET_KEY = "market-history";
 
-export function useMarketData() {
+/** `enabled: false` = nothing is fetched (the desk regime suggestion loads the frame only for staff who can confirm). */
+export function useMarketData(opts: { enabled?: boolean } = {}) {
   const results = useQueries({
     queries: SYMBOL_KEYS.map((k) => ({
       queryKey: [MARKET_KEY, SYMBOLS[k]],
       queryFn: ({ signal }: { signal?: AbortSignal }) => fetchBars(SYMBOLS[k], signal),
+      enabled: opts.enabled ?? true,
       staleTime: 10 * 60_000,
       gcTime: 60 * 60_000,
       retry: 1,

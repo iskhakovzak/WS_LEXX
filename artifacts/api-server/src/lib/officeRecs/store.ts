@@ -11,6 +11,7 @@ import { toEdgeTrade } from "../edgeMapStore";
 import { setting } from "../settings/registry";
 import { logger } from "../logger";
 import type { EdgeTrade } from "../edgeMap";
+import { regimeDaysMap } from "../marketRegime/store";
 import { buildDeskRecs, type BuildResult } from "./build";
 import { activeSince, type AttentionInput, type ReadinessRow } from "./people";
 
@@ -97,10 +98,13 @@ async function build(asOf: string): Promise<BuildResult> {
   const t0 = Date.now();
   const sim = await loadSimTrades(null, addDays(asOf, -LOAD_CALENDAR_DAYS), asOf);
   const edge = sim.map(toEdgeTrade).filter((t): t is EdgeTrade => t != null);
-  const [edgeLeaks, attention] = await Promise.all([loadEdgeLeaks(), loadAttention(asOf).catch(() => null)]);
+  const [edgeLeaks, attention, regimes] = await Promise.all([
+    loadEdgeLeaks(), loadAttention(asOf).catch(() => null),
+    regimeDaysMap(addDays(asOf, -LOAD_CALENDAR_DAYS), asOf).catch(() => new Map<string, string>()),
+  ]);
   const readiness = attention ? await loadReadiness(attention.active, asOf).catch(() => null) : null;
   const res = buildDeskRecs({
-    asOf, sim, edge, edgeLeaks, attention, readiness,
+    asOf, sim, edge, edgeLeaks, attention, readiness, regimes,
     fee: { minTrades: setting("coach.feeBandMinTrades"), ratioMin: setting("coach.feeBandRatioMin") },
   });
   logger.info({ ms: Date.now() - t0, trades: sim.length, recs: res.recs.length }, "office-recs: built");

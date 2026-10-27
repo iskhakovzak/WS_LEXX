@@ -405,6 +405,7 @@ export default {
       risk_read_own: { label: "Own risk profile", description: "Your limits, history, positions and alerts." },
       risk_read_team: { label: "Risk desk", description: "Limits, drawdowns and risk history of any trader." },
       risk_limits_edit: { label: "Change limits", description: "Change a trader’s limits." },
+      regime_set: { label: "Desk market regime", description: "Pick and change the day’s market regime (a person confirms the system’s suggestion)." },
       scaling_read_team: { label: "Team scaling plan", description: "Assessment and history of any trader." },
       scaling_configure: { label: "Configure the tier ladder", description: "Tiers and scaling rules." },
       scaling_approve: { label: "Decide on tiers", description: "Create/approve/reject proposals, assign a tier directly." },

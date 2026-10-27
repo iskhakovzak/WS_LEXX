@@ -48,6 +48,7 @@ import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { unlockText } from "./today/today-text";
 
 import { personName } from "@/i18n";
+import { RegimeTags } from "@/components/shared/regime/regime-tags";
 const st = playbookSetupI18n.t; // called at render / call time only
 /** «Copy from …»: a person (Latin name in EN/UZ) or the office space, which the API stores as the label «Офис». */
 const OFFICE_AUTHOR = "Офис"; // i18n-ignore (stored copied_from_author of the office space)
@@ -196,6 +197,7 @@ export function SetupView({
           {live && access.space === "office" && can("settings.manage") && access.canEdit && <MinTierSelect entry={entry} />}
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
+        <div className="mt-2"><RegimeTags id={entry.id} regimes={entry.regimes} canEdit={live && access.canEdit} /></div>
         {proposed && access.canPromote && entry.officeProposedNote && (
           <p className="mt-2 rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.08)] px-3 py-2 text-sm text-foreground">
             <span className="text-muted-foreground">{t("view.proposalComment")} </span>{entry.officeProposedNote}

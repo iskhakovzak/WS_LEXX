@@ -38,7 +38,7 @@ import { localDateString } from "@/lib/local-date";
 import { cn } from "@/lib/utils";
 import { generatePlaybookMarkdown, downloadMarkdown, generateNotionZip, downloadBlob, type ExportEntry } from "@/components/playbook/export";
 import {
-  invalidateExamples, invalidatePlaybook, notLiveMessage, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
+  invalidateExamples, invalidatePlaybook, notLiveMessage, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer, useRegimeToday,
   type InboxTrade,
 } from "@/components/playbook/api";
 import { http } from "@/lib/api/http";
@@ -82,7 +82,7 @@ const SORT_OPTIONS = SORT_KEYS.map((value) => ({
   get label() { return pt(`page.sort.${value}.label`); },
   get short() { return pt(`page.sort.${value}.short`); },
 }));
-const FILTER_KEYS: QuickFilter[] = ["all", "today", "edge", "untested", "noExamples", "unreviewed"];
+const FILTER_KEYS: QuickFilter[] = ["all", "regime", "today", "edge", "untested", "noExamples", "unreviewed"];
 const FILTERS = FILTER_KEYS.map((value) => ({
   value,
   get label() { return pt(`page.filter.${value}.label`); },
@@ -129,6 +129,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   const { data: entries = [], isLoading, isError, error, refetch, isFetching } = usePlaybookEntries();
   const summaryQ = usePlaybookSummary();
   const summary = summaryQ.map;
+  const todayRegime = useRegimeToday().data?.day?.regime ?? null; // «Подходит сегодня»
   const { data: folderSettings } = useFolderSettings();
   /** New API is running (spaces / examples / stats). Older API: client-side fallbacks and friendly «после обновления сервера» states. */
   const live = viewer.live || entries.some((e) => !!e.access);
@@ -251,25 +252,21 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   // The box updates at once; filtering the tree / grid follows at a lower priority (no lag while typing).
   const deferredQuery = useDeferredValue(query);
   const q = deferredQuery.trim().toLowerCase();
-  const passes = useCallback(
-    (e: PlaybookEntry) => {
-      if (!matchesQuickFilter(e, quick, summary)) return false;
-      if (tagFilter.length) {
-        const t = splitTags(e.tags);
-        if (!tagFilter.every((x) => t.includes(x))) return false;
-      }
-      if (q && !q.split(/\s+/).every((term) => searchHaystack(e).includes(term))) return false;
-      return true;
-    },
-    [quick, summary, tagFilter, q],
-  );
+  const passes = useCallback((e: PlaybookEntry) => {
+    if (!matchesQuickFilter(e, quick, summary, todayRegime)) return false;
+    if (tagFilter.length) {
+      const t = splitTags(e.tags);
+      if (!tagFilter.every((x) => t.includes(x))) return false;
+    }
+    return !q || q.split(/\s+/).every((term) => searchHaystack(e).includes(term));
+  }, [quick, summary, tagFilter, q, todayRegime]);
 
   const quickCounts = useMemo(() => {
     const c = {} as Record<QuickFilter, number>;
     for (const f of FILTERS) c[f.value] = 0;
-    for (const e of topLevel) for (const f of FILTERS) if (matchesQuickFilter(e, f.value, summary)) c[f.value]++;
+    for (const e of topLevel) for (const f of FILTERS) if (matchesQuickFilter(e, f.value, summary, todayRegime)) c[f.value]++;
     return c;
-  }, [topLevel, summary]);
+  }, [topLevel, summary, todayRegime]);
 
   const filtering = !!q || quick !== "all" || tagFilter.length > 0;
 

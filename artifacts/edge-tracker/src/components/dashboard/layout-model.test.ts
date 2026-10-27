@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addItem, defaultLayout, layoutFromV6, moveItem, moveOnto, removeItem, resizeItem, sanitizeLayout, sectionItems, stepSize,
-  TILE_SPECS, variantFor, type DashLayout,
+  TILE_ORDER, TILE_SPECS, variantFor, type DashLayout,
 } from "./layout-model";
 import { reconcile } from "./dashboard-layout";
 
@@ -13,7 +13,7 @@ describe("defaultLayout", () => {
   it("every tile is on by default (owner: «по стандарту у всех всё включено»), in section order", () => {
     const l = defaultLayout();
     expect(ids(l)).toEqual([
-      "attention", "equity",
+      "regime", "attention", "equity",
       "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "weekdays",
       "positions", "recent", "desk",
       "brief", "checkin", "sectors", "macro", "dna", "quote", "psychology",
@@ -38,7 +38,7 @@ describe("layoutFromV6 (one-time migration)", () => {
     };
     const l = layoutFromV6(v6);
     expect(l).not.toBeNull();
-    expect(ids(l as DashLayout)).toEqual(["attention", "equity", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "recent", "positions", "desk", "brief"]);
+    expect(ids(l as DashLayout)).toEqual(["attention", "equity", "regime", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "recent", "positions", "desk", "brief"]);
   });
 
   it("a v6 «Команда» default had the own tiles hidden: they come back (they hide on «Команда» by themselves)", () => {
@@ -67,12 +67,16 @@ describe("sanitizeLayout (what comes from the account)", () => {
         { id: "recent", size: "m", rows: 2 },
       ],
     });
+    // Saved before the `known` list: the newer on-by-default «Режим рынка» joins it once, at its default place.
     expect(l?.items).toEqual([
+      { id: "regime", size: "xl" },
       { id: "fees", size: "s" },
       { id: "leaks", size: "l", rows: 2 },
       { id: "positions", size: "xl" },
       { id: "recent", size: "m" },
     ]);
+    // Saved by a client that knew it: a removed tile stays removed.
+    expect(sanitizeLayout({ v: 1, items: [{ id: "fees", size: "s" }], known: [...TILE_ORDER] })?.items).toEqual([{ id: "fees", size: "s" }]);
   });
 
   it("junk → null", () => {
@@ -85,7 +89,7 @@ describe("edit operations", () => {
   it("move inside a section only; the others stay", () => {
     const l = moveItem(defaultLayout(), "fees", 0);
     expect(sectionItems(l, "edge").map((it) => it.id)).toEqual(["fees", "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "weekdays"]);
-    expect(ids(l).slice(0, 2)).toEqual(["attention", "equity"]);
+    expect(ids(l).slice(0, 3)).toEqual(["regime", "attention", "equity"]);
     expect(moveOnto(defaultLayout(), "fees", "recent")).toEqual(defaultLayout());
   });
 

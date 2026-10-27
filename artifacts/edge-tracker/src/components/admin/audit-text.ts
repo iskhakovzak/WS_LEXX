@@ -13,6 +13,8 @@ import { adminAuditI18n } from "@/i18n/ns/adminAudit";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
 import { auditValueText, settingLabel } from "./desk-settings-text";
 import type { SettingUnit } from "./desk-settings-model";
+import { isRegimeKey } from "@/lib/market-regime";
+import { regimeName } from "@/components/shared/regime/labels";
 import RU from "@/i18n/locales/ru/adminAudit";
 
 export interface AuditLike {
@@ -324,6 +326,11 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
         text: d.reset ? t("text.deskSettingReset", { setting }) : t("text.deskSettingUpdate", { setting }),
         detail: `${auditValueText(d.from, unit)} → ${auditValueText(d.to, unit)}`,
       };
+    }
+
+    case "regime.set": {
+      const name = (k: unknown) => (isRegimeKey(k) ? regimeName(k) : t("none"));
+      return { label: L("regime"), tone: "accent", text: t("text.regimeSet", { day: s(e.targetId) }), detail: `${name(d.from)} → ${name(d.to)}` };
     }
 
     case "academy.path.seed_demo": {

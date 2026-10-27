@@ -17,6 +17,7 @@ import { BestWorstPanel, HorizonPanel, MistakesPanel, OpenBookPanel, SetupPanel 
 import { useWeekInsights } from "./use-week-insights";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { BreakevenLine, FeeCoachingCard } from "@/components/shared/coach/fee-coaching";
+import { RegimeReflectionPanel } from "./regime-reflection";
 
 /** Win rate vs breakeven under the KPI strip (rolling window, not just the week). */
 function Breakeven({ doc }: { doc: WeeklyReview }) {
@@ -66,6 +67,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
           <GoalPanel doc={doc} />
           <PrevGoalsPanel doc={doc} />
         </div>
+        <RegimeReflectionPanel trader={doc.trader} week={doc.week.key} />
       </div>
     );
   }
@@ -92,6 +94,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
           <PrevGoalsPanel doc={doc} />
         </div>
         <SelfReviewPanel doc={doc} hideFocus />
+        <RegimeReflectionPanel trader={doc.trader} week={doc.week.key} />
       </section>
     </div>
   );
@@ -139,6 +142,7 @@ export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: s
           <CuratorReviewPanel doc={doc} next={next} />
         </div>
         <PrevGoalsPanel doc={doc} />
+        <RegimeReflectionPanel trader={doc.trader} week={doc.week.key} readOnly />
       </section>
     </div>
   );

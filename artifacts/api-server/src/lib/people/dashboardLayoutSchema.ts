@@ -17,6 +17,8 @@ export const DashboardLayoutSchema = z.object({
     rows: z.literal(2).optional(),
   })).max(MAX_LAYOUT_TILES)
     .refine((items) => new Set(items.map((i) => i.id)).size === items.length, { message: "duplicate tile id" }),
+  /** Every tile id the saving client knew (a newer on-by-default tile missing from it is added once by the client). */
+  known: z.array(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/)).max(64).optional(),
   updatedAt: z.string().max(40).optional(),
 });
 

@@ -49,9 +49,9 @@ describe("the default dashboard (all tiles)", () => {
     ]);
   });
 
-  it("«План на день» S + «Кривая капитала» M share the row 5 / 7", () => {
+  it("«Режим рынка» across, then «План на день» S + «Кривая капитала» M share the row 5 / 7", () => {
     const plan = sectionItems(defaultLayout(), "plan").map((it) => T(it.id, it.size, it.rows));
-    expect(pic(plan)).toEqual(["AAAAABBBBBBB"]);
+    expect(pic(plan)).toEqual(["AAAAAAAAAAAA", "BBBBBCCCCCCC"]);
   });
 
   it("«Сделки»: positions full width, recent M + desk M share the row", () => {

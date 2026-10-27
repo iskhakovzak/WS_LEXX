@@ -54,6 +54,7 @@ export default {
     practice: "Amaliyot",
     attention: "Kuratorlar e'tibori",
     readiness: "Bosqichlar bo'yicha o'tish",
+    regime: "Bozor rejimi",
   },
   leak: {
     title: "Desk yo'qotmoqda: {slice}",
@@ -80,6 +81,12 @@ export default {
     why: "Komissiyalar diapazon yalpi natijasining {share} qismi (80%: {lo} … {hi}); deskning barcha komissiyalaridan {deskShare} shu yerga to'g'ri keladi.",
     whyAll: "Diapazonning yalpi natijasi komissiyalarni umuman qoplamaydi; deskning barcha komissiyalaridan {deskShare} shu yerga to'g'ri keladi.",
     usd: "Komissiyadan keyin — har savdoga o'rtacha {mean} (80%: {lo} … {hi}).",
+  },
+  regime: {
+    title: "«{regime}» rejimida desk yoʻqotmoqda",
+    whyUsd: "Bu rejimning {days} davomida kuniga oʻrtacha {mean} (80%: {lo} … {hi}).",
+    whyPlain: "Bu rejim kunlarida desk minusda ({days}), butun interval noldan past.",
+    action: "Bu rejimning limit koeffitsiyentini pasaytiring: Admin → Sozlamalar → «Bozor rejimi va limitlar».",
   },
   crowding: {
     title: "Bitta qog'ozdagi olomon yo'qotmoqda",

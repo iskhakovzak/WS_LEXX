@@ -8,6 +8,8 @@ import { sliceLabel } from "@/components/shared/edge-map/model";
 import { commonI18n } from "@/i18n/ns/common";
 import { officeRecsI18n } from "@/i18n/ns/officeRecs";
 import type { OfficeRec, RecAction } from "./recs-api";
+import { isRegimeKey } from "@/lib/market-regime";
+import { regimeName } from "@/components/shared/regime/labels";
 
 /** Keys built at runtime (`attention.${sub}`, `confidence.l${n}` …): tryT with the key itself as the last resort. */
 const t = (k: string, p?: Record<string, string | number>): string => officeRecsI18n.tryT(k, p) ?? k;
@@ -48,6 +50,7 @@ export function recTitle(r: OfficeRec): string {
       return t(`attention.${sub}`, { count: r.affected.count, days: num(p.days) });
     }
     case "readiness": return t(p.sub === "ready" ? "readiness.ready" : "readiness.close", { count: r.affected.count });
+    case "regime": return t("regime.title", { regime: isRegimeKey(p.regime) ? regimeName(p.regime) : String(p.regime) });
   }
 }
 
@@ -108,6 +111,10 @@ export function recWhy(r: OfficeRec, blocker: BlockerLabel = (m) => m): string[]
     case "readiness": {
       if (p.sub === "ready") return [t("readiness.readyWhy", { tracked: num(p.tracked) })];
       return [p.blocker ? t("readiness.closeWhy", { tracked: num(p.tracked), blocker: blocker(String(p.blocker)), n: num(p.blockerCount) }) : t("readiness.closeWhyNoBlocker", { tracked: num(p.tracked) })];
+    }
+    case "regime": {
+      const days = commonI18n.t("units.tradingDays", { count: num(p.days) });
+      return [m ? t("regime.whyUsd", { mean: usd(m.mean), lo: usd(m.lo), hi: usd(m.hi), days }) : t("regime.whyPlain", { days }), t("regime.action")];
     }
   }
 }

@@ -104,6 +104,7 @@ export default {
     },
     filter: {
       all: { label: "Barcha setaplar", short: "Hammasi" },
+      regime: { label: "Bugunga mos", short: "Rejimga mos" },
       today: { label: "Bugun ishlatilgan", short: "Bugun" },
       edge: { label: "Musbat edge bilan", short: "Edge bilan" },
       untested: { label: "Savdosiz", short: "Savdosiz" },

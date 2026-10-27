@@ -1,7 +1,7 @@
 import { Activity, Gauge, TrendingUp } from "lucide-react";
 import { Panel, TermTooltip, type TermKey, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import type { Axis, Driver, Regime } from "./engine";
+import type { Axis, Driver, Regime } from "@/components/shared/market/engine";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
 
 /** Drivers whose label is a desk-glossary term get the shared explanation on hover/focus. */

@@ -46,6 +46,7 @@ export default {
     jobs: "Jobs",
     playbook: "Playbook",
     login: "Sign-in",
+    regime: "Market regime",
   },
 
   text: {
@@ -124,6 +125,7 @@ export default {
     rulesUpdate: "changed the scaling rules",
     permissionsUpdate: "changed the permission matrix",
     deskSettingUpdate: "changed the desk setting “{setting}”",
+    regimeSet: "set the market regime for {day}",
     deskSettingReset: "reset the desk setting “{setting}” to the default",
 
     seedDemo: "created demo academy challenges",

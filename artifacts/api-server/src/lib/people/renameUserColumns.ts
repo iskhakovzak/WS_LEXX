@@ -75,6 +75,7 @@ const TEXT: Record<string, readonly string[]> = {
   daily_feed: ["created_by"],
   daily_focus: ["set_by", "trader"],
   daily_reviews: ["trader"],
+  desk_regime_days: ["set_by"],
   digest_subscriptions: ["trader"],
   discussion_reads: ["user_name"],
   discussion_votes: ["trader"],
@@ -122,6 +123,7 @@ const TEXT: Record<string, readonly string[]> = {
   quest_events: ["trader"],
   quest_instances: ["assigned_by", "cancelled_by", "trader"],
   recognition_events: ["trader"],
+  regime_reflections: ["trader"],
   research: ["created_by"],
   research_pins: ["user_name"],
   reward_grants: ["decided_by", "trader"],
@@ -257,6 +259,9 @@ export const KEPT: Readonly<Record<string, string>> = {
   "ai_reviews.facts": "the day's numbers (counts and $), no names",
   "ai_batch_items.facts": "the day's numbers (counts and $), no names",
   "ai_batches.kinds": "review kinds (day / week / month)",
+  "desk_regime_days.suggestion": "the engine's suggestion: a regime key, reason codes and numbers, no names",
+  "regime_reflections.answers": "the trader's own free text per regime and question (free prose is never rewritten)",
+  "playbook.regimes": "market regime keys (theme_bull, macro, …), not names",
   "ai_batches.created_by": "who started the batch: «system» (the nightly job) or «manual» (the admin's run), never a person name",
   // json: market data, caches, content without people
   ...Object.fromEntries([

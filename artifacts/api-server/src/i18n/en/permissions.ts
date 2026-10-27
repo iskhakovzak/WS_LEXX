@@ -34,6 +34,7 @@ export default {
     "risk.read.own": { label: "Own risk profile", description: "Your own limits, history, positions and alerts." },
     "risk.read.team": { label: "Risk desk", description: "Limits, drawdowns and risk history of any trader." },
     "risk.limits.edit": { label: "Change limits", description: "PUT /risk/limits/:trader." },
+    "regime.set": { label: "Desk market regime", description: "Pick and change the day's market regime (the system's suggestion is confirmed by a person)." },
     "scaling.read.team": { label: "Team scaling plan", description: "Assessment and history of any trader." },
     "scaling.configure": { label: "Configure the tier ladder", description: "PUT /scaling/tiers and /scaling/rules." },
     "scaling.approve": { label: "Decide on tiers", description: "Create, approve or reject proposals, assign a tier directly." },

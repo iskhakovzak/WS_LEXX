@@ -26,6 +26,7 @@ import { gpI18n } from "@/i18n/ns/gamePlan";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { AskCuratorButton } from "@/components/shared/ask-curator";
+import { RegimeDayView } from "@/components/shared/regime/regime-day";
 
 type HorizonFilter = "all" | Horizon;
 type View = PlanView;
@@ -249,6 +250,7 @@ export default function GamePlanPage() {
         )}
       </PageHeader>
 
+      {!!user && <RegimeDayView date={date} variant="strip" />}
       {view === "desk" && isToday && <MorningScreener planDate={date} />}
       {view === "my" ? (
         <MyPlan date={date} deskPlan={plan} />

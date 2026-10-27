@@ -32,6 +32,7 @@ export default {
     "risk.read.own": { label: "Oʻz risk profili", description: "Oʻzingiz boʻyicha limitlar, tarix, pozitsiyalar va ogohlantirishlar." },
     "risk.read.team": { label: "Risk-desk", description: "Istalgan treyderning limitlari, pasayishlari va risk tarixi." },
     "risk.limits.edit": { label: "Limitlarni oʻzgartirish", description: "PUT /risk/limits/:trader." },
+    "regime.set": { label: "Deskning bozor rejimi", description: "Kunning bozor rejimini tanlash va oʻzgartirish (tizim taklifini inson tasdiqlaydi)." },
     "scaling.read.team": { label: "Jamoaning masshtablash rejasi", description: "Har qanday treyderning bahosi va tarixi." },
     "scaling.configure": { label: "Darajalar zinapoyasini sozlash", description: "PUT /scaling/tiers va /scaling/rules." },
     "scaling.approve": { label: "Darajalar boʻyicha qaror", description: "Takliflarni yaratish, maʼqullash yoki rad etish, darajani bevosita belgilash." },

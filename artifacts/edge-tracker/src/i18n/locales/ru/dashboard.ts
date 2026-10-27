@@ -1,6 +1,7 @@
 /** Dashboard (components/dashboard/**, pages/dashboard.tsx). Risk alert labels/messages and event headlines come from the server. */
 export default {
   sections: {
+    regime: { label: "Режим рынка", hint: "Режим деска на сегодня: что торговать, сколько риска и лимит дня" },
     attention: { label: "План на день", hint: "Следующий шаг, фокус и контракт, задачи дня, прогресс" },
     equity: { label: "Кривая капитала", hint: "От недели до всего времени, нетто или R" },
     recent: { label: "Последние сделки", hint: "Короткая лента → карточка сделки" },

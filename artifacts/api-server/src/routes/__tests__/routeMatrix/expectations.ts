@@ -273,6 +273,8 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "PUT /indicator-notes/:key": member("the own indicator notes"),
   "PUT /journal/days/:date": member("the own journal day"),
   "PUT /junior-notes": retired("junior summaries retired (wave 1, item 1.5): every write answers 410"),
+  "PUT /market-regime/playbook/:id/regimes": owner("regime tags of a setup the caller may edit (checked after the setup loads)"),
+  "PUT /market-regime/reflection": member("the own weekly regime reflection"),
   "PUT /notifications/prefs": member("the own notifications"),
   "PUT /office-stats/capital": admin("office capital figure: admin role check, not on the matrix"),
   "PUT /playbook/:id/marks/:itemId": owner("on a setup the caller may read (tier lock), own trades or examples (checked after the setup loads)"),

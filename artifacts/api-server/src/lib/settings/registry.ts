@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -330,6 +330,17 @@ export const SETTINGS = {
   "aiBatch.month": { group: "aiBatch", type: "boolean", default: false },
   "aiBatch.nightlyUnits": { group: "aiBatch", type: "number", default: 2_000_000, min: 0, max: 100_000_000, step: 100_000, unit: "tokens" },
   "aiBatch.model": { group: "aiBatch", type: "select", default: "claude-haiku-5-5", options: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
+
+  // Market regime (lib/marketRegime): the daily loss limit multiplier of each desk regime. By default it is only a
+  // suggestion (base × multiplier on the risk screen and the trader's day); applyLimits = the effective daily limits
+  // of /risk and the stop alerts use it (stored limits never change, so switching it off restores them).
+  "regime.mult.theme_bull": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.macro": { group: "regime", type: "number", default: 0.75, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.range": { group: "regime", type: "number", default: 0.5, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.panic": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.idiosyncratic": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.euphoria": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.applyLimits": { group: "regime", type: "boolean", default: false },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

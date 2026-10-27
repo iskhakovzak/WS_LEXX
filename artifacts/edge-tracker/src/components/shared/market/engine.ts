@@ -593,11 +593,4 @@ export function analogues(rows: Row[], joined: { i: number; day: TraderDay }[], 
   return out.sort((a, b) => b.similarity - a.similarity).slice(0, n);
 }
 
-/* ─────────────────────────────── Alerts ─────────────────────────────── */
-
-export type AlertRule = { op: "above" | "below"; value: number };
-
-export function alertFires(rule: AlertRule, v: number | null): boolean {
-  if (!fin(v)) return false;
-  return rule.op === "above" ? v > rule.value : v < rule.value;
-}
+export { alertFires, type AlertRule } from "./alert-rule";

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { alertFires, type AlertRule, type IndicatorDef, type Reading } from "./engine";
+import { alertFires, type AlertRule, type IndicatorDef, type Reading } from "@/components/shared/market/engine";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
 import { commonI18n } from "@/i18n/ns/common";
 

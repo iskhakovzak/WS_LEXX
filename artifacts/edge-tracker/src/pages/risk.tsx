@@ -20,6 +20,7 @@ import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { RegimeDayView } from "@/components/shared/regime/regime-day";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
@@ -90,6 +91,8 @@ export default function RiskPage() {
         }
       />
       {signedIn && <PageHint key={view === "desk" ? "riskDesk" : "risk"} id={view === "desk" ? "riskDesk" : "risk"} />}
+      {/* Today's desk regime next to the limits it scales: name, playbook hint, multiplier, the suggested day limit. */}
+      {signedIn && <RegimeDayView variant="strip" />}
 
       {!signedIn ? (
         <Panel>

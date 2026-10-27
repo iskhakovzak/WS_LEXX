@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
-import type { AlertRule, IndicatorId } from "./engine";
+import type { AlertRule, IndicatorId } from "@/components/shared/market/engine";
 
 export const MARKET_ALERT_PREFIX = "mkt-alert.";
 const LOCAL_KEY = "indicator-market-alerts-v1";

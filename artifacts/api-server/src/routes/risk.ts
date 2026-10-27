@@ -57,7 +57,7 @@ import {
   computeMetrics, drawdownSince, liveRisk, nextPeak, num, pctOf, round2,
   type DayRow, type LiveRisk, type LiveSnapshot, type Limits, type Metrics, type Position,
 } from "../lib/riskMetrics";
-import { CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, loadDaily, loadDdResets, loadLimits, loadLiveSnapshots, loadPositions, toLimits } from "../lib/riskData";
+import { CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, loadDaily, loadDdResets, loadEffectiveLimits, loadLimits, loadLiveSnapshots, loadPositions, toLimits } from "../lib/riskData";
 import { loadLivePositions } from "../lib/livePositions";
 import { recordStopAlerts } from "../lib/riskAlertQueue";
 import { buyingPowerProblem } from "../lib/people/stageLimits";
@@ -132,7 +132,7 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   if (!me) throw unauthorized();
   const today = clientDate(req.query.date);
   const [limitsMap, days, positions, resets, snaps] = await Promise.all([
-    loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
+    loadEffectiveLimits(me, today), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
   ]);
   const limits = limitsMap.get(me) ?? null;
   const live = liveOf(snaps, me, today);
@@ -156,7 +156,7 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.read.team"))) return;
   const today = clientDate(req.query.date);
   const [limitsMap, days, positions, usersRes, resets, snaps] = await Promise.all([
-    loadLimits(null),
+    loadEffectiveLimits(null, today),
     loadDaily(null, today),
     loadPositions(null, today),
     // ward = the viewer is the trader's curator / mentor / risk manager («Мои подопечные» on the desk).
@@ -602,7 +602,7 @@ export type DeskSnapshotRow = {
 /** `only` = rows for just these traders (the curator's roster) — the same rows the full snapshot has for them. */
 export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru", only?: readonly string[]): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
   const [limitsMap, days, positions, usersRes, resets, snaps] = await Promise.all([
-    loadLimits(trader),
+    loadEffectiveLimits(trader, today),
     loadDaily(trader, today, only),
     loadPositions(trader, today),
     pool.query(`SELECT name, role, COALESCE(banned, false) AS banned FROM users WHERE active = true AND ($1::text IS NULL OR name = $1)`, [trader]),

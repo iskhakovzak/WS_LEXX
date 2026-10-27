@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { http } from "@/lib/api/http";
-import { defaultLayout, layoutFromV6, sameLayout, sanitizeLayout, type DashLayout } from "./layout-model";
+import { defaultLayout, layoutFromV6, sameLayout, sanitizeLayout, toStored, type DashLayout } from "./layout-model";
 
 const SETTINGS_API = "/api/users/me/settings";
 const LOCAL_KEY = "ws_lexx_dashboard_layout_v1";
@@ -35,7 +35,7 @@ function readLocal(viewer: string): Local | null {
 
 function writeLocal(viewer: string, value: Local | null) {
   try {
-    if (value) localStorage.setItem(`${LOCAL_KEY}:${viewer}`, JSON.stringify(value));
+    if (value) localStorage.setItem(`${LOCAL_KEY}:${viewer}`, JSON.stringify({ ...value, layout: toStored(value.layout) }));
     else localStorage.removeItem(`${LOCAL_KEY}:${viewer}`);
   } catch {
     /* storage unavailable: the layout lives in memory and on the server */
@@ -63,7 +63,7 @@ export function reconcile(server: DashLayout | null, local: Local): { layout: Da
 }
 
 async function put(layout: DashLayout | null) {
-  await http.put(SETTINGS_API, { dashboardLayout: layout ? { ...layout, updatedAt: new Date().toISOString() } : null });
+  await http.put(SETTINGS_API, { dashboardLayout: layout ? { ...toStored(layout), updatedAt: new Date().toISOString() } : null });
 }
 
 export type LayoutUpdate = DashLayout | ((cur: DashLayout) => DashLayout);

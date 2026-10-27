@@ -18,6 +18,8 @@ export type PlaybookEntry = {
   id: number; name: string; folder: string | null; setupType: string | null; conditions: string | null;
   checklist: string | null; checklistItems: ChecklistItem[] | null; notes: string | null; confidenceLevel: number | null;
   screenshotUrl: string | null; screenshotNotes: string | null; tags: string | null;
+  /** Market regimes the setup works best in (keys of lib/market-regime; «Подходит сегодня»). */
+  regimes?: string[] | null;
   sourceType: string | null; sourceId: number | null; createdAt: string;
   parentId: number | null;
   ticker: string | null;
@@ -430,7 +432,8 @@ export function timeAgo(iso: string | null | undefined): string | null {
 
 
 export type SortKey = "folder" | "edge" | "used" | "new" | "name";
-export type QuickFilter = "all" | "today" | "edge" | "untested" | "unreviewed" | "noExamples";
+/** `regime` = «Подходит сегодня»: tagged with today's desk market regime. */
+export type QuickFilter = "all" | "regime" | "today" | "edge" | "untested" | "unreviewed" | "noExamples";
 
 /** $ expectancy per trade (net), only with ≥ 3 trades — R is usually absent, so $ is the primary edge. */
 export function usdEdge(s: SetupSummary | undefined): number | null {
@@ -468,9 +471,10 @@ export function sortEntries(list: PlaybookEntry[], sort: SortKey, summary: Map<n
   }
 }
 
-export function matchesQuickFilter(e: PlaybookEntry, f: QuickFilter, summary: Map<number, SetupSummary>): boolean {
+export function matchesQuickFilter(e: PlaybookEntry, f: QuickFilter, summary: Map<number, SetupSummary>, todayRegime: string | null = null): boolean {
   const s = summary.get(e.id);
   switch (f) {
+    case "regime": return !!todayRegime && (e.regimes ?? []).includes(todayRegime);
     case "today": return isSameLocalDay(s?.lastUsedAt);
     case "edge": return (usdEdge(s) ?? s?.expectancy ?? 0) > 0 && (s?.tradeCount ?? 0) >= 3;
     case "noExamples": return (s?.exampleCount ?? 0) === 0;

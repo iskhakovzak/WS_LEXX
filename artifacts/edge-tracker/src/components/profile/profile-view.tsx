@@ -19,6 +19,7 @@ import { PeerCard, QuoteCard } from "./extras";
 import { HeroLink, ProfileHero } from "./profile-hero";
 import { ShareCardButton } from "./share-card-dialog";
 import { YearHeat } from "./year-heat";
+import { RegimeEdgePanel } from "@/components/shared/regime/regime-edge";
 
 export function ProfileSkeleton() {
   const { t } = profileI18n.useT();
@@ -84,6 +85,8 @@ function ProfileBody({ p }: { p: ProfileResponse }) {
       ) : (
         <>
           <AttributeCard attrs={p.attributes} windowDays={p.window.days} />
+          {/* «Характеристика» → how the person trades each desk regime (hidden when the viewer may not see that book). */}
+          <RegimeEdgePanel trader={p.person.self ? null : p.person.name} self={p.person.self} hideEmpty />
           <KeyStats stats={p.stats} />
           <BentoGrid>
             <EquityPanel equity={p.equity} className="lg:col-span-8" />

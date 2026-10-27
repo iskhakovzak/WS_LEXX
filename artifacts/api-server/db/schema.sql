@@ -1252,6 +1252,21 @@ CREATE TABLE public.desk_groups (
   CONSTRAINT desk_groups_name_check CHECK (char_length(name) >= 1 AND char_length(name) <= 60)
 );
 
+CREATE TABLE public.desk_regime_days (
+  day date NOT NULL,
+  regime text NOT NULL,
+  note text,
+  set_by text NOT NULL,
+  auto_suggested boolean DEFAULT false NOT NULL,
+  suggestion jsonb,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT desk_regime_days_pkey PRIMARY KEY (day),
+  CONSTRAINT desk_regime_days_note_check CHECK (note IS NULL OR char_length(note) <= 500),
+  CONSTRAINT desk_regime_days_regime_check CHECK (regime = ANY (ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text])),
+  CONSTRAINT desk_regime_days_set_by_check CHECK (char_length(set_by) >= 1 AND char_length(set_by) <= 200)
+);
+
 CREATE TABLE public.digest_subscriptions (
   id integer DEFAULT nextval('public.digest_subscriptions_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,
@@ -1839,7 +1854,9 @@ CREATE TABLE public.playbook (
   updated_at timestamp with time zone,
   min_tier text,
   schema_key text,
-  CONSTRAINT playbook_pkey PRIMARY KEY (id)
+  regimes text[] DEFAULT '{}'::text[] NOT NULL,
+  CONSTRAINT playbook_pkey PRIMARY KEY (id),
+  CONSTRAINT playbook_regimes_check CHECK (regimes <@ ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text])
 );
 
 CREATE TABLE public.playbook_checklist_marks (
@@ -2216,6 +2233,17 @@ CREATE TABLE public.recognition_events (
   posted_at timestamp with time zone,
   CONSTRAINT recognition_events_pkey PRIMARY KEY (id),
   CONSTRAINT recognition_events_trader_kind_ref_key UNIQUE (trader, kind, ref)
+);
+
+CREATE TABLE public.regime_reflections (
+  trader text NOT NULL,
+  week text NOT NULL,
+  answers jsonb DEFAULT '{}'::jsonb NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT regime_reflections_pkey PRIMARY KEY (trader, week),
+  CONSTRAINT regime_reflections_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200),
+  CONSTRAINT regime_reflections_week_check CHECK (week ~ '^\d{4}-W\d{2}$'::text)
 );
 
 CREATE TABLE public.research (

@@ -50,6 +50,7 @@ export default {
     jobs: "Задачи",
     playbook: "Плейбук",
     login: "Вход",
+    regime: "Режим рынка",
   },
 
   text: {
@@ -138,6 +139,7 @@ export default {
     rulesUpdate: "изменил правила масштабирования",
     permissionsUpdate: "изменил матрицу прав доступа",
     deskSettingUpdate: "изменил настройку деска «{setting}»",
+    regimeSet: "задал режим рынка на {day}",
     deskSettingReset: "вернул настройку деска «{setting}» к значению по умолчанию",
 
     seedDemo: "создал демо-челленджи академии",
