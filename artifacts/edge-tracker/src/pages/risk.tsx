@@ -21,6 +21,8 @@ import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
+import { GuardDeskPanel } from "@/components/leak-guard/guard-desk";
+import { GuardImpactPanel } from "@/components/leak-guard/guard-impact";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
@@ -99,11 +101,18 @@ export default function RiskPage() {
           <EmptyState art="scales" icon={ShieldAlert} title={t("page.signInTitle")} description={t("page.signInDesc")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
         </Panel>
       ) : view === "desk" && isCurator ? (
-        <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
+        <>
+          {/* Live leak guard: who is on pause now (firm / hard), levels, saved / lost (components/leak-guard). */}
+          <GuardDeskPanel canEdit={isCurator} />
+          <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
+        </>
       ) : view === "overnight" ? (
         <OvernightView trader={me} isCurator={isCurator} onUpdatedAt={setUpdatedAt} />
       ) : me ? (
-        <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
+        <>
+          <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
+          <GuardImpactPanel trader={me} />
+        </>
       ) : (
         <Panel>
           <EmptyState art="scales" icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />

@@ -62,6 +62,7 @@ export default {
     finviz: { screener: "Finviz: skriner", snapshot: "Finviz: tiker maʼlumotlari", "snapshot-pending": "Finviz: soʻralgan tikerlar", earnings: "Finviz: hisobotlar taqvimi" },
     "news-channel": { premarket: "WS_NEWS kanali: premarket", open: "WS_NEWS kanali: ochilishdan beri", close: "WS_NEWS kanali: kun yakuni" },
     edgemap: { nightly: "«Qayerda topaman / yoʻqotaman» xaritasi: tungi hisob" },
+    leakguard: { scan: "Sizib chiqish himoyasi: sinxronlashdan keyingi tekshiruv" },
     whatif: { honesty: "«Agar shunday boʻlsa» maslahatlarini halol tekshirish" },
     ai: { "batch-reviews": "Tungi AI-tahlillar (bitta paketda, yarim narxda)" },
   },

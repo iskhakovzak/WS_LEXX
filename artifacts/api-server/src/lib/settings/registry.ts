@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -345,6 +345,34 @@ export const SETTINGS = {
   "regime.mult.idiosyncratic": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
   "regime.mult.euphoria": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
   "regime.applyLimits": { group: "regime", type: "boolean", default: false },
+
+  // Live leak guard (lib/leakGuard): personal leak patterns caught at the first PropReports sync that shows them →
+  // intervention ladder (soft: banner + notice with a countdown; firm: + required acknowledgement, the curator is told
+  // when it is ignored; hard: + «на паузе» on the risk desk, the risk manager is told to act — PropReports is a
+  // back office and cannot block orders). Ladder per stage (default: Джун firm, Трейдер / Сеньор soft) with a
+  // per-trader override on the risk desk. Telegram off by default and never from a non-production API.
+  "leakGuard.enabled": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.afterLoss": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.firstTrade": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.ruleViolation": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.nearStop": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.pauseMinutes": { group: "leakGuard", type: "number", default: 10, min: 1, max: 60, step: 1, unit: "minutes" },
+  "leakGuard.violationPauseMinutes": { group: "leakGuard", type: "number", default: 30, min: 5, max: 240, step: 5, unit: "minutes" },
+  "leakGuard.nearStopPauseMinutes": { group: "leakGuard", type: "number", default: 15, min: 5, max: 240, step: 5, unit: "minutes" },
+  "leakGuard.firstTradeSizeRatio": { group: "leakGuard", type: "number", default: 0.6, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
+  "leakGuard.minOccurrences": { group: "leakGuard", type: "number", default: 5, min: 2, max: 100, step: 1, unit: "trades" },
+  "leakGuard.minCostUsd": { group: "leakGuard", type: "number", default: 10, min: 0, max: 1000, step: 5, unit: "usd" },
+  "leakGuard.minTStat": { group: "leakGuard", type: "number", default: 1, min: 0, max: 5, step: 0.1 },
+  "leakGuard.lookbackDays": { group: "leakGuard", type: "number", default: 90, min: 20, max: 365, step: 5, unit: "days" },
+  "leakGuard.ackMinutes": { group: "leakGuard", type: "number", default: 3, min: 1, max: 30, step: 1, unit: "minutes" },
+  "leakGuard.maxEventsPerDay": { group: "leakGuard", type: "number", default: 6, min: 1, max: 50, step: 1, unit: "count" },
+  "leakGuard.levelJunior": { group: "leakGuard", type: "select", default: "firm", options: ["off", "soft", "firm", "hard"] },
+  "leakGuard.levelTrader": { group: "leakGuard", type: "select", default: "soft", options: ["off", "soft", "firm", "hard"] },
+  "leakGuard.levelSenior": { group: "leakGuard", type: "select", default: "soft", options: ["off", "soft", "firm", "hard"] },
+  "leakGuard.quietEnabled": { group: "leakGuard", type: "boolean", default: false },
+  "leakGuard.quietFrom": { group: "leakGuard", type: "time", default: "15:50" },
+  "leakGuard.quietTo": { group: "leakGuard", type: "time", default: "16:00" },
+  "leakGuard.telegram": { group: "leakGuard", type: "boolean", default: false },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;
