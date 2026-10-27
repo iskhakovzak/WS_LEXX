@@ -12,6 +12,7 @@
  * dropout part is a fitted hazard (R13); the weights are a starting point for the owner / curators to tune (R9).
  */
 import { pool } from "@workspace/db";
+import { closeDateSql, netPnlSql } from "./coreMetrics/kpi";
 import { addDays } from "./tradingDate";
 import { mondayOf } from "./curatorLogic";
 import { deskPrior, shrink } from "./stats";
@@ -88,8 +89,8 @@ export async function loadPriorityInputs(traders: readonly string[], today: stri
   const soft = <T>(p: Promise<{ rows: T[] }>) => p.catch(() => ({ rows: [] as T[] }));
   const [days, eod, plans, leaks] = await Promise.all([
     soft(db.query(
-      `SELECT trader, LEFT(COALESCE(exit_date, date), 10) AS day, SUM(pnl - ABS(COALESCE(fees, 0)))::float AS net
-         FROM trades WHERE deleted_at IS NULL AND pnl IS NOT NULL AND LOWER(TRIM(result)) <> 'open' AND trader = ANY($1::text[])
+      `SELECT t.trader, LEFT(${closeDateSql("t")}, 10) AS day, SUM(${netPnlSql("t")})::float AS net
+         FROM trades t WHERE deleted_at IS NULL AND pnl IS NOT NULL AND LOWER(TRIM(result)) <> 'open' AND trader = ANY($1::text[])
           AND LEFT(COALESCE(exit_date, date), 10) BETWEEN $2 AND $3 GROUP BY 1, 2`,
       [traders, from, today],
     )),

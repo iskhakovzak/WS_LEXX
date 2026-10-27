@@ -33,6 +33,18 @@ export default {
       drawdown: "Maks. pasayishgacha {left}.",
     },
   },
+  mentorStop: {
+    headline: {
+      drawdown: "Kurator qaror qilguncha savdo toʻxtatildi",
+      weekly: "Haftalik limit tugadi — dushanbagacha savdo yoʻq",
+      stop: "Kunlik stop — bugun boshqa savdo yoʻq",
+    },
+    rule: {
+      drawdown: "Kurator qaror qilguncha savdo qilmang — kuratorga yozing.",
+      weekly: "Dushanbagacha savdo qilmang — kuratorga yozing.",
+      stop: "Bugun boshqa savdo qilmang — kuratorga yozing.",
+    },
+  },
   alerts: {
     daily: "Kunlik zarar limiti",
     weekly: "Haftalik zarar limiti",

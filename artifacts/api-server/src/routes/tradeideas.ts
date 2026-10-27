@@ -15,6 +15,7 @@ import { signedR, netPnl, normResult } from "../lib/tradeMath";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 import { reviewT } from "../i18n/ns";
 import { langOf } from "../i18n";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -489,14 +490,13 @@ router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> =>
     totalPnl: number | null; totalPnlGross: number | null;
   };
   function finalize(b: Bucket): Finalized {
-    const decided = b.wins + b.losses;
     return {
       ideasTotal: b.ideasTotal,
       published: b.published,
       converted: b.converted,
       conversionRate: b.published > 0 ? b.converted / b.published : null,
       wins: b.wins, losses: b.losses, breakeven: b.breakeven, open: b.open,
-      winRate: decided > 0 ? b.wins / decided : null,
+      winRate: winRateOf(b.wins, b.losses),
       avgR: b.rCount > 0 ? b.rSum / b.rCount : null,
       totalR: b.rSum,
       rCount: b.rCount,

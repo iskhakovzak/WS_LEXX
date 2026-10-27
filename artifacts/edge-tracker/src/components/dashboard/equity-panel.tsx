@@ -8,7 +8,7 @@ import { EquityChart, fromDashboardDays } from "@/components/equity-chart";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { cn } from "@/lib/utils";
 import { shortDate } from "./fmt";
-import { OwnBreakevenLine } from "@/components/shared/coach/fee-coaching";
+import { links } from "@/lib/links";
 import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import type { DashboardEquity, EquityMetric, EquityPeriod } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
@@ -62,7 +62,10 @@ export function EquityPanel({
   fill?: boolean;
   /** A quiet line under the title, e.g. «На этой неделе сделок нет — показаны 30 дней». */
   note?: string | null;
-  /** «Мои» view: the win rate vs the breakeven win rate line (roadmap R2). */
+  /**
+   * «Мои» view: a link to the win rate vs the breakeven win rate (roadmap R2) in the weekly review. One truth: the
+   * dashboard shows ONE breakeven — the «Комиссии» tile's (90 days); the server's 60-trading-day line lives there.
+   */
   showBreakeven?: boolean;
   /** Dashboard tile layout: compact = total + curve, medium = + the four numbers in two columns, large = in one row. */
   density?: "s" | "m" | "l";
@@ -83,6 +86,9 @@ export function EquityPanel({
   const worst = effMetric === "pnl" ? (t?.worstNet?.pnl ?? null) : (t?.worstR?.r ?? null);
   const dd = effMetric === "pnl" && t?.maxDrawdownNet != null ? t.maxDrawdownNet : (t?.maxDrawdownR ?? 0);
   const longer = LONGER[period];
+  // The window every number of the card is counted over (the server's answer wins: a week without trades widens).
+  const winKey: EquityPeriod = data && (PERIODS as string[]).includes(data.period) ? (data.period as EquityPeriod) : period;
+  const win = td(`equity.window.${winKey}`);
 
   return (
     <DashCard
@@ -145,7 +151,7 @@ export function EquityPanel({
                 {fmt(total)}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {commonI18n.t("units.trades", { count: t.trades })} · {commonI18n.t("units.tradingDays", { count: t.tradingDays })}
+                {win} · {commonI18n.t("units.trades", { count: t.trades })} · {commonI18n.t("units.tradingDays", { count: t.tradingDays })}
                 {effMetric === "pnl" && t.fees ? ` · ${td("equity.fees", { amount: fmtUsd(-Math.abs(t.fees), { signed: true }) })}` : ""}
               </span>
             </div>
@@ -184,7 +190,7 @@ export function EquityPanel({
           />
           {t && days.length > 0 && density !== "s" && (
             <div className={cn("grid grid-cols-2 gap-x-4 gap-y-2", density !== "m" && "sm:grid-cols-4")}>
-              <Stat label="Win rate" title={KPI_FORMULAS.winRate}>
+              <Stat label={td("equity.winRate", { window: win })} title={KPI_FORMULAS.winRate}>
                 {fmtRate(t.winRate)} <span className="text-xs font-normal text-muted-foreground">{t.wins}W / {t.losses}L</span>
               </Stat>
               <Stat label={td("equity.bestDay")} title={(effMetric === "pnl" ? t.bestNet?.date : t.bestR?.date) ?? undefined}>
@@ -193,13 +199,18 @@ export function EquityPanel({
               <Stat label={td("equity.worstDay")} title={(effMetric === "pnl" ? t.worstNet?.date : t.worstR?.date) ?? undefined}>
                 <span className={toneText(toneOf(worst))}>{fmt(worst)}</span>
               </Stat>
-              <Stat label={td("equity.maxDd")} title={KPI_FORMULAS.maxDrawdown}>
+              <Stat label={td("equity.maxDd", { window: win })} title={KPI_FORMULAS.maxDrawdown}>
                 {/* A drawdown is a loss from the peak: «−$340», never «+$0.00». */}
                 <span className={toneText(dd ? "down" : "neutral")}>{dd ? fmt(-Math.abs(dd)) : effMetric === "pnl" ? "$0" : "0R"}</span>
               </Stat>
             </div>
           )}
-          {showBreakeven && density !== "s" && <OwnBreakevenLine />}
+          {showBreakeven && density !== "s" && (
+            <Link href={links.weeklyReview()} className="inline-flex items-center gap-0.5 self-start text-xs text-muted-foreground hover:text-foreground hover:underline">
+              {td("equity.breakevenLink")}
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          )}
         </div>
       )}
     </DashCard>

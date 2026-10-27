@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { nyDate } from "@/lib/trading-date";
 import { DayStepper } from "@/components/shared/day-stepper";
 import { links } from "@/lib/links";
-import { KPI_FORMULAS } from "@/lib/trade-math";
+import { KPI_FORMULAS, winRateOf } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
 import { fmtCount, fmtDeskDateTime, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -206,7 +206,7 @@ export function DigestCard({
   }
   const sectionList = [...sections.entries()].sort((a, b) => b[1] - a[1]);
   const t = summary?.trades;
-  const wr = t && t.wins + t.losses ? t.wins / (t.wins + t.losses) : null;
+  const wr = t && winRateOf(t.wins, t.losses);
   const social = (summary?.bySection ?? []).filter((r) => SOCIAL.has(r.action)).reduce((s, r) => s + r.count, 0);
   const total = sectionList.reduce((s, [, n]) => s + n, 0);
 

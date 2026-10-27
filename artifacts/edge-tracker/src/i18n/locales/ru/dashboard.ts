@@ -260,6 +260,10 @@ export default {
   },
   equity: {
     period: { week: "Эта неделя", month: "Последние 30 дней", quarter: "Последние 90 дней", year: "Последние 365 дней", all: "Всё время" },
+    /** The card's window, compact: every number of the card carries it (one truth: no two windows under one label). */
+    window: { week: "эта нед.", month: "30 дн.", quarter: "90 дн.", year: "365 дн.", all: "с начала" },
+    winRate: "Винрейт · {window}",
+    breakevenLink: "Винрейт нетто и безубыточный — в недельном разборе",
     empty: {
       week: "На этой неделе закрытых сделок нет",
       month: "За 30 дней закрытых сделок нет",
@@ -279,7 +283,7 @@ export default {
     show: "Показать: {period}",
     bestDay: "Лучший день",
     worstDay: "Худший день",
-    maxDd: "Макс. просадка",
+    maxDd: "Макс. просадка · {window}",
     periodAria: "Период",
   },
   recent: {

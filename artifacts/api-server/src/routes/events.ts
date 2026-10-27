@@ -26,6 +26,7 @@ import {
 import { AppError, badRequest, notFound, sendError, sendErrorWith, unauthorized } from "../lib/http";
 import { eventsT } from "../i18n/ns";
 import { langOf } from "../i18n";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * Market events ("События") — catalysts the desk trades around.
@@ -190,7 +191,7 @@ export function statsOf(rows: Record<string, unknown>[]): TradeStats {
   const r2 = (v: number) => Math.round(v * 100) / 100;
   return {
     n: rows.length, wins, losses, be, open,
-    winRate: decided ? r2((wins / decided) * 100) : null,
+    winRate: decided ? r2(((winRateOf(wins, losses) ?? 0)) * 100) : null,
     sumR: hasR ? r2(sumR) : null,
     grossPnl: hasPnl ? r2(gross) : null,
     fees: hasPnl ? r2(fees) : null,
@@ -450,7 +451,7 @@ router.get("/events/stats", asyncHandler(async (req, res): Promise<void> => {
         n: Number(r.n), withMove: Number(r.with_move), avgMove: r2(r.avg_move), avgAbsMove: r2(r.avg_abs_move),
         up: Number(r.up), down: Number(r.down), upPct: Number(r.with_move) ? Math.round((Number(r.up) / Number(r.with_move)) * 100) : null,
         trades: {
-          n: Number(r.trades), wins, losses, be: Number(r.be), winRate: decided ? Math.round((wins / decided) * 1000) / 10 : null,
+          n: Number(r.trades), wins, losses, be: Number(r.be), winRate: decided ? Math.round(((winRateOf(wins, losses) ?? 0)) * 1000) / 10 : null,
           sumR: r2(r.sum_r), grossPnl: gross, fees, netPnl: gross == null ? null : Math.round((gross - (fees ?? 0)) * 100) / 100,
         },
       };

@@ -16,7 +16,7 @@
  */
 import { buildFeeModel, type FeeBandRow } from "./feeModel";
 import { whatifT } from "../i18n/ns";
-import { maxDrawdownByDay, winRateOf } from "./tradeMath";
+import { maxDrawdownByDay, maxDrawdownOfSeries, winRateOf } from "./coreMetrics/kpi";
 import type { Lang } from "../i18n";
 import {
   type BootstrapSummary, type ChangedTrade, type DayResult, type EquityPoint, type ExcludedTrade, type ExclusionReason, type Metrics,
@@ -53,13 +53,7 @@ export function equityByDay(daily: DayResult[]): EquityPoint[] {
 
 /** Peak-to-trough drawdown (≤ 0) of the cumulative series of `values`. */
 export function maxDrawdownOf(values: number[]): number {
-  let cum = 0, peak = 0, dd = 0;
-  for (const v of values) {
-    cum += v;
-    if (cum > peak) peak = cum;
-    if (cum - peak < dd) dd = cum - peak;
-  }
-  return dd;
+  return maxDrawdownOfSeries(values);
 }
 
 export function computeMetrics(input: SimTrade[]): Metrics {

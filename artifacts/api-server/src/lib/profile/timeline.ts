@@ -19,6 +19,7 @@
  * Eras: one per calendar month with trades (trades, net, active days, win rate).
  */
 import type { DayAgg, Era, TimelineEvent } from "./types";
+import { winRateOf } from "../coreMetrics/kpi";
 
 export const TRADE_MILESTONES = [100, 250, 500, 1000, 2500, 5000] as const;
 /** At most this many achievement events (the newest tiers win) — a long medal list would drown the story. */
@@ -64,7 +65,7 @@ export function erasOf(days: readonly DayAgg[]): Era[] {
   }
   return [...map.values()]
     .sort((a, b) => (a.month < b.month ? -1 : 1))
-    .map(({ wins, losses, ...e }) => ({ ...e, net: r2(e.net), winRate: wins + losses ? r2(wins / (wins + losses)) : null }));
+    .map(({ wins, losses, ...e }) => ({ ...e, net: r2(e.net), winRate: wins + losses ? r2((winRateOf(wins, losses) ?? 0)) : null }));
 }
 
 /** Deepest fall of the cumulative daily net: peak day, trough day, depth and the recovery day (null while under water). */

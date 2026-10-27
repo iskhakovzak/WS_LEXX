@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
-import { isDecided, netPnl, resultOf } from "@/lib/trade-math";
+import { isDecided, netPnl, resultOf, winRateOf } from "@/lib/trade-math";
 import { safeHttpUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { DealTypePill, ExposureBadge, OfferGauge, ScoreBreakdown, SignedPct, pctTone } from "./bits";
@@ -217,7 +217,7 @@ export function OfferingDetailSheet({
       if (isDecided(t)) { decided++; if (resultOf(t) === "win") wins++; }
       if (offeringDays.has(t.date)) { onDays++; if (n != null) onNet += n; }
     }
-    return { rows, net, wr: decided ? Math.round((wins / decided) * 100) : null, onDays, onNet };
+    return { rows, net, wr: decided ? Math.round((winRateOf(wins, decided - wins) ?? 0) * 100) : null, onDays, onNet };
   }, [myTrades.data, offeringDays]);
 
   if (!o || !merged) return null;

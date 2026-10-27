@@ -1,3 +1,4 @@
+import { winRateOf } from "./coreMetrics/kpi";
 // Offerings → price reaction and trader stats (pure, no DB / network). Used by routes/offerings.ts.
 //
 // Timing. SEC `acceptanceDateTime` is New York wall time even though it carries a "Z" suffix
@@ -288,7 +289,7 @@ function bucket(list: TradeLite[]): DayBucket {
   return {
     trades: list.length,
     decided, wins, losses,
-    winRate: decided ? r2((wins / decided) * 100) : null,
+    winRate: decided ? r2(((winRateOf(wins, losses) ?? 0)) * 100) : null,
     net: r2(net),
     avgNet: withNet ? r2(net / withNet) : null,
     best: best == null ? null : r2(best),

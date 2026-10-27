@@ -211,6 +211,9 @@ export default {
   },
   equity: {
     period: { week: "Shu hafta", month: "Oxirgi 30 kun", quarter: "Oxirgi 90 kun", year: "Oxirgi 365 kun", all: "Butun davr" },
+    window: { week: "shu hafta", month: "30 kun", quarter: "90 kun", year: "365 kun", all: "boshidan" },
+    winRate: "Vinreyt · {window}",
+    breakevenLink: "Sof vinreyt va zararsiz — haftalik tahlilda",
     empty: {
       week: "Shu haftada yopilgan savdolar yoʻq",
       month: "30 kunda yopilgan savdolar yoʻq",
@@ -230,7 +233,7 @@ export default {
     show: "Koʻrsatish: {period}",
     bestDay: "Eng yaxshi kun",
     worstDay: "Eng yomon kun",
-    maxDd: "Maks. pasayish",
+    maxDd: "Maks. pasayish · {window}",
     periodAria: "Davr",
   },
   recent: {

@@ -144,7 +144,7 @@ function useDashboardModel(editing: boolean) {
     { enabled: insightsOn && insightQ.isSuccess && !!insightRanges.prev },
   );
   const insightScope = useMemo<InsightScope>(
-    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "quarter", periodLong: periodTexts("quarter", null).long }),
+    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "quarter", periodLong: periodTexts("quarter", null).long, periodShort: periodTexts("quarter", null).short }),
     [insightWindow, insightTrader],
   );
   const eodQ = useEodStatus(authed && scope === "team");

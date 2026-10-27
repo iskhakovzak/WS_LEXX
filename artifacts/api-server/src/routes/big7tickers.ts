@@ -11,6 +11,7 @@ import { sessionFor } from "../lib/marketDays";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { reviewT } from "../i18n/ns";
 import { langOf, type Lang } from "../i18n";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -344,7 +345,7 @@ const outAgg = (a: Agg) => ({
   net: Math.round(a.net * 100) / 100,
   wins: a.wins,
   losses: a.losses,
-  wr: a.wins + a.losses > 0 ? Math.round((a.wins / (a.wins + a.losses)) * 1000) / 10 : null,
+  wr: a.wins + a.losses > 0 ? Math.round(((winRateOf(a.wins, a.losses) ?? 0)) * 1000) / 10 : null,
   avg: a.n > 0 ? Math.round((a.net / a.n) * 100) / 100 : null,
 });
 

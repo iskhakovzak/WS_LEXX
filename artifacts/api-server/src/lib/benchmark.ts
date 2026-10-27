@@ -15,6 +15,7 @@
 import { benchmarkT } from "../i18n/ns";
 import type { Lang } from "../i18n";
 import { fmtDateFor } from "../i18n/format";
+import { winRateOf } from "./coreMetrics/kpi";
 
 /** «$880.24» / «−$12.50» (ROMAN-30: badges said «880.24 $»). Money keeps the trading format in every language. */
 export function fmtMoney(v: number, signed = false): string {
@@ -338,7 +339,7 @@ export function computeTraderMetrics(trader: string, trades: readonly BenchTrade
     days: days.size,
     tradesPerDay: days.size ? r2(n / days.size) : null,
     wins, losses, be,
-    winRate: wins + losses > 0 ? r4(wins / (wins + losses)) : null,
+    winRate: wins + losses > 0 ? r4((winRateOf(wins, losses) ?? 0)) : null,
     net: net == null ? null : r2(net),
     gross: gross == null ? null : r2(gross),
     fees: fees == null ? null : r2(fees),

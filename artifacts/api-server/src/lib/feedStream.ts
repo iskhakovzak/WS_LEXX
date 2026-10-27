@@ -27,6 +27,7 @@ import type { Lang } from "../i18n";
 import { violationMessage } from "./rulesI18n";
 import { personNameFor } from "./people/latinNames";
 import { recognitionFeed } from "./gamification/recognition";
+import { winRateOf } from "./coreMetrics/kpi";
 
 export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
@@ -464,7 +465,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
         const b = best.get(`${trader}|${r.d}`);
         const decided = r.wins + r.losses;
         const parts = [t("trades", { count: r.n })];
-        if (decided) parts.push(t("winRate", { pct: Math.round((r.wins / decided) * 100) }));
+        if (decided) parts.push(t("winRate", { pct: Math.round(((winRateOf(r.wins, r.losses) ?? 0)) * 100) }));
         if (b && num(b.net) != null && num(b.net)! > 0) parts.push(t("bestTrade", { ticker: String(b.ticker), net: usd(num(b.net)) }));
         if (hasRules) parts.push(vioN ? t("violations", { count: vioN }) : t("noViolations"));
         items.push({

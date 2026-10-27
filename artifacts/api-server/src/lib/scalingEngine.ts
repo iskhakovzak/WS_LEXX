@@ -19,6 +19,7 @@ import { scalingT } from "../i18n/ns";
 import { formatCountFor, type Lang, } from "../i18n";
 import { DEFAULT_RULES } from "./scalingSeed";
 import { disciplineIndexOf, normalizeDisciplineRule, type DisciplineDay } from "./disciplineIndex";
+import { drawdownOf, winRateOf } from "./coreMetrics/kpi";
 
 export { DEFAULT_RULES, DEFAULT_TIERS } from "./scalingSeed";
 /** The one discipline score (0–100) of the ladder — defined in lib/disciplineIndex.ts, shared with lib/promotionEngine. */
@@ -294,13 +295,7 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 
 /** Peak-to-trough drawdown (≥ 0) of a cumulative series built from values in chronological order. */
 export function maxDrawdownAbs(values: number[]): number {
-  let cum = 0, peak = 0, dd = 0;
-  for (const v of values) {
-    cum += v;
-    if (cum > peak) peak = cum;
-    if (peak - cum > dd) dd = peak - cum;
-  }
-  return dd;
+  return drawdownOf(values);
 }
 
 const sumBy = (map: Map<string, number>, key: string, v: number) => { map.set(key, (map.get(key) ?? 0) + v); };
@@ -424,7 +419,7 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
     net_pnl: v("net_pnl", hasMoney ? net : null, { basis: "usd", note: hasMoney ? (moneySource === "propreports" ? "broker" : "journal") : "noMoney" }),
     net_r: v("net_r", rCount ? sumR : null, { basis: "r" }),
     profit_factor: v("profit_factor", pf, { basis, note: pf == null ? (sorted.length ? "noLosses" : "noTrades") : basis === "r" ? "byR" : "byUsd" }),
-    win_rate: v("win_rate", decided ? (wins / decided) * 100 : null),
+    win_rate: v("win_rate", decided ? ((winRateOf(wins, losses) ?? 0)) * 100 : null),
     expectancy_r: v("expectancy_r", rCount ? sumR / rCount : null, { basis: "r" }),
     green_weeks: v("green_weeks", days.length ? greenWeeks : null, { basis }),
     green_days_pct: v("green_days_pct", days.length ? (greenDays / days.length) * 100 : null, { basis }),

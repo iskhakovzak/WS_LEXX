@@ -17,6 +17,7 @@ import { ActionChip, Actions, Caption, DetailGrid, Huge, LowData, Num, Tile, Ver
 import { TILE_MIN, streakInsight } from "./insights";
 import { idsHref, ruleText, whatIfHref, type InsightScope } from "./nav";
 import type { InsightTrade, StreakTrade } from "./model";
+import { winRateOf } from "@/lib/trade-math";
 
 const PHONE_CAPSULES = 10;
 
@@ -172,7 +173,7 @@ export function StreakTile({ trades, scope, variant }: { trades: readonly Insigh
         <DetailGrid
           items={[
             { label: t("detail.trades"), value: n },
-            { label: t("detail.winRate"), value: fmtRate(wins.length + losses.length ? wins.length / (wins.length + losses.length) : null) },
+            { label: t("detail.winRate"), value: fmtRate(winRateOf(wins.length, losses.length)) },
             { label: t("detail.net"), value: <span className={toneText(tone(nets.reduce((a, b) => a + b, 0)))}>{usd(nets.reduce((a, b) => a + b, 0))}</span> },
             { label: t("detail.avgWin"), value: <span className="text-up">{usd(avg(wins))}</span> },
             { label: t("detail.avgLoss"), value: <span className="text-down">{usd(avg(losses))}</span> },

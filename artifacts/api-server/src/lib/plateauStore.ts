@@ -14,6 +14,7 @@
  * Staff-only data: nothing here is ever sent to the trader («you are stuck» is never shown to a junior).
  */
 import { pool } from "@workspace/db";
+import { closeDateSql, netPnlSql } from "./coreMetrics/kpi";
 import { nyDate, addDays } from "./tradingDate";
 import { setting } from "./settings/registry";
 import { loadCriteria } from "./academyPathStore";
@@ -56,9 +57,9 @@ type DayRow = { trader: string; day: string; net: number; fees: number; gross: n
 async function dailyRows(traders: readonly string[], asOf: string, db: Queryable): Promise<DayRow[]> {
   if (!traders.length) return [];
   const { rows } = await db.query(
-    `SELECT trader, LEFT(COALESCE(exit_date, date), 10) AS day,
-            SUM(pnl - ABS(COALESCE(fees, 0)))::float AS net, SUM(ABS(COALESCE(fees, 0)))::float AS fees, SUM(pnl)::float AS gross
-       FROM trades
+    `SELECT t.trader, LEFT(${closeDateSql("t")}, 10) AS day,
+            SUM(${netPnlSql("t")})::float AS net, SUM(ABS(COALESCE(t.fees, 0)))::float AS fees, SUM(t.pnl)::float AS gross
+       FROM trades t
       WHERE deleted_at IS NULL AND pnl IS NOT NULL AND LOWER(TRIM(result)) <> 'open' AND trader = ANY($1::text[])
         AND LEFT(COALESCE(exit_date, date), 10) <= $2
       GROUP BY 1, 2`,

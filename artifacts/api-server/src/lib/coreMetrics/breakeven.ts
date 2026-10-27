@@ -36,12 +36,19 @@ export function edgeMargin(nets: readonly (number | null | undefined)[]): EdgeMa
   if (w < MIN_SIDE || l < MIN_SIDE) return null;
   const avgWin = sumW / w, avgLoss = sumL / l;
   const wr = w / (w + l);
-  const be = 1 / (1 + avgWin / Math.abs(avgLoss));
+  const be = breakevenWinRate(avgWin, avgLoss) ?? 0;
   return { wins: w, losses: l, winRate: round(wr * 100), avgWin: round(avgWin), avgLoss: round(avgLoss), breakevenWr: round(be * 100), marginPp: round((wr - be) * 100) };
+}
+
+/** The breakeven win rate (share 0…1) of a payoff: 1 / (1 + avgWin / |avgLoss|); null without a win and a loss. */
+export function breakevenWinRate(avgWin: number, avgLoss: number): number | null {
+  if (!(avgWin > 0) || !(avgLoss < 0)) return null;
+  return 1 / (1 + avgWin / Math.abs(avgLoss));
 }
 
 /** The same from summary numbers (win rate as a share 0…1, average win, average loss). */
 export function edgeMarginOf(winRate: number, avgWin: number, avgLoss: number): number | null {
-  if (!(avgWin > 0) || !(avgLoss < 0) || !(winRate >= 0 && winRate <= 1)) return null;
-  return round((winRate - 1 / (1 + avgWin / Math.abs(avgLoss))) * 100);
+  const be = breakevenWinRate(avgWin, avgLoss);
+  if (be == null || !(winRate >= 0 && winRate <= 1)) return null;
+  return round((winRate - be) * 100);
 }

@@ -13,7 +13,7 @@
  */
 import type { Trade } from "@workspace/api-client-react";
 import { classifyPnl } from "@/lib/appearance/be-range";
-import { closeDate, horizonOf, isOpen, netPnl } from "@/lib/trade-math";
+import { closeDate, horizonOf, isOpen, netPnl, winRateOf } from "@/lib/trade-math";
 import { visualResult } from "@/lib/trade-result";
 import { median } from "@/lib/stats-lite";
 import {
@@ -152,7 +152,7 @@ export const round2 = (n: number) => Math.round(n * 100) / 100;
 export const closedOnly = (trades: readonly InsightTrade[]) => trades.filter((t) => !isOpen(t) && netPnl(t) != null);
 
 /** Win rate W / (W + L); null without decided trades. */
-export const winRateOfBucket = (b: Bucket): number | null => (b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : null);
+export const winRateOfBucket = (b: Bucket): number | null => (winRateOf(b.wins, b.losses));
 
 /**
  * day_seq / prev_kind for rows that lack them (older API): the trader-day ordered by entry second (unknown last),
