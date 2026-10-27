@@ -3,6 +3,7 @@
  *
  *   GET    /notifications                      inbox page: { items, nextCursor, total? }  (filters below)
  *            ?unread=1            only unread
+ *            ?q=text              title / message contains (case-insensitive, ≤ 100 chars)
  *            ?type=a,b            canonical types (legacy spellings matched automatically)
  *            ?severity=info,warn,critical
  *            ?since=ISO           created after this instant
@@ -10,7 +11,7 @@
  *            ?cursor=…            opaque keyset cursor from the previous page
  *            ?limit=30            1..100
  *            ?trader=Имя          staff only — inspect someone else's inbox
- *   GET    /notifications/count                { unread, critical, warn } — bell badge (poll every 30–60 s)
+ *   GET    /notifications/count                { unread, critical, warn, ownStop } — bell badge (poll every 30–60 s)
  *   GET    /notifications/types                registry for filters / preferences UI
  *   GET    /notifications/prefs                { prefs: [{ type, inApp, muteUntil }], muteAllUntil }
  *   PUT    /notifications/prefs                body { prefs: [...], muteAllUntil?: ISO|null }
@@ -134,17 +135,20 @@ function parseId(raw: string): number | null {
 
 router.get("/notifications/count", asyncHandler(async (req, res): Promise<void> => {
   const trader = await resolveTarget(req);
-  if (!trader) { res.json({ unread: 0, critical: 0, warn: 0 }); return; }
-  const { rows } = await pool.query<{ unread: string; critical: string; warn: string }>(
+  if (!trader) { res.json({ unread: 0, critical: 0, warn: 0, ownStop: 0 }); return; }
+  // ownStop: the reader's own risk stop (entity risk / "<trader>:<date>") — the dashboard hero is its one place, so the
+  // bell and the day plan do not repeat it as a critical alarm (design audit wave 2). Curators' alerts about wards stay.
+  const { rows } = await pool.query<{ unread: string; critical: string; warn: string; own_stop: string }>(
     `SELECT COUNT(*) AS unread,
             COUNT(*) FILTER (WHERE severity = 'critical') AS critical,
-            COUNT(*) FILTER (WHERE severity = 'warn') AS warn
+            COUNT(*) FILTER (WHERE severity = 'warn') AS warn,
+            COUNT(*) FILTER (WHERE severity = 'critical' AND entity_type = 'risk' AND LEFT(entity_id, LENGTH(user_name) + 1) = user_name || ':') AS own_stop
        FROM notifications
       WHERE user_name = $1 AND is_read = FALSE AND read_at IS NULL AND archived_at IS NULL`,
     [trader],
   );
   const r = rows[0];
-  res.json({ unread: Number(r?.unread ?? 0), critical: Number(r?.critical ?? 0), warn: Number(r?.warn ?? 0) });
+  res.json({ unread: Number(r?.unread ?? 0), critical: Number(r?.critical ?? 0), warn: Number(r?.warn ?? 0), ownStop: Number(r?.own_stop ?? 0) });
 }));
 
 router.get("/notifications/types", asyncHandler(async (req, res): Promise<void> => {
@@ -204,6 +208,12 @@ router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
 
   const unread = req.query["unread"];
   if (unread === "1" || unread === "true") where.push(`is_read = FALSE AND read_at IS NULL`);
+
+  const qRaw = typeof req.query["q"] === "string" ? req.query["q"].trim().slice(0, 100) : "";
+  if (qRaw) {
+    params.push(`%${qRaw.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
+    where.push(`(COALESCE(title, '') ILIKE $${params.length} OR message ILIKE $${params.length})`);
+  }
 
   const types = parseList(req.query["type"]);
   if (types.length) where.push(add(`type = ANY(?::text[])`, expandTypeFilter(types)));

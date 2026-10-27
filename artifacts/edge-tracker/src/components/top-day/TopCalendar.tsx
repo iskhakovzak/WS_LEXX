@@ -156,7 +156,7 @@ function DayCell({ date, stats, maxAbs, muted, holiday, today, selected, onSelec
         {Number(date.slice(8))}
       </span>
       {traded && (
-        <span className={cn("max-w-full truncate px-0.5 text-[10px] leading-none tabular-nums", selected ? "text-primary-foreground/90" : net != null ? toneText(toneOf(net)) : "text-muted-foreground")}>
+        <span className={cn("max-w-full truncate px-0.5 text-2xs leading-none tabular-nums", selected ? "text-primary-foreground/90" : net != null ? toneText(toneOf(net)) : "text-muted-foreground")}>
           {net != null ? fmtCompact(net, { signed: true }) : stats.traders}
         </span>
       )}

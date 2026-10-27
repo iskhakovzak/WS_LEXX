@@ -220,7 +220,7 @@ function RailLink({ item, ctx, label, icon, small, self, within }: {
               <span aria-hidden="true" className={cn("absolute right-0.5 top-0.5 h-2 w-2 rounded-full ring-2 ring-background", DOT_CLS[badge.tone])} />
             )}
             {ctx.go && item.goKey && (
-              <span aria-hidden="true" className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-primary-solid px-1 text-[10px] font-semibold leading-none text-primary-foreground">
+              <span aria-hidden="true" className="absolute -bottom-1.5 -right-1.5 grid h-[1.125rem] min-w-[1.125rem] place-items-center rounded-full bg-primary-solid px-1 text-2xs font-semibold leading-none text-primary-foreground">
                 {item.goKey.toUpperCase()}
               </span>
             )}

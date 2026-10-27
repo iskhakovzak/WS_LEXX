@@ -105,9 +105,13 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   const token = await signToken({ id: user.id, name: user.name, role: user.role }, { pwc });
   // Renamed by an admin (lib/people/renameUser): the browser moves its name-keyed storage from these to the new name.
   const formerNames = await formerNamesOf(pool, user.id).catch(() => [] as string[]);
+  // The saved interface language: the client applies it before its first authenticated request, so a new device never
+  // shows server texts (curator next steps, risk states) in the browser's language first.
+  const locale = await localeOfUser(user.id).catch(() => null);
   res.json({
     token,
     user: { id: user.id, name: user.name, role: user.role },
+    ...(locale ? { locale } : {}),
     ...(formerNames.length ? { formerNames } : {}),
     mustChangePassword: pwc,
     ...(pwc ? { mustChangeReason: user.must_change_secret ? "first" : "policy" } : {}),

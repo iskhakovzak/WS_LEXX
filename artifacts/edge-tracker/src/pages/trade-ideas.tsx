@@ -315,6 +315,7 @@ export default function TradeIdeas() {
 
   const anim = reduceMotion ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] as const } };
 
+  const noIdeas = !isLoading && !isError && ideas.length === 0;
   return (
     <Page>
       <PageHeader
@@ -336,6 +337,8 @@ export default function TradeIdeas() {
         }
       />
 
+      {/* An empty page shows its empty state alone: no KPI row of zeros and no filters until the first idea (design audit). */}
+      {!noIdeas && <>
       <StatGrid>
         <StatCard
           label={isReviewer ? t("page.awaitingReview") : t("page.onReview")}
@@ -454,12 +457,13 @@ export default function TradeIdeas() {
           {trackingFetching && <span className="text-2xs text-muted-foreground">{t("page.updatingPrices")}</span>}
         </div>
       )}
+      </>}
 
       {isLoading && <BoardSkeleton />}
 
       {isError && <ErrorState title={t("page.loadFailed")} error={error} onRetry={refetch} />}
 
-      {!isLoading && !isError && ideas.length === 0 && (
+      {noIdeas && (
         <Panel>
           <EmptyState
             icon={Lightbulb}

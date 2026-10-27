@@ -146,11 +146,11 @@ function RouteTitle() {
   return null;
 }
 
-/** «Сводка автора» is behind the desk switch nav.authorNotes (Волна 2 п. 2.15, default off): off → the 404 page. */
+/** «Сводка автора» is behind the desk switch nav.authorNotes (Волна 2 п. 2.15, default off): off → «Раздел выключен администратором». */
 function AuthorNotesRoute() {
   const { permissions, permissionsLoaded } = useAuth();
   if (!permissionsLoaded) return <PageFallback />;
-  return navFeatureOn("authorNotes", permissions.nav) ? <AuthorNotes /> : <NotFound />;
+  return navFeatureOn("authorNotes", permissions.nav) ? <AuthorNotes /> : <SectionBlocked section="/author-notes" reason="off" />;
 }
 
 function Router() {

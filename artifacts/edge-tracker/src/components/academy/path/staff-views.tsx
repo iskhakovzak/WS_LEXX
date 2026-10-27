@@ -40,7 +40,7 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
         {" · "}<span className={cn(f.totals.ready > 0 && "font-semibold text-up")}>{t("funnel.ready", { count: f.totals.ready })}</span>
         {" · "}{t("funnel.pending", { count: f.totals.pending })}
       </p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": f.columns.length } as React.CSSProperties}>
+      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": f.columns.length } as React.CSSProperties}>
         {f.columns.map((col) => (
           <Panel key={col.key} title={col.key === "none" ? t("stage.unassigned") : (
             <span className="inline-flex min-w-0 items-center gap-2"><StageMedal stage={col.key} size={28} decorative /><span className="truncate">{stageName(f.stages, col.key)}</span></span>

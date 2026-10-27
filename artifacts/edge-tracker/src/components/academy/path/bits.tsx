@@ -42,7 +42,8 @@ export function StageLadder({ stages, current, readyFor, counts }: {
               state === "current" && "border-primary/60 bg-primary/10",
               state === "done" && "border-up/30 bg-up/5",
               state === "next" && (readyFor === s.key ? "border-up/60 bg-up/10" : "border-[var(--field-border)] bg-[var(--glass-bg)]"),
-              state === "locked" && cn("border-[var(--field-border)]", !counts && "opacity-70"),
+              // Locked steps get the panel material too (over a photo they were bare text); only the content is dimmed.
+              state === "locked" && cn("border-[var(--field-border)] bg-[var(--glass-bg)]", !counts && "[&>*]:opacity-70"),
             )}
           >
             <div className="flex items-center justify-between gap-2">

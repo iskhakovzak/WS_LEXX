@@ -7,7 +7,7 @@ import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { Moon, RefreshCw, ShieldAlert } from "lucide-react";
-import { EmptyLink, EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, Panel, SectionTabs } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,11 @@ export default function RiskPage() {
   const view: View = focusAlert != null && me ? "me"
     : isCurator ? (stored === "me" && !me ? "desk" : stored)
     : stored === "overnight" ? "overnight" : "me";
+  const viewTabs: { value: View; label: string }[] = [
+    ...(isCurator ? [{ value: "desk" as const, label: commonI18n.t("trading.desk") }] : []),
+    { value: "overnight", label: t("page.title.overnight") },
+    ...(me ? [{ value: "me" as const, label: t("page.title.me") }] : []),
+  ];
   const qc = useQueryClient();
   // The slow catalyst lookups (offerings watch, earnings calendar) fill chips in the background; they must not keep
   // the refresh button spinning for seconds after the book itself is in.
@@ -77,21 +82,14 @@ export default function RiskPage() {
               <Button variant="outline" size="icon" onClick={refresh} aria-label={t("page.refreshAria")} disabled={fetching}>
                 <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
               </Button>
-              <Segmented
-                ariaLabel={t("page.viewAria")}
-                value={view}
-                onChange={setView}
-                options={[
-                  ...(isCurator ? [{ value: "desk", label: commonI18n.t("trading.desk") }] : []),
-                  { value: "overnight", label: t("page.title.overnight") },
-                  ...(me ? [{ value: "me", label: t("page.title.me") }] : []),
-                ]}
-              />
               <HelpButton id={view === "desk" ? "riskDesk" : "risk"} />
             </>
           ) : undefined
         }
-      />
+      >
+        {/* The views are the page's tabs: under the title, not squeezed into its row (design audit wave 2). */}
+        {signedIn && viewTabs.length > 1 && <SectionTabs ariaLabel={t("page.viewAria")} value={view} onChange={setView} tabs={viewTabs} />}
+      </PageHeader>
       {signedIn && <PageHint key={view === "desk" ? "riskDesk" : "risk"} id={view === "desk" ? "riskDesk" : "risk"} />}
       {/* Today's desk regime next to the limits it scales: name, playbook hint, multiplier, the suggested day limit. */}
       {signedIn && <RegimeDayView variant="strip" />}

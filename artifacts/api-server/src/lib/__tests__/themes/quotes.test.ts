@@ -215,6 +215,21 @@ describe("getThemes cache", () => {
     expect([next.asOf, next.themes[0]!.today]).toEqual([new Date(RTH_NOON + 40_000).toISOString(), 7]);
   });
 
+  it("a cold start waits at most coldWaitMs, then answers `warming` without numbers", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    restore = setThemeServiceDeps({
+      now: () => RTH_NOON, loadThemes: async () => THEMES, isClosed: async () => false, coldWaitMs: 20,
+      fetchQuotes: async () => { await gate; return { source: "yahoo", quotes: quotes(5) }; },
+    });
+    const r = await getThemes();
+    expect([r.warming, r.asOf]).toEqual([true, null]);
+    release();
+    await flush();
+    const next = await getThemes();
+    expect([next.warming, next.themes[0]!.today]).toEqual([undefined, 5]);
+  });
+
   it("single-flight: concurrent requests share one refresh", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });

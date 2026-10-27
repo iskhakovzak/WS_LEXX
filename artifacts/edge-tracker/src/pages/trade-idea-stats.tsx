@@ -165,9 +165,11 @@ export default function TradeIdeaStats() {
         description={byPrice ? t("stats.descriptionPrice") : t("stats.descriptionTrades")}
         actions={
           <>
-            <Button variant="ghost" size="sm" className="gap-1.5" onClick={exportCsv} disabled={authors.length === 0}>
-              <Download className="h-4 w-4" aria-hidden="true" /> CSV
-            </Button>
+            {authors.length > 0 && (
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={exportCsv}>
+                <Download className="h-4 w-4" aria-hidden="true" /> CSV
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setLocation("/trade-ideas")}>
               <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("stats.backToIdeas")}
             </Button>
@@ -288,10 +290,8 @@ export default function TradeIdeaStats() {
                         <button
                           type="button"
                           onClick={() => (byPrice ? setLocation(`/trade-ideas?idea=${i.id}`) : i.linkedTrade && setLocation(links.trade(i.linkedTrade.id)))}
-                          className={cn(
-                            "flex w-full items-center gap-3 rounded-xl border-l-2 px-3 py-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)]",
-                            (i.r ?? 0) >= 0 ? "border-l-up/60" : "border-l-down/60",
-                          )}
+                          // The R on the right carries the sign colour; no coloured side stripe (design audit detector).
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)]"
                           aria-label={t(byPrice ? "stats.openIdeaAria" : "stats.openTradeAria", { ticker: i.ticker, r: fmtR(i.r) })}
                         >
                           <span className="w-4 text-xs text-muted-foreground tabular-nums">{idx + 1}</span>

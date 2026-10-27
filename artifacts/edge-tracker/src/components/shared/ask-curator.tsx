@@ -52,7 +52,11 @@ export function openRequestOf(list: readonly CuratorRequest[] | undefined, kind:
 }
 
 /** `link` — kind «review» only: the thread the curator is asked to review (reviewLink). */
-export function AskCuratorButton({ kind, link = null, className, size = "sm" }: { kind: RequestKind; link?: string | null; className?: string; size?: "sm" | "xs" }) {
+export function AskCuratorButton({ kind, link = null, className, size = "sm", label, prefill }: {
+  kind: RequestKind; link?: string | null; className?: string; size?: "sm" | "xs";
+  /** Already translated button text / message instead of the kind's own (e.g. «Написать куратору» on a stop). */
+  label?: string; prefill?: string;
+}) {
   const { t } = askCuratorI18n.useT();
   const { user } = useAuth();
   const member = !!user && user.role !== "guest";
@@ -88,9 +92,9 @@ export function AskCuratorButton({ kind, link = null, className, size = "sm" }: 
     <>
       <Button
         type="button" variant="outline" size="sm" className={cn(btn, className)}
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMessage(t(`prefill.${kind}`)); setOpen(true); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMessage(prefill ?? t(`prefill.${kind}`)); setOpen(true); }}
       >
-        <MessageCircleQuestion className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{t(`button.${kind}`)}
+        <MessageCircleQuestion className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{label ?? t(`button.${kind}`)}
       </Button>
       <Dialog open={open} onOpenChange={(v) => { if (!send.isPending) setOpen(v); }}>
         <DialogContent className="sm:max-w-md">

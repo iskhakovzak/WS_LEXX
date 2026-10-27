@@ -198,6 +198,15 @@ export default {
     noteRestoreFor: "восстановил заметку о {trader}",
     lockout: "вход заблокирован на {minutes} мин",
     logoutOthers: "вышел на всех других устройствах",
+    screenLock: "заблокировал экран",
+    screenUnlock: "разблокировал экран",
+    screenUnlockWith: { quick_code: "кодом", password: "паролем" },
+    screenUnlockFailed: "неверный код разблокировки",
+    screenUnlockLeft: "осталось попыток: {count}",
+    screenUnlockSignedOut: "сеанс завершён после неверных кодов разблокировки",
+    quickCodeSet: "задал код быстрой разблокировки",
+    quickCodeChange: "сменил код быстрой разблокировки",
+    quickCodeRemove: "убрал код быстрой разблокировки",
 
     /** Unknown action: «удалил: widget». */
     fallbackVerb: "{verb}: {subject}",

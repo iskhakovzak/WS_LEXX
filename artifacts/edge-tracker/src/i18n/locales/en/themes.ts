@@ -61,6 +61,14 @@ export default {
   openTheme: "Open theme {name}",
   sheetDesc: "The theme's tickers, equal weight. Click a column header to sort.",
   missing: "No data: {list}",
+  warming: {
+    title: "Loading quotes",
+    desc: "The first theme calculation after a server start takes up to a minute. The page will refresh by itself.",
+  },
+  slow: {
+    title: "Themes didn’t load",
+    desc: "The server didn’t answer within 9 seconds. Try again.",
+  },
   noData: {
     title: "No quotes",
     desc: "The quote source is unavailable right now. The page will refresh by itself.",

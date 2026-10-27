@@ -180,8 +180,9 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           <span>{t("desk.allOk")}</span>
         </p>
       ) : (
-        <StatGrid cols={4}>
+        <StatGrid cols={4} allClear>
           <StatCard
+            fold={false}
             label={t("desk.kpiPnl")}
             icon={Wallet}
             value={s.pnlNetToday != null ? <LiveNumber value={s.pnlNetToday} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} countIn countInDuration={600} /> : "—"}

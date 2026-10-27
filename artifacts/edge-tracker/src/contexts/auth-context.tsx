@@ -6,6 +6,7 @@ import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { AUTH_EXPIRED_EVENT } from "@/lib/install-fetch-auth";
 import { toast } from "@/hooks/use-toast";
 import { shellI18n } from "@/i18n/ns/shell";
+import { isLang, setLang, LANG_PENDING_KEY } from "@/i18n";
 import { canWith, defaultPermissions, type Capability, type PermissionsMe, type Target } from "@/lib/permissions";
 
 export type UserRole = "trader" | "curator" | "admin" | "guest";
@@ -136,6 +137,10 @@ async function requestGuestToken(): Promise<{ token: string } | LoginError> {
   } catch {
     return "network";
   }
+}
+
+function langPending(): boolean {
+  try { return localStorage.getItem(LANG_PENDING_KEY) === "1"; } catch { return false; }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -316,7 +321,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         mustChangePassword?: boolean;
         mustChangeReason?: "first" | "policy";
         secretPolicy?: { min?: number };
+        /** The saved interface language (users.locale). */
+        locale?: string;
       };
+      // The profile language first (design audit wave 2): every request of the new session — server texts such as the
+      // curator's «На стопе — связаться…» — goes out with it, not with the browser's language. A choice made on the
+      // login page itself (pending) wins and is saved to the profile by LocaleSync instead.
+      if (isLang(data.locale) && !langPending()) await setLang(data.locale, { source: "profile" }).catch(() => undefined);
       await runBeforeEnter(opts, !!data.mustChangePassword);
       _currentToken = data.token;
       // Persist synchronously so raw fetch() calls fired by the first authenticated render carry the token.
@@ -329,6 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         mustChangePassword: !!data.mustChangePassword,
         mustChangeReason: data.mustChangePassword ? data.mustChangeReason : undefined,
         secretMin: data.secretPolicy?.min,
+        profileLocale: typeof data.locale === "string" ? data.locale : undefined,
       });
       return null;
     } catch {

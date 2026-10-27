@@ -291,8 +291,8 @@ export default {
     all: "Hammasi",
     newMeeting: "1:1 uchrashuv",
     loadFailed: "Mentor panelini yuklab boʻlmadi",
-    noCohorts: "Hali guruh yoʻq",
-    noCohortsDesc: "Guruh yarating va talabalarni roʻyxatga oling.",
+    noCohorts: "Siz hech bir guruhga ustozlik qilmaysiz",
+    noCohortsDesc: "Bu yerda siz ustoz boʻlgan guruhlar talabalari chiqadi. Guruh ustozi guruhlar sahifasida belgilanadi.",
     toCohorts: "Guruhlarga",
     notAssigned: "Siz hech bir guruhga mentor etib tayinlanmagansiz — deskning barcha guruhlari koʻrsatilmoqda.",
     kpi: {

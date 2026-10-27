@@ -222,9 +222,11 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}>
-              <Download /> CSV
-            </Button>
+            {rows.length > 0 && (
+              <Button variant="outline" size="sm" onClick={exportCsv}>
+                <Download /> CSV
+              </Button>
+            )}
           </>
         }
       >

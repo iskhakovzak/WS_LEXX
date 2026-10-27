@@ -6,6 +6,7 @@ import type * as React from "react";
 import { Flame } from "lucide-react";
 import { Link } from "wouter";
 import { AwardCoin, StageMedal, medalStageName, medalStageOf } from "@/components/shared/medals";
+import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
 import { personInitials, personName } from "@/i18n";
@@ -33,6 +34,7 @@ export function ProfileHero({ profile, actions }: { profile: ProfileResponse; ac
   const p = profile.person;
   const stage = medalStageOf(p.stage);
   const role = profileI18n.tryT(`role.${p.role}`) ?? p.role;
+  const staff = p.role === "admin" || p.role === "curator";
   const facts: React.ReactNode[] = [
     p.curator ? t("hero.curator", { name: personName(p.curator) }) : p.role === "trader" ? t("hero.noCurator") : null,
     p.mentor ? t("hero.mentor", { name: personName(p.mentor) }) : null,
@@ -51,8 +53,9 @@ export function ProfileHero({ profile, actions }: { profile: ProfileResponse; ac
             <h1 className="type-display text-foreground [overflow-wrap:anywhere]">{personName(p.name)}</h1>
             {p.self && <span className="rounded-full bg-primary/12 px-2 py-0.5 text-xs font-medium text-accent-soft">{t("you")}</span>}
           </div>
+          {/* The ladder stage with its medal is the person's level («Джун · с 1 сент.»); the access role is a separate small
+              badge, only for staff — «Трейдер · Джун» read as two stages (design audit wave 2). */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">{role}</span>
             {stage && (
               <span className="inline-flex items-center gap-1.5">
                 <StageMedal stage={stage} size={22} decorative />
@@ -60,6 +63,7 @@ export function ProfileHero({ profile, actions }: { profile: ProfileResponse; ac
                 {p.stageSince && <span>· {fmtDate(p.stageSince, "dayMonth")}</span>}
               </span>
             )}
+            {staff && <Pill tone="neutral">{role}</Pill>}
           </div>
           <p className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
             {facts.map((f, i) => <Fact key={i}>{f}</Fact>)}
@@ -68,7 +72,7 @@ export function ProfileHero({ profile, actions }: { profile: ProfileResponse; ac
         {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>}
       </div>
 
-      <p className="max-w-4xl border-l-2 border-primary pl-4 text-base leading-relaxed text-foreground sm:text-lg">{summaryText(profile.summary)}</p>
+      <p className="max-w-4xl text-base leading-relaxed text-foreground sm:text-lg">{summaryText(profile.summary)}</p>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className={cn("inline-flex items-center gap-2 text-sm", streak.current ? "text-foreground" : "text-muted-foreground")}>

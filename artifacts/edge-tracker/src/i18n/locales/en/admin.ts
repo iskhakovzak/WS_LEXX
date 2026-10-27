@@ -129,7 +129,7 @@ export default {
     unavailable: "Integration status unavailable.",
     lastSync: "Last sync",
     never: "not yet",
-    status: { ok: "success", running: "running", partial: "partial", error: "error" },
+    status: { ok: "success", running: "running", partial: "partial", error: "error", stale: "stale" },
     fromFile: "From file",
     viaApi: "Via API",
     runCounts: "+{inserted} · updated {updated}",

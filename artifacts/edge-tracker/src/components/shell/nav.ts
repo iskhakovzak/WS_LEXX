@@ -150,7 +150,9 @@ export const NAV_GROUPS: NavGroup[] = [
       nav("authorNotes", { href: "/author-notes", icon: Mic, keywords: "author notes авторская сводка", feature: "authorNotes" }),
       // Волна 1, item 1.20: the day's desk news and manual posts are on the desk plan; the full feeds stay, last.
       nav("dailyFeed", { href: "/dailyfeed", icon: Newspaper, keywords: "daily feed дневная лента тема дня" }),
-      nav("activity", { href: "/activity", icon: Activity, keywords: "activity лента активности" }),
+      // Design audit wave 2: the team feed is the «Команда» tab of /notifications; /activity redirects there. The item
+      // stays (hidden) so old links keep a title and «Доступ по ступеням» can still close the section.
+      nav("activity", { href: "/activity", icon: Activity, keywords: "activity лента активности команда", hidden: true }),
       // Item 1.5: the evening summary is the journal's «Закрыть день»; the old page only reads past notes (legacy).
       nav("juniorNotes", { href: "/junior-notes", icon: NotebookText, keywords: "junior notes джуны", hidden: true }),
     ] }),

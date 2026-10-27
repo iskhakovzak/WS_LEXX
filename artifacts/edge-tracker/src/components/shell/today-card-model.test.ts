@@ -11,7 +11,7 @@ afterEach(async () => {
 
 const base: RiskToday = {
   status: "ok", alerts: 0, halted: false, haltedBy: null, pnlNet: null, trades: 0,
-  dailyUsedPct: 0, dailyRemainingUsd: 500, hasLimits: true, live: null,
+  dailyUsedPct: 0, dailyRemainingUsd: 500, hasLimits: true, weekTrades: 0, live: null,
 };
 const open = { closed: false, reason: null };
 const weekend = { closed: true, reason: null };
@@ -37,10 +37,14 @@ describe("todayCardModel", () => {
   });
 
   it("halted on a trading day: red, named by the stop", () => {
-    const m = todayCardModel({ ...base, halted: true, haltedBy: "drawdown", status: "breach" }, open);
+    const m = todayCardModel({ ...base, halted: true, haltedBy: "drawdown", status: "breach" }, open, { trader: true });
     expect(m.tone).toBe("down");
     expect(m.limitAlarm).toBe(true);
     expect(m.limitLine).toBe("Макс. просадка: торговля остановлена");
+    // Not a trader and no trades this week (a staff account with an old drawdown): a quiet fact, no red footer.
+    const idle = todayCardModel({ ...base, halted: true, haltedBy: "drawdown", status: "breach" }, open);
+    expect(idle.limitAlarm).toBe(false);
+    expect(idle.limitLine).toBe("Макс. просадка — подробности в риск-деске");
   });
 
   it("a weekend: neutral wording, no meter, never a red halt", () => {

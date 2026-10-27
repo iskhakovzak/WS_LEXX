@@ -6,11 +6,15 @@
  * when trading is really stopped today. On a weekend or a full-day market holiday the card reads neutrally
  * («Рынок закрыт», «Рынок закрыт · <holiday>»; a stop as «… — статус к следующей сессии»), never a Saturday alarm,
  * and the daily meter is left out (nothing can be used on a closed day).
+ *
+ * The red halt is only for a person who is really stopped: a trader, or anyone who traded this week (design audit
+ * wave 2: an admin with an old drawdown and no trades saw «торговля остановлена» on every screen). Otherwise the stop
+ * is a quiet fact; the dashboard hero is the one place of the alarm either way.
  */
 import { fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
-import type { RiskToday } from "./use-shell-badges";
+import { idleHalt, type RiskToday } from "./use-shell-badges";
 
 export type TodayTone = "down" | "warn" | "ok";
 
@@ -37,7 +41,7 @@ export type TodayCardModel = {
 
 const STOP_KEY = { stop: "daily", weekly: "weekly", drawdown: "drawdown" } as const;
 
-export function todayCardModel(risk: RiskToday, day: MarketDay): TodayCardModel {
+export function todayCardModel(risk: RiskToday, day: MarketDay, opts: { trader?: boolean } = {}): TodayCardModel {
   const t = shellI18n.t;
   const net = risk.pnlNet ?? 0;
   const pnl = risk.trades > 0 || risk.pnlNet != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : null;
@@ -59,9 +63,12 @@ export function todayCardModel(risk: RiskToday, day: MarketDay): TodayCardModel 
     };
   }
 
-  const tone: TodayTone = risk.halted || risk.status === "breach" ? "down" : risk.status === "warn" ? "warn" : "ok";
+  const idle = idleHalt(risk, !!opts.trader);
+  const tone: TodayTone = idle ? "ok" : risk.halted || risk.status === "breach" ? "down" : risk.status === "warn" ? "warn" : "ok";
   const usedPct = risk.dailyUsedPct == null ? null : Math.max(0, Math.min(100, risk.dailyUsedPct));
-  const limitLine = risk.halted
+  const limitLine = idle
+    ? t("today.haltedIdle", { stop: t(`today.stop.${STOP_KEY[risk.haltedBy ?? "stop"]}`) })
+    : risk.halted
     ? t(risk.haltedBy === "drawdown" ? "today.haltedDrawdown" : risk.haltedBy === "weekly" ? "today.haltedWeekly" : "today.halted")
     : risk.dailyRemainingUsd != null ? t("today.toStop", { amount: fmtUsd(risk.dailyRemainingUsd, { decimals: "trim" }) }) : null;
   return {

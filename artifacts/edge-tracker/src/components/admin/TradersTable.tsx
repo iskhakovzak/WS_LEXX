@@ -246,11 +246,11 @@ export function TradersTable({
       title={t("activity.title")}
       description={pulse ? t("activity.description", { date: pulse.date }) : undefined}
       icon={Users}
-      actions={
-        <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}>
+      actions={rows.length > 0 ? (
+        <Button variant="outline" size="sm" onClick={exportCsv}>
           <Download /> CSV
         </Button>
-      }
+      ) : undefined}
     >
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">

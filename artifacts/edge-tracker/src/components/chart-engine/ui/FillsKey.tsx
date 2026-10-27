@@ -74,7 +74,7 @@ function Switch({ on, onChange, title, children }: { on: boolean; onChange: (on:
       title={title}
       onClick={() => onChange(!on)}
       className={cn(
-        "rounded-full border px-1.5 py-px text-[10px] transition-colors",
+        "rounded-full border px-1.5 py-px text-2xs transition-colors",
         on ? "border-primary/50 bg-primary/15 text-foreground" : "border-border/70 text-muted-foreground hover:text-foreground",
       )}
     >

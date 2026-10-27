@@ -286,6 +286,8 @@ export function StatCard({
 }: {
   label: React.ReactNode;
   value: React.ReactNode;
+  /** false: a measure (P&L, exposure), not a problem counter — never folded into a StatGrid's «Всё чисто». */
+  fold?: boolean;
   tone?: Tone;
   hint?: React.ReactNode;
   delta?: React.ReactNode;
@@ -421,10 +423,15 @@ export function StatGrid({
   let items = React.Children.toArray(children);
   const cleared: React.ReactNode[] = [];
   if (allClear) {
+    // Cards passed inside a fragment (`loading ? skeletons : <>…</>`) are folded too.
+    type Child = ReturnType<typeof React.Children.toArray>[number];
+    const flat = (nodes: Child[]): Child[] => nodes.flatMap((c) =>
+      React.isValidElement(c) && c.type === React.Fragment ? flat(React.Children.toArray((c.props as { children?: React.ReactNode }).children)) : [c]);
+    items = flat(items);
     items = items.filter((c) => {
       if (!React.isValidElement(c) || c.type !== StatCard) return true;
       const p = c.props as React.ComponentProps<typeof StatCard>;
-      if (p.loading || !isZeroValue(p.value)) return true;
+      if (p.loading || p.fold === false || !isZeroValue(p.value)) return true;
       cleared.push(p.label);
       return false;
     });
@@ -435,7 +442,9 @@ export function StatGrid({
       className={cn(
         "grid grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),1fr))]",
         strip ? "glass-panel overflow-hidden rounded-2xl" : "stagger-in gap-grid",
-        fixed,
+        // Folded cards leave fewer cells than `cols`: the strip shrinks to the cards that are left (one or two numbers
+        // never stretch across the page) and no fixed column count leaves empty cells.
+        cleared.length ? "w-fit max-w-full grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),max-content))]" : fixed,
         className,
       )}
       style={{ "--stat-min": min } as React.CSSProperties}

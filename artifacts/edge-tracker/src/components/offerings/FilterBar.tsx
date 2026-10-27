@@ -189,9 +189,11 @@ export function FilterBar({
         {loading
           ? <span aria-hidden="true" className="skeleton block h-3 w-8" />
           : <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{shown === total ? `${total}` : commonI18n.t("states.ofTotal", { value: shown, total })}</span>}
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onExport} disabled={!canExport} aria-label={t("filters.downloadCsv")} title={t("filters.downloadCsv")}>
-          <Download aria-hidden="true" />
-        </Button>
+        {canExport && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onExport} aria-label={t("filters.downloadCsv")} title={t("filters.downloadCsv")}>
+            <Download aria-hidden="true" />
+          </Button>
+        )}
       </div>
     </Toolbar>
   );

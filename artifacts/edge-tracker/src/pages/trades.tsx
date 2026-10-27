@@ -604,9 +604,9 @@ export default function Trades() {
                 <p className="pt-2 text-xs text-muted-foreground">{tt("page.shortcuts.hint")}</p>
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" className="hidden gap-1.5 md:inline-flex" disabled={!total || exporting} onClick={() => void exportAll()} aria-label={tt("page.exportAria", { count: total })}>
+            {(total > 0 || exporting) && <Button variant="outline" size="sm" className="hidden gap-1.5 md:inline-flex" disabled={exporting} onClick={() => void exportAll()} aria-label={tt("page.exportAria", { count: total })}>
               {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />} CSV
-            </Button>
+            </Button>}
           </>
         }
       />

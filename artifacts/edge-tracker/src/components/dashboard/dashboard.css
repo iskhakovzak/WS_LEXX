@@ -275,9 +275,8 @@ body.dash-dragging * { cursor: grabbing !important; user-select: none; }
   gap: 0.25rem;
   padding: 0 0.5rem;
   border-radius: 999px;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
-  letter-spacing: 0.02em;
 }
 .dash-handle:focus-visible,
 .dash-remove:focus-visible,

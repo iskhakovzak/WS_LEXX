@@ -158,7 +158,7 @@ export type AttentionPanelProps = {
   events: EventsToday | null | undefined;
   /** Macro calendar for today (OPEX, CPI, holidays…). */
   marketEvents: { name: string; type?: string | null; importance?: string | null }[];
-  unread: { unread: number; critical: number; warn: number } | undefined;
+  unread: { unread: number; critical: number; warn: number; ownStop?: number } | undefined;
   /** True until every input above has answered (the task count would otherwise jump as they arrive). */
   isLoading: boolean;
   updatedAt?: number;
@@ -352,7 +352,10 @@ export function AttentionPanel({
   }
 
   // ── Notifications, rules, review queues ─────────────────────────────────
-  items.push(...queueItems(a, unread, tradingDay, t, tc));
+  // The own stop is already the hero's «Просадка от пика / лимит»: the plan does not repeat it as «1 критичных».
+  const ownStop = !team && risk?.halted ? Math.min(unread?.ownStop ?? 0, unread?.critical ?? 0) : 0;
+  const unreadShown = unread && ownStop ? { ...unread, unread: unread.unread - ownStop, critical: unread.critical - ownStop } : unread;
+  items.push(...queueItems(a, unreadShown, tradingDay, t, tc));
 
   // ── The daily loop: «Напиши план» / «Закрой день» / «Задача дня» ──────────
   const daily = team ? null : dailyStepItem(dailyStep, dailyToday, (key) => items.some((i) => i.key === key), t, tc);

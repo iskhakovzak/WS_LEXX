@@ -4,7 +4,7 @@
  */
 import { fmtCompact, fmtDeskDate, fmtNum, fmtPct } from "@/lib/format";
 import { finvizI18n } from "@/i18n/ns/finviz";
-import { earningsFlagOf, type TickerSnapshot } from "./model";
+import { earningsFlagOf, rvolValue, type TickerSnapshot } from "./model";
 
 export type ContextChip = { key: string; text: string; title: string; tone: "neutral" | "warn" | "accent" };
 
@@ -36,8 +36,9 @@ export function contextChips(s: TickerSnapshot, day: string | null): ContextChip
       tone: s.shortFloatPct >= HIGH_SHORT_FLOAT ? "warn" : "neutral",
     });
   }
-  if (s.relVolume != null) {
-    out.push({ key: "rvol", text: `RVOL ${fmtNum(s.relVolume, 1)}`, title: t("ctx.relVolume"), tone: s.relVolume >= HIGH_RVOL ? "accent" : "neutral" });
+  const rvol = rvolValue(s.relVolume);
+  if (rvol != null) {
+    out.push({ key: "rvol", text: `RVOL ${fmtNum(rvol, 1)}`, title: t("ctx.relVolume"), tone: rvol >= HIGH_RVOL ? "accent" : "neutral" });
   }
   if (s.float != null) {
     out.push({ key: "float", text: `Float ${fmtCompact(s.float)}`, title: t("ctx.float"), tone: s.float < LOW_FLOAT ? "accent" : "neutral" });

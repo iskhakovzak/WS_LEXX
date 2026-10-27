@@ -400,7 +400,7 @@ export function PeoplePanel({
             actions={
               <>
                 {canManage && <FillLatinButton people={all.filter(canTouch)} />}
-                <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download /> CSV</Button>
+                {rows.length > 0 && <Button variant="outline" size="sm" onClick={exportCsv}><Download /> CSV</Button>}
                 {canManage && <Button size="sm" onClick={() => setAddOpen(true)}><UserPlus /> {t("people.add")}</Button>}
               </>
             }

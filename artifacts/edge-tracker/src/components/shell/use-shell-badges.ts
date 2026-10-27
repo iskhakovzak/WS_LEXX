@@ -32,11 +32,18 @@ export type RiskToday = {
   dailyUsedPct: number | null;
   dailyRemainingUsd: number | null;
   hasLimits: boolean;
+  /** Trades this week (Mon…today): a halted person who trades is really stopped; one who does not gets no red footer. */
+  weekTrades: number;
   /** PropReports open-positions snapshot behind pnlNet (null without one today / on older servers). */
   live: LiveInfo | null;
 };
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Halted, but not really stopped: not a trader and no trades today or this week (a staff account with an old drawdown). */
+export function idleHalt(risk: Pick<RiskToday, "halted" | "trades" | "weekTrades">, trader: boolean): boolean {
+  return risk.halted && !trader && risk.trades === 0 && (risk.weekTrades ?? 0) === 0;
+}
 
 /** GET /api/risk/me answer → the few fields the shell shows; null when it has no status. */
 function toRiskToday(raw: unknown): RiskToday | null {
@@ -55,6 +62,7 @@ function toRiskToday(raw: unknown): RiskToday | null {
     dailyUsedPct: limit ? num(d?.today?.dailyLimitUsedPct) : null,
     dailyRemainingUsd: limit ? num(d?.today?.dailyRemainingUsd) : null,
     hasLimits: !!limit,
+    weekTrades: num(d?.week?.trades) ?? 0,
     live: typeof d?.live?.fetchedAt === "string"
       ? { unrealizedUsd: num(d.live.unrealizedUsd) ?? 0, openPositions: num(d.live.openPositions) ?? 0, fetchedAt: d.live.fetchedAt, counted: d.live.counted === true }
       : null,
@@ -180,8 +188,9 @@ export function useShellBadges(): Record<string, NavBadge | undefined> {
           }
         : undefined,
     "/admin": reports && reports > 0 ? { count: reports, tone: "down", label: t("badges.openReports", { count: reports }) } : undefined,
+    // Same rule as the sidebar footer: no red dot for a stop that stops nobody (staff with an old drawdown, no trades).
     "/risk":
-      marketDay.closed
+      marketDay.closed || (risk && idleHalt(risk, user?.role === "trader"))
         ? undefined
         : risk?.status === "breach"
           ? { tone: "down", label: t("badges.riskBreach"), count: risk.alerts || undefined }

@@ -343,6 +343,7 @@ export default {
     noTradesTitle: "Bu hafta yopilgan savdolar yoʻq",
     noTradesCurrent: "Hisobot savdo davomida oʻzi toʻladi — savdolar avtomatik yuklanadi.",
     noTradesPast: "Yuqoridagi strelkalar bilan boshqa haftani tanlang.",
+    lastTradedWeek: "Savdolar bo‘lgan oxirgi hafta · {week}",
     withCurator: "Kurator bilan tahlil",
     violations: { one: "{count} ta tekshiruv oʻtmadi", other: "{count} ta tekshiruv oʻtmadi" },
     warns: "{count} ta diqqat uchun",

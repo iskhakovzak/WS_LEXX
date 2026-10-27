@@ -114,6 +114,8 @@ export type WeeklyReview = {
   prevGoals: Goal[];
   /** Rolling fee model + breakeven line (roadmap R2; absent on older API builds). */
   feeCoaching?: FeeCoaching | null;
+  /** An empty week: the trader's last earlier week with closed trades (YYYY-Www), null — none; absent on older API. */
+  lastTradedWeek?: string | null;
 };
 
 export type OverviewRow = {

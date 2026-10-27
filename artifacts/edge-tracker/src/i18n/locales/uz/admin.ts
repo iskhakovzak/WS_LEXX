@@ -129,7 +129,7 @@ export default {
     unavailable: "Integratsiya holati mavjud emas.",
     lastSync: "Oxirgi sinxronlash",
     never: "hali boʻlmagan",
-    status: { ok: "muvaffaqiyatli", running: "bajarilmoqda", partial: "qisman", error: "xato" },
+    status: { ok: "muvaffaqiyatli", running: "bajarilmoqda", partial: "qisman", error: "xato", stale: "eskirgan" },
     fromFile: "Fayldan",
     viaApi: "API orqali",
     runCounts: "+{inserted} · yangilandi {updated}",

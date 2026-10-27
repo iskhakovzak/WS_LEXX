@@ -25,6 +25,12 @@ export default {
     title: "Faqat desk aʼzolari uchun",
     desc: "Hamkasblar savdolarini koʻrish uchun oʻz akkauntingiz bilan kiring.",
   },
+  top: {
+    label: "Desk {date} savdo qildi",
+    aria: "{date} desk eng ko‘p savdo qilgan tikerlar",
+    chipTitle: "{traders} · {trades}",
+    mine: "siz ham savdo qildingiz",
+  },
   legend: {
     title: "Treyderlar",
     count: { one: "{count} treyder", other: "{count} treyder" },

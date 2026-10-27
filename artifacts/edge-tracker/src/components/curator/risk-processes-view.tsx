@@ -56,12 +56,12 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
   const { t } = curatorI18n.useT();
   return (
     <>
-      <StatGrid cols={6}>
-        <StatCard label={t("risk.deskNet")} value={fmtUsd(x.pnlNetToday, { signed: true, decimals: 0 })} tone={toneOf(x.pnlNetToday)} hint={t("risk.tradingOf", { n: x.trading, total: x.traders })} term="net" />
+      <StatGrid cols={6} allClear>
+        <StatCard fold={false} label={t("risk.deskNet")} value={fmtUsd(x.pnlNetToday, { signed: true, decimals: 0 })} tone={toneOf(x.pnlNetToday)} hint={t("risk.tradingOf", { n: x.trading, total: x.traders })} term="net" />
         <StatCard label={t("risk.halted")} value={s.halted.length} tone={s.halted.length ? "down" : "neutral"} icon={ShieldAlert} hint={s.nearStop.length ? t("risk.nearStop", { count: s.nearStop.length }) : t("risk.nobodyNear")} />
         <StatCard label={t("risk.breaches")} value={s.breachesToday.length} tone={s.breachesToday.length ? "down" : "neutral"} icon={AlertTriangle} hint={s.unreviewedBreaches.length ? t("risk.todayUnreviewed", { count: s.unreviewedBreaches.length }) : t("risk.todayAllReviewed")} />
         <StatCard label={t("risk.repeat7")} value={s.repeatBreachers.length} tone={s.repeatBreachers.length ? "warn" : "neutral"} icon={Repeat} hint={t("risk.toHead")} />
-        <StatCard label={t("risk.openRisk")} value={fmtUsd(x.openRiskUsd, { decimals: 0 })} icon={ShieldCheck} hint={t("risk.positions", { count: x.openPositions })} term="openRisk" />
+        <StatCard fold={false} label={t("risk.openRisk")} value={fmtUsd(x.openRiskUsd, { decimals: 0 })} icon={ShieldCheck} hint={t("risk.positions", { count: x.openPositions })} term="openRisk" />
         <StatCard label={t("risk.overnight")} value={x.carriedTonight} tone={s.overnight.some((o) => o.allowed === false) ? "down" : "neutral"} icon={Moon} hint={x.overnightExposureUsd ? fmtUsd(x.overnightExposureUsd, { decimals: 0 }) : t("risk.noExposure")} />
       </StatGrid>
       {(s.repeatBreachers.length > 0 || s.overnight.length > 0 || s.unreviewedBreaches.length > 0) && (

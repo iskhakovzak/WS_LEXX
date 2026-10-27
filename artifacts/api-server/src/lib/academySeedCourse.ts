@@ -216,7 +216,7 @@ export const DEMO_PROGRAM: SeedProgram = {
   slug: DEMO_PROGRAM_SLUG,
   title: "Основы проп-трейдинга WS",
   description: "Базовый курс для новых трейдеров деска: риск и R, размер позиции и комиссии, уровни PDH/PDL/VWAP, исполнение, психология и журнал. 6 уроков, 2 теста, 2 практических задания на ваших сделках.",
-  level: "Стажёр",
+  level: "Базовый",
   stage: "junior",
   modules: [
     {

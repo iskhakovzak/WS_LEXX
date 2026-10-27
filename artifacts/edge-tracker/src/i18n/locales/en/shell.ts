@@ -116,6 +116,7 @@ export default {
     marketClosed: "Market closed",
     /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
     haltedClosed: "{stop} — status for the next session",
+    haltedIdle: "{stop} — details on the risk desk",
     stop: { daily: "Daily stop", weekly: "Weekly stop", drawdown: "Max drawdown" },
     open: "Open the risk desk",
   },
@@ -342,6 +343,11 @@ export default {
     maybe: "Were you looking for",
     toDashboard: "Go to dashboard",
     sections: "Sections",
+  },
+  sectionOff: {
+    title: "This section is turned off by an admin",
+    lead: "“{section}” is turned off in the desk settings. Everything else works as usual.",
+    ask: "To turn it on, ask a desk admin.",
   },
   sectionBlocked: {
     title: "This section is closed for your stage",

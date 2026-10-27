@@ -295,7 +295,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
               { value: "cards", label: <span className="inline-flex items-center gap-1.5"><LayoutGrid aria-hidden="true" />{T.cards}</span> },
             ]}
           />
-          <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!shown.length} title={T.csvTitle}><Download /> {T.csv}</Button>
+          {shown.length > 0 && <Button type="button" variant="outline" size="sm" onClick={exportCsv} title={T.csvTitle}><Download /> {T.csv}</Button>}
         </div>
         <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label={t("group.filtersAria")}>
           <FilterChip size="sm" active={f.risk} onClick={() => patch({ risk: !f.risk })} count={counts.risk}><ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />{T.risk}</FilterChip>

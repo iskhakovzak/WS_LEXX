@@ -148,7 +148,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
       title={ta("log.title")}
       description={ta("log.description")}
       icon={ScrollText}
-      actions={<Button variant="outline" size="sm" onClick={exportCsv} disabled={!entries.length}><Download /> CSV</Button>}
+      actions={entries.length > 0 ? <Button variant="outline" size="sm" onClick={exportCsv}><Download /> CSV</Button> : undefined}
     >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)]">

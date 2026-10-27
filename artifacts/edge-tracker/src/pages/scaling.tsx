@@ -7,7 +7,7 @@
 import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
-import { ArrowRight, RefreshCw, Route, Settings2, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, Inbox, RefreshCw, Route, Settings2, Sparkles, TrendingUp } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Segmented, UpdatedAgo } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { DeskView } from "@/components/scaling/desk-view";
 import { MyView } from "@/components/scaling/my-view";
 import { ConfigSheet } from "@/components/scaling/config-sheet";
-import { scalingKeys, useAutoProposals, useScalingConfig } from "@/components/scaling/use-scaling";
+import { scalingKeys, useAutoProposals, useProposals, useScalingConfig } from "@/components/scaling/use-scaling";
 import { tierName } from "@/components/scaling/format";
 import { scalingI18n } from "@/i18n/ns/scaling";
 import { personName } from "@/i18n";
@@ -63,6 +63,7 @@ export default function ScalingPage() {
   const [configOpen, setConfigOpen] = React.useState(false);
   const config = useScalingConfig(!!me && isCurator);
   const auto = useAutoProposals();
+  const waiting = useProposals("pending", null, !!me && isCurator && view === "desk").data?.proposals.length ?? 0;
   const { toast } = useToast();
 
   const refresh = React.useCallback(() => { qc.invalidateQueries({ queryKey: scalingKeys.all }); }, [qc]);
@@ -92,8 +93,15 @@ export default function ScalingPage() {
                 <Button variant="outline" onClick={() => setConfigOpen(true)}>
                   <Settings2 className="h-4 w-4" aria-hidden="true" /> {t("page.config")}
                 </Button>
+                {/* The real work first: proposals waiting for a decision (primary, opens the queue); «Предложения»
+                    (create by the rules) is a secondary outline action (design audit wave 2). */}
+                {view === "desk" && waiting > 0 && (
+                  <Button onClick={() => document.getElementById("scaling-queue")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                    <Inbox className="h-4 w-4" aria-hidden="true" /> {t("page.pendingCta", { count: waiting })}
+                  </Button>
+                )}
                 {view === "desk" && (
-                  <Button onClick={runAuto} disabled={auto.isPending} aria-label={t("page.autoAria")} title={t("page.autoTitle")}>
+                  <Button variant="outline" onClick={runAuto} disabled={auto.isPending} aria-label={t("page.autoAria")} title={t("page.autoTitle")}>
                     <Sparkles className="h-4 w-4" aria-hidden="true" /> {auto.isPending ? t("page.autoRunning") : t("page.auto")}
                   </Button>
                 )}
