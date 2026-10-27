@@ -68,6 +68,8 @@ export default defineConfig({
   root: path.resolve(import.meta.dirname),
   // Several dev servers on one checkout (parallel agents) need separate dep caches; the vite CLI has no --cacheDir flag.
   ...(process.env.VITE_CACHE_DIR ? { cacheDir: process.env.VITE_CACHE_DIR } : {}),
+  // Module workers (`new Worker(…, { type: "module" })`) may pull shared code that splits into chunks; IIFE can't.
+  worker: { format: "es" },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
