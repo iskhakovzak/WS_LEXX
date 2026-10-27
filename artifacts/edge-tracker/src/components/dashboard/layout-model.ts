@@ -48,6 +48,8 @@ const INSIGHT: readonly TileSize[] = ["s", "m", "l"];
 export const TILE_SPECS: Record<SectionId, TileSpec> = {
   // The desk regime (2026-10-27) leads the plan as a strip across: how to read the day comes before the day's tasks.
   regime: { section: "plan", sizes: ALL, size: "xl", on: true },
+  // «Ментор: …» (2026-10-27): the AI mentor's one line for now — today's rule, a commitment's score, the next step.
+  mentor: { section: "plan", sizes: ["m", "l", "xl"], size: "xl", on: true },
   attention: { section: "plan", sizes: ALL, size: "s", on: true },
   equity: { section: "plan", sizes: ALL, size: "m", on: true },
   leaks: { section: "edge", sizes: ALL, tall: ["m", "l"], size: "l", rows: 2, on: true, meOnly: true },

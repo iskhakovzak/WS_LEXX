@@ -13,7 +13,7 @@ describe("defaultLayout", () => {
   it("every tile is on by default (owner: «по стандарту у всех всё включено»), in section order", () => {
     const l = defaultLayout();
     expect(ids(l)).toEqual([
-      "regime", "attention", "equity",
+      "regime", "mentor", "attention", "equity",
       "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "weekdays",
       "positions", "recent", "desk",
       "brief", "checkin", "sectors", "macro", "dna", "quote", "psychology",
@@ -38,7 +38,7 @@ describe("layoutFromV6 (one-time migration)", () => {
     };
     const l = layoutFromV6(v6);
     expect(l).not.toBeNull();
-    expect(ids(l as DashLayout)).toEqual(["attention", "equity", "regime", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "recent", "positions", "desk", "brief"]);
+    expect(ids(l as DashLayout)).toEqual(["attention", "equity", "regime", "mentor", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "recent", "positions", "desk", "brief"]);
   });
 
   it("a v6 «Команда» default had the own tiles hidden: they come back (they hide on «Команда» by themselves)", () => {
@@ -67,9 +67,10 @@ describe("sanitizeLayout (what comes from the account)", () => {
         { id: "recent", size: "m", rows: 2 },
       ],
     });
-    // Saved before the `known` list: the newer on-by-default «Режим рынка» joins it once, at its default place.
+    // Saved before the `known` list: the newer on-by-default «Режим рынка» and «Ментор» join it once, at their default place.
     expect(l?.items).toEqual([
       { id: "regime", size: "xl" },
+      { id: "mentor", size: "xl" },
       { id: "fees", size: "s" },
       { id: "leaks", size: "l", rows: 2 },
       { id: "positions", size: "xl" },
@@ -89,7 +90,7 @@ describe("edit operations", () => {
   it("move inside a section only; the others stay", () => {
     const l = moveItem(defaultLayout(), "fees", 0);
     expect(sectionItems(l, "edge").map((it) => it.id)).toEqual(["fees", "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "weekdays"]);
-    expect(ids(l).slice(0, 3)).toEqual(["regime", "attention", "equity"]);
+    expect(ids(l).slice(0, 4)).toEqual(["regime", "mentor", "attention", "equity"]);
     expect(moveOnto(defaultLayout(), "fees", "recent")).toEqual(defaultLayout());
   });
 

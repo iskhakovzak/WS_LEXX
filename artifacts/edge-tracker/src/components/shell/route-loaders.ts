@@ -54,6 +54,7 @@ const PAGE_IMPORTS = {
   "/behavior": () => import("@/pages/behavior"),
   "/day-report": () => import("@/pages/day-report"),
   "/my-review": () => import("@/pages/my-review"),
+  "/coach": () => import("@/pages/coach"),
   "/benchmark": () => import("@/pages/benchmark"),
   "/office": () => import("@/pages/office-stats"),
   "/ask": () => import("@/pages/ask"),

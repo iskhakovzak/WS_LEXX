@@ -14,6 +14,7 @@ export default {
     weeklyReview: "Отчёт недели",
     dayReport: "Разбор дня",
     myReview: "Мой разбор",
+    coach: "Ментор",
     behavior: "Поведение и сетапы",
     trainer: "Тренажёр",
     whatIf: "Что если",

@@ -13,6 +13,7 @@ export default {
     weeklyReview: "Weekly report",
     dayReport: "Day review",
     myReview: "My review",
+    coach: "Mentor",
     behavior: "Behavior & setups",
     trainer: "Trainer",
     whatIf: "What if",

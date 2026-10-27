@@ -27,6 +27,7 @@ import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { AskCuratorButton } from "@/components/shared/ask-curator";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
+import { MentorLine } from "@/components/mentor/mentor-line";
 
 type HorizonFilter = "all" | Horizon;
 type View = PlanView;
@@ -54,6 +55,16 @@ function isTypingTarget(t: EventTarget | null) {
   if (!(t instanceof Element)) return false;
   const el = t as HTMLElement;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
+}
+
+/** The day's context strips under the header: the desk regime; on the own plan of today, the AI mentor's line too. */
+function DayStrips({ date, mine }: { date: string; mine: boolean }) {
+  return (
+    <>
+      <RegimeDayView date={date} variant="strip" />
+      {mine && <MentorLine className="glass-panel" />}
+    </>
+  );
 }
 
 export default function GamePlanPage() {
@@ -238,7 +249,7 @@ export default function GamePlanPage() {
         )}
       </PageHeader>
 
-      {!!user && <RegimeDayView date={date} variant="strip" />}
+      {!!user && <DayStrips date={date} mine={view === "my" && isToday} />}
       {view === "my" ? (
         <MyPlan date={date} deskPlan={plan} />
       ) : view === "traders" ? (

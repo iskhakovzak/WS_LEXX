@@ -29,6 +29,7 @@ export default {
     leakGuard: { title: "Sizib chiqish himoyasi", description: "Shaxsiy sizib chiqish patternlari ularni koʻrsatgan birinchi PropReports sinxronlashida ushlanadi va aralashuv zinapoyasini ishga tushiradi: yumshoq — banner va taymerli bildirishnoma; qatʼiy — yana majburiy tasdiq, tasdiqlanmasa kurator xabar oladi; qattiq — yana risk-deskda «pauzada» va risk-menejerga bildirishnoma. Sayt orderlarni bloklay olmaydi: PropReports — bek-ofis. Alohida treyder darajasi risk-deskda oʻzgartiriladi." },
     regime: { title: "Bozor rejimi va limitlar", description: "Deskning har bir bozor rejimida kunlik zarar limiti koeffitsiyenti. Standart holatda bu maslahat: risk ekrani va treyder kunida «asos × koeffitsiyent» koʻrinadi. «Avtomatik qoʻllash» stoplarni shu boʻyicha hisoblaydi; saqlangan limitlar oʻzgarmaydi, oʻchirish asosiylarini darhol qaytaradi." },
     capital: { title: "Risk taqsimoti", description: "Haftada bir marta (juma, 19:30 NY) va «Masshtablash rejasi»dagi «Qayta hisoblash» tugmasi bilan: kimning kunlik limiti va BP'sini oshirish, qoldirish yoki kamaytirish. Nolga qisqartirilgan edge (kichik tanlov isbot emas), joriy bozor rejimidagi edge va intizom hisobga olinadi. Qarorlar «Masshtablash rejasi» navbatiga tushadi; «Avtoqo'llash»siz hech narsa o'zi o'zgarmaydi." },
+    mentor: { title: "AI-mentor", description: "Treyderning shaxsiy AI-mentori («Mentor» sahifasi): sessiyadan oldin brif, keyin tahlil, savdolar boʻyicha hisoblanadigan majburiyatlar, xotira. Assistent modellarida ishlaydi va shaxsiy kunlik AI limitini sarflaydi. Kuratorga signallar AIsiz va bepul. Oldindan tayyorlangan brif va tahlil — paketda yarim narxda, sukut boʻyicha oʻchirilgan." },
     access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
@@ -106,6 +107,16 @@ export default {
     estimateHint: "Paket hali jarayonda: natijagacha taxmin",
     fullPrice: "oddiy narxda {usd}",
   },
+  mentorCost: {
+    title: "AI-mentor sarfi",
+    hint: "{days} kundagi mentor chaqiruvlari: brif, tahlil, hafta va suhbat (jonli) hamda paketda oldindan tayyorlanganlar.",
+    total: "{calls} ta chaqiruv · {users} kishi · {usd}",
+    split: "jonli {live} · paketda {batch}",
+    errors: "xatolar: {count}",
+    empty: "Mentordan hali hech kim foydalanmagan.",
+    loadFailed: "Mentor sarfini yuklab boʻlmadi",
+    off: "Mentor oʻchirilgan.",
+  },
   assistantUsage: {
     title: "Yordamchi sarfi, oxirgi {days} kun",
     hint: "Butun desk: tokenlar, narx, limit birliklari va kesh ulushi. Texnik boʻlim — modellar nomi bilan.",
@@ -171,6 +182,18 @@ export default {
       capPctOfTier: { label: "Limit shifti", help: "Kunlik limit tir shablonining bu ulushidan (va keyingi tir shablonidan) yuqori ko'tarilmaydi — undan keyin faqat tirni oshirish." },
       maxDeskGrowthPct: { label: "Desk riskining bir martalik o'sishi", help: "Deskning kunlik limitlari yig'indisi ko'pi bilan shuncha oshadi (qo'shimcha kamaytirishlar bo'shatgan qism). Oshirishlar mutanosib kamaytiriladi." },
       autoApply: { label: "Avtoqo'llash", help: "O'chirilgan — qarorlar navbatda kurator yoki adminni kutadi. Yoqilgan — haftalik hisob ularni o'zi qo'llaydi (jurnal va bekor qilish bilan). «Qayta hisoblash» hech qachon o'zi qo'llamaydi." },
+    },
+    mentor: {
+      enabled: { label: "AI-mentor", help: "Oʻchirilgan — «Mentor» sahifasi majburiyatlar va qaydlarni koʻrsatadi, lekin mentor yozmaydi." },
+      escalationsEnabled: { label: "Kuratorga signallar", help: "Kuniga bir marta (18:50 NY) va mentor ochilganda: bir necha kun ketma-ket tilt, majburiyatlarning takroriy buzilishi, limitga yaqin drawdown, jimlik. Kuratorga ilovada bitta bildirishnoma, Telegramsiz." },
+      escTiltDays: { label: "Tilt: ketma-ket kunlar", help: "Tilt, qasos yoki zararga qoʻshish bilan ketma-ket shuncha savdo kuni — kuratorni chaqirish uchun sabab." },
+      escBreakCount: { label: "5 kunda majburiyat buzilishi", help: "Soʻnggi 5 savdo kunida faol majburiyatlarning shuncha buzilishi — kuratorga signal." },
+      escDrawdownShare: { label: "Drawdown: limit ulushi", help: "Choʻqqidan drawdown treyderning maksimal drawdownining shu ulushiga yetganda signal." },
+      escSilenceDays: { label: "Jimlik: kunlar", help: "Oxirgi oyda savdo qilgan treyder shuncha savdo kuni savdosiz, chek-insiz va mentor bilan suhbatsiz." },
+      pushesEnabled: { label: "Brif va tahlil oldindan", help: "Sukut boʻyicha oʻchirilgan. Yoqilgan — belgilangan vaqtga mentor brif (sessiyadan oldin) va tahlilni (keyin) paketda yarim narxda tayyorlaydi va bildirishnoma yuboradi. Shaxsiy limitlar sarflanmaydi — faqat yuborish limiti." },
+      briefTime: { label: "Brif vaqti", help: "Soʻnggi ikki haftada savdo qilganlar uchun brif tayyorlanadigan Nyu-York vaqti." },
+      debriefTime: { label: "Tahlil vaqti", help: "Bugun savdo qilganlar uchun tahlil tayyorlanadigan Nyu-York vaqti." },
+      pushDailyUnits: { label: "Kunlik yuborish limiti", help: "Desk uchun kunda oldindan tayyorlanadigan barcha brif va tahlillar birliklari (har bir kishiga taxminan 8 000)." },
     },
     regime: {
       mult: {

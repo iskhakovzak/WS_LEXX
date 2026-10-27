@@ -208,6 +208,11 @@ CREATE SEQUENCE public.leak_guard_events_id_seq AS bigint START WITH 1 INCREMENT
 CREATE SEQUENCE public.market_events_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.market_open_brief_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.market_themes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.mentor_commitments_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.mentor_digests_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.mentor_escalations_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.mentor_messages_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.mentor_notes_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.news_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.notification_batch_items_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.notifications_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -687,7 +692,7 @@ CREATE TABLE public.ai_assistant_audit (
   user_message text,
   assistant_message text,
   CONSTRAINT ai_assistant_audit_pkey PRIMARY KEY (id),
-  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text, 'review'::text, 'batch'::text])),
+  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text, 'review'::text, 'batch'::text, 'mentor'::text, 'mentor_batch'::text])),
   CONSTRAINT ai_assistant_audit_status_check CHECK (status = ANY (ARRAY['ok'::text, 'error'::text, 'aborted'::text, 'refused'::text])),
   CONSTRAINT ai_assistant_audit_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
 );
@@ -1736,6 +1741,119 @@ CREATE TABLE public.market_themes (
   CONSTRAINT market_themes_pkey PRIMARY KEY (id),
   CONSTRAINT market_themes_name_check CHECK (char_length(name) >= 1 AND char_length(name) <= 60),
   CONSTRAINT market_themes_tickers_check CHECK (cardinality(tickers) >= 1 AND cardinality(tickers) <= 30)
+);
+
+CREATE TABLE public.mentor_commitments (
+  id bigint DEFAULT nextval('public.mentor_commitments_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  kind text NOT NULL,
+  params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "text" text,
+  source text NOT NULL,
+  status text DEFAULT 'active'::text NOT NULL,
+  started_on text NOT NULL,
+  closed_on text,
+  close_note text,
+  created_by text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT mentor_commitments_pkey PRIMARY KEY (id),
+  CONSTRAINT mentor_commitments_close_note_check CHECK (close_note IS NULL OR char_length(close_note) <= 300),
+  CONSTRAINT mentor_commitments_closed_on_check CHECK (closed_on IS NULL OR closed_on ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT mentor_commitments_created_by_check CHECK (char_length(created_by) >= 1 AND char_length(created_by) <= 200),
+  CONSTRAINT mentor_commitments_kind_check CHECK (kind = ANY (ARRAY['pause_after_loss'::text, 'max_trades'::text, 'max_daily_loss'::text, 'stop_after_losses'::text, 'no_entry_before'::text, 'no_entry_after'::text, 'max_loss_per_trade'::text, 'custom'::text])),
+  CONSTRAINT mentor_commitments_source_check CHECK (source = ANY (ARRAY['mentor'::text, 'trader'::text, 'curator'::text])),
+  CONSTRAINT mentor_commitments_started_on_check CHECK (started_on ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT mentor_commitments_status_check CHECK (status = ANY (ARRAY['active'::text, 'achieved'::text, 'dropped'::text, 'replaced'::text])),
+  CONSTRAINT mentor_commitments_text_check CHECK (text IS NULL OR char_length(text) <= 300),
+  CONSTRAINT mentor_commitments_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.mentor_digests (
+  id bigint DEFAULT nextval('public.mentor_digests_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  kind text NOT NULL,
+  period text NOT NULL,
+  lang text NOT NULL,
+  input_hash text NOT NULL,
+  content jsonb,
+  status text DEFAULT 'ready'::text NOT NULL,
+  source text DEFAULT 'live'::text NOT NULL,
+  batch_id text,
+  deep boolean DEFAULT false NOT NULL,
+  units bigint DEFAULT 0 NOT NULL,
+  cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT mentor_digests_pkey PRIMARY KEY (id),
+  CONSTRAINT mentor_digests_trader_kind_period_lang_key UNIQUE (trader, kind, period, lang),
+  CONSTRAINT mentor_digests_kind_check CHECK (kind = ANY (ARRAY['brief'::text, 'debrief'::text, 'weekly'::text])),
+  CONSTRAINT mentor_digests_lang_check CHECK (lang = ANY (ARRAY['ru'::text, 'en'::text, 'uz'::text])),
+  CONSTRAINT mentor_digests_period_check CHECK (period ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT mentor_digests_source_check CHECK (source = ANY (ARRAY['live'::text, 'batch'::text])),
+  CONSTRAINT mentor_digests_status_check CHECK (status = ANY (ARRAY['ready'::text, 'pending'::text, 'failed'::text])),
+  CONSTRAINT mentor_digests_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.mentor_escalations (
+  id bigint DEFAULT nextval('public.mentor_escalations_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  rule text NOT NULL,
+  day text NOT NULL,
+  params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  notified text[] DEFAULT '{}'::text[] NOT NULL,
+  status text DEFAULT 'open'::text NOT NULL,
+  ack_by text,
+  ack_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT mentor_escalations_pkey PRIMARY KEY (id),
+  CONSTRAINT mentor_escalations_trader_rule_day_key UNIQUE (trader, rule, day),
+  CONSTRAINT mentor_escalations_ack_by_check CHECK (ack_by IS NULL OR char_length(ack_by) >= 1 AND char_length(ack_by) <= 200),
+  CONSTRAINT mentor_escalations_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT mentor_escalations_rule_check CHECK (rule = ANY (ARRAY['tilt_streak'::text, 'rule_breaks'::text, 'drawdown_near_limit'::text, 'silence'::text])),
+  CONSTRAINT mentor_escalations_status_check CHECK (status = ANY (ARRAY['open'::text, 'acknowledged'::text])),
+  CONSTRAINT mentor_escalations_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.mentor_messages (
+  id bigint DEFAULT nextval('public.mentor_messages_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  role text NOT NULL,
+  kind text DEFAULT 'chat'::text NOT NULL,
+  content text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  cleared_at timestamp with time zone,
+  CONSTRAINT mentor_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT mentor_messages_content_check CHECK (char_length(content) >= 1 AND char_length(content) <= 8000),
+  CONSTRAINT mentor_messages_kind_check CHECK (kind = ANY (ARRAY['chat'::text, 'brief'::text, 'debrief'::text, 'weekly'::text])),
+  CONSTRAINT mentor_messages_role_check CHECK (role = ANY (ARRAY['user'::text, 'mentor'::text])),
+  CONSTRAINT mentor_messages_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.mentor_notes (
+  id bigint DEFAULT nextval('public.mentor_notes_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  kind text NOT NULL,
+  body text NOT NULL,
+  source text NOT NULL,
+  author text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT mentor_notes_pkey PRIMARY KEY (id),
+  CONSTRAINT mentor_notes_author_check CHECK (char_length(author) >= 1 AND char_length(author) <= 200),
+  CONSTRAINT mentor_notes_body_check CHECK (char_length(body) >= 1 AND char_length(body) <= 400),
+  CONSTRAINT mentor_notes_kind_check CHECK (kind = ANY (ARRAY['goal'::text, 'strength'::text, 'weakness'::text, 'leak'::text, 'discussed'::text, 'preference'::text, 'guidance'::text])),
+  CONSTRAINT mentor_notes_source_check CHECK (source = ANY (ARRAY['mentor'::text, 'trader'::text, 'curator'::text])),
+  CONSTRAINT mentor_notes_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.mentor_profile (
+  trader text NOT NULL,
+  hidden_facts text[] DEFAULT '{}'::text[] NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT mentor_profile_pkey PRIMARY KEY (trader),
+  CONSTRAINT mentor_profile_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
 );
 
 CREATE TABLE public.news_cache (
@@ -3391,6 +3509,11 @@ ALTER SEQUENCE public.leak_guard_events_id_seq OWNED BY public.leak_guard_events
 ALTER SEQUENCE public.market_events_id_seq OWNED BY public.market_events.id;
 ALTER SEQUENCE public.market_open_brief_cache_id_seq OWNED BY public.market_open_brief_cache.id;
 ALTER SEQUENCE public.market_themes_id_seq OWNED BY public.market_themes.id;
+ALTER SEQUENCE public.mentor_commitments_id_seq OWNED BY public.mentor_commitments.id;
+ALTER SEQUENCE public.mentor_digests_id_seq OWNED BY public.mentor_digests.id;
+ALTER SEQUENCE public.mentor_escalations_id_seq OWNED BY public.mentor_escalations.id;
+ALTER SEQUENCE public.mentor_messages_id_seq OWNED BY public.mentor_messages.id;
+ALTER SEQUENCE public.mentor_notes_id_seq OWNED BY public.mentor_notes.id;
 ALTER SEQUENCE public.news_cache_id_seq OWNED BY public.news_cache.id;
 ALTER SEQUENCE public.notification_batch_items_id_seq OWNED BY public.notification_batch_items.id;
 ALTER SEQUENCE public.notifications_id_seq OWNED BY public.notifications.id;
@@ -3559,6 +3682,11 @@ CREATE INDEX market_events_date_idx ON public.market_events USING btree (date);
 CREATE INDEX market_events_ticker_upper_idx ON public.market_events USING btree (upper(ticker));
 CREATE UNIQUE INDEX market_themes_name_key ON public.market_themes USING btree (lower(name));
 CREATE INDEX market_themes_order_idx ON public.market_themes USING btree (active, sort_order, id);
+CREATE INDEX mentor_commitments_trader_idx ON public.mentor_commitments USING btree (trader, status, id DESC);
+CREATE INDEX mentor_digests_pending_idx ON public.mentor_digests USING btree (batch_id) WHERE (status = 'pending'::text);
+CREATE INDEX mentor_escalations_open_idx ON public.mentor_escalations USING btree (trader, created_at DESC) WHERE (status = 'open'::text);
+CREATE INDEX mentor_messages_trader_idx ON public.mentor_messages USING btree (trader, id DESC) WHERE (cleared_at IS NULL);
+CREATE INDEX mentor_notes_trader_idx ON public.mentor_notes USING btree (trader, id DESC) WHERE (deleted_at IS NULL);
 CREATE UNIQUE INDEX news_cache_ticker_guid_uniq ON public.news_cache USING btree (ticker, guid);
 CREATE INDEX news_cache_ticker_idx ON public.news_cache USING btree (ticker);
 CREATE INDEX notification_batch_items_pending_idx ON public.notification_batch_items USING btree (user_name) WHERE (flushed_at IS NULL);

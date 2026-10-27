@@ -66,6 +66,7 @@ export default {
     capital: { weekly: "Capital allocation: weekly run" },
     whatif: { honesty: "Honest check of the “What if” suggestions" },
     ai: { "batch-reviews": "Overnight AI reviews (one batch, half price)" },
+    mentor: { escalations: "AI mentor: signals to the curator (tilt, breaks, drawdown, silence)", pushes: "AI mentor: brief and debrief ahead (one batch)" },
   },
   backups: {
     description: "pg_dump daily at 03:15 New York time (cache tables without data). 14 daily and 8 weekly copies are kept.",

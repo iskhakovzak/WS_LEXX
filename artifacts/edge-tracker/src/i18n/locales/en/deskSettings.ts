@@ -29,6 +29,7 @@ export default {
     leakGuard: { title: "Leak guard", description: "Personal leak patterns are caught at the first PropReports sync that shows them and start the intervention ladder: soft — a banner and a notification with a countdown; firm — plus a required confirmation, without it the curator is told; hard — plus «on pause» on the risk desk and a notice to the risk manager. The site cannot block orders: PropReports is a back office. A single trader’s level is changed on the risk desk." },
     regime: { title: "Market regime and limits", description: "The daily loss limit multiplier of each desk market regime. By default it is a suggestion: the risk screen and the trader’s day show «base × multiplier». «Apply automatically» makes the stops use it; stored limits never change, so switching it off restores the base at once." },
     capital: { title: "Capital allocation", description: "Weekly (Friday 19:30 NY) and with «Recalculate» on the scaling plan: whose daily loss limit and BP to raise, keep or cut. Uses the edge shrunk toward zero (a small sample is no proof), the edge in the current market regime and discipline. Decisions go to the scaling plan queue; without «Auto-apply» nothing changes by itself." },
+    mentor: { title: "AI mentor", description: "The trader’s personal AI mentor (the “Mentor” page): a brief before the session, a debrief after it, commitments scored from the trades, memory. Runs on the assistant’s models and spends the personal daily AI budget. Signals to the curator need no AI and cost nothing. The brief and debrief prepared ahead go in one batch at half price, off by default." },
     access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
     other: { title: "Other", description: "Settings without a group." },
   },
@@ -106,6 +107,16 @@ export default {
     estimateHint: "Still in progress: the estimate until the results arrive",
     fullPrice: "at the standard price {usd}",
   },
+  mentorCost: {
+    title: "AI mentor spend",
+    hint: "Mentor calls over {days} days: brief, debrief, week and conversation (live) and the ones prepared ahead in a batch.",
+    total: "{calls} calls · {users} people · {usd}",
+    split: "live {live} · batch {batch}",
+    errors: "errors: {count}",
+    empty: "Nobody has used the mentor yet.",
+    loadFailed: "Could not load the mentor’s spend",
+    off: "The mentor is off.",
+  },
   assistantUsage: {
     title: "Assistant usage, last {days} days",
     hint: "The whole desk: tokens, cost, budget units and the cache share. A technical view — models are named.",
@@ -171,6 +182,18 @@ export default {
       capPctOfTier: { label: "Limit cap", help: "The daily limit never goes above this share of the tier template (nor the next tier's template) — beyond that only a tier promotion." },
       maxDeskGrowthPct: { label: "Desk risk growth per run", help: "The desk's total daily limit grows by at most this much (plus what cuts free up). Raises are scaled down proportionally." },
       autoApply: { label: "Auto-apply", help: "Off — decisions wait for a curator or an admin in the queue. On — the weekly run applies them itself (logged and reversible). «Recalculate» never applies by itself." },
+    },
+    mentor: {
+      enabled: { label: "AI mentor", help: "Off — the “Mentor” page shows commitments and notes, but the mentor does not write." },
+      escalationsEnabled: { label: "Signals to the curator", help: "Once a day (18:50 NY) and when the mentor is opened: tilt several days in a row, repeated commitment breaks, drawdown near the limit, silence. The curator gets one in-app notice, no Telegram." },
+      escTiltDays: { label: "Tilt: days in a row", help: "Trading days in a row with tilt, revenge or averaging down that call for the curator." },
+      escBreakCount: { label: "Commitment breaks in 5 days", help: "This many breaks of active commitments in the last 5 trading days signal the curator." },
+      escDrawdownShare: { label: "Drawdown: share of the limit", help: "Signal when the drawdown from the peak reaches this share of the trader’s max drawdown." },
+      escSilenceDays: { label: "Silence: days", help: "A trader who traded in the last month spends this many trading days without trades, a check-in or a word to the mentor." },
+      pushesEnabled: { label: "Brief and debrief ahead", help: "Off by default. On — at the set times the mentor prepares the brief (before the session) and the debrief (after it) in one batch at half price and sends a notice. Personal budgets are not spent — only the push budget." },
+      briefTime: { label: "Brief by", help: "New York time when the brief is prepared for those who traded in the last two weeks." },
+      debriefTime: { label: "Debrief by", help: "New York time when the debrief is prepared for those who traded today." },
+      pushDailyUnits: { label: "Daily push budget", help: "Units for all briefs and debriefs prepared ahead for the desk in a day (about 8,000 per person)." },
     },
     regime: {
       mult: {

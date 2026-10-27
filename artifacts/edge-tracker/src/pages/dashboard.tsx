@@ -78,6 +78,7 @@ const WeeklyPsychologyReport = extra(() => import("@/components/weekly-psycholog
 // «Сегодняшний рынок → что это значит для вас» (analytics «Мой edge и рынок»): its own small chunk.
 const TodayEdgeLine = extra(() => import("@/components/analytics-page/my-edge/TodayEdgeLine").then((m) => m.TodayEdgeLine));
 const DailyQuoteCard = extra(() => import("@/components/daily-quote-card").then((m) => m.DailyQuoteCard));
+const MentorLine = extra(() => import("@/components/mentor/mentor-line").then((m) => m.MentorLine));
 // Open positions show only while a trade is open; the panel brings the trades dictionary (horizon labels) with it.
 const PositionsPanel = extra(() => import("@/components/dashboard/positions-panel").then((m) => m.PositionsPanel));
 
@@ -275,6 +276,9 @@ export default function Dashboard() {
           ready: m.authed,
           render: (v) => <DashCard fill title={t("sections.regime.label")}><RegimeDayView variant={v === "l" ? "row" : "tile"} /></DashCard>,
         };
+      // The AI mentor's line (own day only; staff see their own mentor): opens /coach.
+      case "mentor":
+        return { ready: m.authed && scope === "me", render: () => <DashCard fill aria-label={t("sections.mentor.label")}>{lazyExtra(<MentorLine />)}</DashCard> };
       case "attention": return { ready: true, render: () => plan };
       case "equity": return { ready: true, render: equity };
       case "positions": return { ready: !!today?.positions?.length, render: () => (today ? lazyExtra(<PositionsPanel data={today} />) : null) };

@@ -34,6 +34,7 @@ import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
 import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
 import { registerLeakGuardJobs } from "../lib/leakGuard/jobDefs";
 import { registerCapitalJobs } from "../lib/capital/jobDefs";
+import { registerMentorJobs } from "../lib/mentor/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -348,4 +349,5 @@ function registerModuleJobs(): void {
   registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
   registerLeakGuardJobs(registerJob); // live leak guard: detect / ladder / settle after each sync (lib/leakGuard/jobDefs.ts)
   registerCapitalJobs(registerJob); // weekly capital allocation proposals into the scaling queue (lib/capital/jobDefs.ts)
+  registerMentorJobs(registerJob); // AI mentor: escalation check, optional scheduled brief / debrief (lib/mentor/jobDefs.ts)
 }

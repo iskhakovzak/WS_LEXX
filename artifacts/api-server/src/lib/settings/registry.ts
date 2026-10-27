@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -391,6 +391,21 @@ export const SETTINGS = {
   "capital.capPctOfTier": { group: "capital", type: "number", default: 150, min: 100, max: 500, step: 5, unit: "pct" },
   "capital.maxDeskGrowthPct": { group: "capital", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "pct" },
   "capital.autoApply": { group: "capital", type: "boolean", default: false },
+  // «Ментор» — the personal AI mentor (lib/mentor). It runs on the assistant's models and the member's daily budget
+  // (assistant.dailyUnits); the daily rhythm is generated on demand when the trader opens the mentor. Escalation to the
+  // curator is deterministic (no model): a tilt streak, repeated commitment breaks, drawdown near the limit, silence.
+  // Scheduled pushes (a pre-market brief and a post-session debrief written ahead through the Message Batches API at
+  // half price) are off by default; they count against mentor.pushDailyUnits, never a trader's personal budget.
+  "mentor.enabled": { group: "mentor", type: "boolean", default: true },
+  "mentor.escalationsEnabled": { group: "mentor", type: "boolean", default: true },
+  "mentor.escTiltDays": { group: "mentor", type: "number", default: 3, min: 2, max: 10, step: 1, unit: "days" },
+  "mentor.escBreakCount": { group: "mentor", type: "number", default: 4, min: 2, max: 20, step: 1, unit: "count" },
+  "mentor.escDrawdownShare": { group: "mentor", type: "number", default: 0.8, min: 0.5, max: 1, step: 0.05, unit: "ratio" },
+  "mentor.escSilenceDays": { group: "mentor", type: "number", default: 3, min: 2, max: 15, step: 1, unit: "days" },
+  "mentor.pushesEnabled": { group: "mentor", type: "boolean", default: false },
+  "mentor.briefTime": { group: "mentor", type: "time", default: "08:45" },
+  "mentor.debriefTime": { group: "mentor", type: "time", default: "16:30" },
+  "mentor.pushDailyUnits": { group: "mentor", type: "number", default: 1_000_000, min: 0, max: 50_000_000, step: 50_000, unit: "tokens" },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

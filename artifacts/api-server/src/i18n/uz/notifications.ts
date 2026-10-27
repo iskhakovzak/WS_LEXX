@@ -72,6 +72,20 @@ export default {
     lineCost: "{n}. {trader} — {reason}, {cost}",
     reason: { breach_review: "buzilish tahlili", stopped: "stopda", near_stop: "stopga yaqin", eod_review: "yopilgan kun tahlil kutmoqda", weekly_review: "hafta hisoboti", overdue_action: "1:1 kelishuvlari muddati oʻtgan", no_limits: "limitlar yoʻq", template_drift: "limitlar shablonga mos emas", missing_plan: "reja yoʻq", missing_eod: "kun yopilmagan", one_on_one: "uzoq vaqt 1:1 boʻlmagan", plateau_review: "surʼat bosqich uchun kerakligidan past", at_stake: "minus va yoʻqotishlar", dropout_risk: "ketish xavfi", trial_review: "qoida sinovi tugayapti", stop_breach: "limit buzilishi", focus_broken: "fokus buzildi", disputed: "fokus boʻyicha «xato emas»", fees: "komissiyalar", loss_streak: "zararli kunlar seriyasi", giveback: "foydani qaytarish", rule: "qoidalar buzilishi", other: "qarash kerak" },
   },
+  mentor_escalation: {
+    title: "AI-mentor: {trader} — sizning nazaringiz kerak",
+    body: "Mentor birga hal qilgan maʼqul boʻlgan holatni koʻrmoqda. Mentor qaydlarini oching.",
+    tilt_streak: { title: "AI-mentor: {trader} — ketma-ket {days} kun tilt", body: "Ketma-ket {days} savdo kuni tilt, qasos yoki zararga qoʻshish bilan. Bugun gaplashing; mentor qaydlari treyder kartasida." },
+    rule_breaks: { title: "AI-mentor: {trader} majburiyatlarni buzmoqda", body: "{days} savdo kunida {count} ta majburiyat buzilishi. Mentorga sizning yordamingiz kerak." },
+    drawdown_near_limit: { title: "AI-mentor: {trader} — drawdown limitga yaqin", body: "Drawdown {drawdown} — {limit} limitning {pct}%. Keyingi sessiyagacha hajm va rejani muhokama qilish kerak." },
+    silence: { title: "AI-mentor: {trader} {days} kundan beri jim", body: "{days} savdo kuni savdosiz, chek-insiz va mentor bilan suhbatsiz. Balki birinchi boʻlib yozish kerakdir." },
+  },
+  mentor_ready: {
+    title: "Mentor: tayyor",
+    body: "Mentorni oching.",
+    brief: { title: "Mentor: bugungi brif tayyor", body: "Bozor rejimi, undagi edgeingiz va bugun uchun bitta qoida." },
+    debrief: { title: "Mentor: sessiya tahlili tayyor", body: "Reja bilan solishtirganda nima boʻldi, bitta saboq va ertangi qoida." },
+  },
   ai_review_ready: {
     title: "AI-tahlil tayyor",
     body: "Tahlil tayyor — koʻrish uchun oching.",
@@ -96,6 +110,8 @@ export default {
     },
   },
   types: {
+    mentor_escalation: { label: "Mentor: kurator kerak", description: "AI-mentor inson bilan hal qilgan maʼqul boʻlgan holatni koʻrmoqda: bir necha kun tilt, majburiyat buzilishi, limitga yaqin drawdown, jimlik" },
+    mentor_ready: { label: "Mentor: brif yoki tahlil tayyor", description: "Sessiyadan oldingi brif yoki keyingi tahlil oldindan tayyorlandi (administrator rejali yuborishni yoqqan boʻlsa)" },
     ai_review_ready: { label: "AI-tahlil tayyor", description: "Kuningizning tungi AI-tahlili (yoqilgan boʻlsa — hafta yoki oyniki ham) tayyor — ertalab keladi" },
     mention: { label: "Eslatish", description: "Kimdir sizni muhokama, gʻoya yoki qaydda @ism orqali eslatdi" },
     reply: { label: "Javob", description: "Postingizga yoki muhokamangizda javob, «yechim» belgisi" },

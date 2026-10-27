@@ -289,4 +289,13 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "PUT /users/me/settings": member("the own profile, settings or PIN"),
   "PUT /watchlist/view": member("personal watchlist; the desk list needs a senior or staff (checked on the body)"),
   "PUT /weekly-review/self": member("the own weekly self-review"),
+  "DELETE /mentor/thread": member("clears the own mentor conversation; memory notes stay (assistant.use: every member by default)"),
+  "POST /mentor/rhythm": member("the own brief / debrief / weekly digest (assistant.use + the daily AI budget, desk switch mentor.enabled)"),
+  "POST /mentor/chat": member("the own mentor turn (assistant.use + the daily AI budget, desk switch mentor.enabled)"),
+  "POST /mentor/notes": owner("an own memory note; with another trader the curator's guidance (journal.review on him, checked after the body is read)"),
+  "PATCH /mentor/notes/:id": owner("notes about the caller; the curator's guidance needs journal.review on the trader (checked after the row loads)"),
+  "DELETE /mentor/notes/:id": owner("notes about the caller; the curator's guidance needs journal.review on the trader (checked after the row loads)"),
+  "PUT /mentor/hidden": member("data facts the caller hides from the own mentor"),
+  "POST /mentor/commitments": owner("an own commitment; with another trader journal.review on him (checked after the body is read)"),
+  "PATCH /mentor/commitments/:id": owner("closes an own commitment; another trader's needs journal.review on him (checked after the row loads)"),
 };

@@ -22,7 +22,7 @@ import {
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
   Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, TextSearch,
   GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Gamepad2, Shapes, ScanSearch,
-  ChartSpline, Scale, IdCard,
+  ChartSpline, Scale, IdCard, Compass,
 } from "lucide-react";
 import { shellI18n, type NavGroupKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
 import ruShell from "@/i18n/locales/ru/shell";
@@ -119,6 +119,9 @@ export const NAV_GROUPS: NavGroup[] = [
       nav("weeklyReview", { href: "/weekly-review", icon: ClipboardCheck, keywords: "weekly review неделя итоги недели отчёт" }),
       // Волна 2 п. 2.9: the trader's own 30-day answer (where I earn / lose, one rule for tomorrow); staff keep /analytics.
       nav("myReview", { href: "/my-review", icon: ScanSearch, keywords: "my review мой разбор где зарабатываю где теряю правило на завтра итоги месяца" }),
+      // The personal AI mentor (brief before the session, debrief after it, commitments): its entry in the day is the
+      // dashboard line «Ментор: …»; in the menu it sits with the day's review.
+      nav("coach", { href: "/coach", icon: Compass, keywords: "mentor coach ментор коуч наставник ai бриф разбор сессии обязательства чек-ин" }),
     ] }),
     // Every analysis tool under one umbrella; «Мой edge и рынок» is the page's own tab (/analytics?tab=myedge).
     nav("analytics", { href: "/analytics", icon: LineChart, keywords: "analytics equity expectancy R аналитика my edge мой edge и рынок edge matrix монте-карло monte carlo психология", goKey: "a", children: [

@@ -76,6 +76,7 @@ const WhatIf = lazy(L["/what-if"]);
 const Behavior = lazy(L["/behavior"]);
 const DayReport = lazy(L["/day-report"]);
 const MyReview = lazy(L["/my-review"]);
+const Coach = lazy(L["/coach"]);
 const Benchmark = lazy(L["/benchmark"]);
 const OfficeStats = lazy(L["/office"]);
 const Ask = lazy(L["/ask"]);
@@ -208,6 +209,7 @@ function Router() {
           <Route path="/scaling" component={Scaling} />
           <Route path="/weekly-review" component={WeeklyReview} />
           <Route path="/my-review" component={MyReview} />
+          <Route path="/coach" component={Coach} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/simulator" component={Simulator} />
           <Route path="/trainer" component={Trainer} />
