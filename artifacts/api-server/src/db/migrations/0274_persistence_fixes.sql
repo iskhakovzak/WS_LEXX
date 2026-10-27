@@ -25,6 +25,11 @@ UPDATE scaling_rules
 
 -- (3) The morning check-in: one row per person and day. Two quick saves made two rows and the reads picked either one.
 --     Duplicates keep the newest row (the last save the person made).
+--     The removed duplicates are archived first (nothing is lost; the archive can be dropped after a review).
+CREATE TABLE IF NOT EXISTS emotional_state_log_dupes_0274 AS SELECT e.* FROM emotional_state_log e WHERE false;
+INSERT INTO emotional_state_log_dupes_0274
+SELECT e.* FROM emotional_state_log e
+ WHERE EXISTS (SELECT 1 FROM emotional_state_log newer WHERE newer.user_id = e.user_id AND newer.date = e.date AND newer.id > e.id);
 DELETE FROM emotional_state_log e
  USING emotional_state_log newer
  WHERE newer.user_id = e.user_id AND newer.date = e.date AND newer.id > e.id;
