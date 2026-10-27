@@ -47,9 +47,12 @@ export default {
     playbook: "Pleybuk",
     login: "Kirish",
     regime: "Bozor rejimi",
+    leakGuard: "Sizib chiqish himoyasi",
   },
 
   text: {
+    leakGuardLevel: "{trader} uchun sizib chiqish himoyasi darajasini oʻzgartirdi",
+    leakGuardRelease: "{trader} dan sizib chiqish himoyasi pauzasini olib tashladi",
     ban: "{who}ni blokladi",
     unban: "{who}ni blokdan chiqardi",
     freeze: "{who} akkauntini muzlatdi{bulk}",
@@ -170,6 +173,7 @@ export default {
     fallbackVerb: "{verb}: {subject}",
   },
 
+  leakGuardLevel: { off: "oʻchiq", soft: "yumshoq", firm: "qatʼiy", hard: "qattiq", default: "bosqich boʻyicha" },
   detail: {
     curator: "kurator {name}",
     was: "avval: {value}",

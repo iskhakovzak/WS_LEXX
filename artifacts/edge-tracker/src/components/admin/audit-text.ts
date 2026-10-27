@@ -328,6 +328,15 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
 
+    case "leakGuard.level": {
+      const lvl = (v: unknown) => {
+        const k = typeof v === "string" && ["off", "soft", "firm", "hard"].includes(v) ? (v as "off" | "soft" | "firm" | "hard") : "default";
+        return t(`leakGuardLevel.${k}`);
+      };
+      return { label: L("leakGuard"), tone: "warn", text: t("text.leakGuardLevel", { trader: pn(e.targetId) }), detail: `${lvl(d.from)} → ${lvl(d.to)}` };
+    }
+    case "leakGuard.release": return { label: L("leakGuard"), tone: "neutral", text: t("text.leakGuardRelease", { trader: pn(e.targetId) }) };
+
     case "regime.set": {
       const name = (k: unknown) => (isRegimeKey(k) ? regimeName(k) : t("none"));
       return { label: L("regime"), tone: "accent", text: t("text.regimeSet", { day: s(e.targetId) }), detail: `${name(d.from)} → ${name(d.to)}` };

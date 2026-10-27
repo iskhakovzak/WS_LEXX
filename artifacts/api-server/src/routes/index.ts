@@ -70,6 +70,7 @@ import eodRouter from "./eod";
 import edgeRouter from "./edge";
 import myEdgeRouter from "./my-edge";
 import marketRegimeRouter from "./market-regime";
+import leakGuardRouter from "./leak-guard";
 import profileRouter from "./profile";
 import statsAggregateRouter from "./stats-aggregate";
 import permissionsRouter from "./permissions";
@@ -184,6 +185,7 @@ router.use(eodRouter);
 router.use(edgeRouter);
 router.use(myEdgeRouter); // «Мой edge и рынок» (analytics)
 router.use(marketRegimeRouter); // desk market regime: day, limit multiplier, playbook tags, edge by regime, reflection
+router.use(leakGuardRouter); // live leak guard: active pauses, acknowledgement, impact in $, desk, levels
 router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)
 router.use(statsAggregateRouter); // GET /stats/aggregate — staff /stats and /analytics without raw trades
 router.use(permissionsRouter);

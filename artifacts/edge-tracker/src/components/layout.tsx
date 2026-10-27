@@ -23,6 +23,7 @@ import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 import { Wordmark } from "@/components/ds/brand";
 import { OnboardingMount } from "@/components/onboarding-mount";
 import { AssistantButton } from "@/components/assistant/assistant-launcher";
+import { GuardBanner } from "@/components/leak-guard/guard-banner";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -219,6 +220,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <PlaybookSheetHost />
       <AppearanceHost />
       <OnboardingMount />
+      {/* Live leak guard: pause / acknowledgement card when a personal leak pattern fires (components/leak-guard). */}
+      <GuardBanner />
     </SidebarProvider>
   );
 }

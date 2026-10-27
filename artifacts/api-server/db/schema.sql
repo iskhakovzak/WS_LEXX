@@ -204,6 +204,7 @@ CREATE SEQUENCE public.holiday_calendar_id_seq AS integer START WITH 1 INCREMENT
 CREATE SEQUENCE public.journal_days_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.junior_note_reminders_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.junior_notes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.leak_guard_events_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.market_events_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.market_open_brief_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.market_themes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -1623,6 +1624,55 @@ CREATE TABLE public.junior_notes (
   feedback_seen_at timestamp with time zone,
   CONSTRAINT junior_notes_pkey PRIMARY KEY (id),
   CONSTRAINT junior_notes_trader_note_date_key UNIQUE (trader, note_date)
+);
+
+CREATE TABLE public.leak_guard_events (
+  id bigint DEFAULT nextval('public.leak_guard_events_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  day date NOT NULL,
+  pattern text NOT NULL,
+  source_key text NOT NULL,
+  "level" text NOT NULL,
+  trigger_trade_id integer,
+  triggered_at timestamp with time zone NOT NULL,
+  detected_at timestamp with time zone DEFAULT now() NOT NULL,
+  pause_until timestamp with time zone,
+  late boolean DEFAULT false NOT NULL,
+  silent_reason text,
+  cost_per_trade numeric(12,2),
+  cost_per_trigger numeric(12,2),
+  stats jsonb DEFAULT '{}'::jsonb NOT NULL,
+  acked_at timestamp with time zone,
+  escalated_at timestamp with time zone,
+  risk_notified_at timestamp with time zone,
+  released_at timestamp with time zone,
+  released_by text,
+  outcome text,
+  outcome_net numeric(12,2),
+  saved_usd numeric(12,2),
+  lost_usd numeric(12,2),
+  at_risk_trade_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
+  settled_at timestamp with time zone,
+  CONSTRAINT leak_guard_events_pkey PRIMARY KEY (id),
+  CONSTRAINT leak_guard_events_once UNIQUE (trader, day, pattern, source_key),
+  CONSTRAINT leak_guard_events_level_check CHECK (level = ANY (ARRAY['soft'::text, 'firm'::text, 'hard'::text])),
+  CONSTRAINT leak_guard_events_outcome_check CHECK (outcome IS NULL OR (outcome = ANY (ARRAY['complied'::text, 'ignored'::text, 'late'::text, 'no_trades'::text, 'unknown'::text]))),
+  CONSTRAINT leak_guard_events_pattern_check CHECK (pattern = ANY (ARRAY['after_loss'::text, 'first_trade'::text, 'rule_violation'::text, 'near_stop'::text])),
+  CONSTRAINT leak_guard_events_released_by_check CHECK (released_by IS NULL OR char_length(released_by) >= 1 AND char_length(released_by) <= 200),
+  CONSTRAINT leak_guard_events_silent_reason_check CHECK (silent_reason IS NULL OR (silent_reason = ANY (ARRAY['quiet'::text, 'cap'::text, 'stale'::text]))),
+  CONSTRAINT leak_guard_events_source_key_check CHECK (char_length(source_key) >= 1 AND char_length(source_key) <= 80),
+  CONSTRAINT leak_guard_events_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.leak_guard_levels (
+  trader text NOT NULL,
+  "level" text NOT NULL,
+  set_by text NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT leak_guard_levels_pkey PRIMARY KEY (trader),
+  CONSTRAINT leak_guard_levels_level_check CHECK (level = ANY (ARRAY['off'::text, 'soft'::text, 'firm'::text, 'hard'::text])),
+  CONSTRAINT leak_guard_levels_set_by_check CHECK (char_length(set_by) >= 1 AND char_length(set_by) <= 200),
+  CONSTRAINT leak_guard_levels_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
 );
 
 CREATE TABLE public.login_lockouts (
@@ -3333,6 +3383,7 @@ ALTER SEQUENCE public.holiday_calendar_id_seq OWNED BY public.holiday_calendar.i
 ALTER SEQUENCE public.journal_days_id_seq OWNED BY public.journal_days.id;
 ALTER SEQUENCE public.junior_note_reminders_id_seq OWNED BY public.junior_note_reminders.id;
 ALTER SEQUENCE public.junior_notes_id_seq OWNED BY public.junior_notes.id;
+ALTER SEQUENCE public.leak_guard_events_id_seq OWNED BY public.leak_guard_events.id;
 ALTER SEQUENCE public.market_events_id_seq OWNED BY public.market_events.id;
 ALTER SEQUENCE public.market_open_brief_cache_id_seq OWNED BY public.market_open_brief_cache.id;
 ALTER SEQUENCE public.market_themes_id_seq OWNED BY public.market_themes.id;
@@ -3498,6 +3549,8 @@ CREATE UNIQUE INDEX holiday_calendar_unique ON public.holiday_calendar USING btr
 CREATE INDEX job_runs_job_started_idx ON public.job_runs USING btree (job, started_at DESC);
 CREATE INDEX junior_notes_date_idx ON public.junior_notes USING btree (note_date DESC);
 CREATE INDEX junior_notes_trader_date_idx ON public.junior_notes USING btree (trader, note_date);
+CREATE INDEX leak_guard_events_day_idx ON public.leak_guard_events USING btree (day, trader);
+CREATE INDEX leak_guard_events_open_idx ON public.leak_guard_events USING btree (day) WHERE (settled_at IS NULL);
 CREATE INDEX market_events_date_idx ON public.market_events USING btree (date);
 CREATE INDEX market_events_ticker_upper_idx ON public.market_events USING btree (upper(ticker));
 CREATE UNIQUE INDEX market_themes_name_key ON public.market_themes USING btree (lower(name));

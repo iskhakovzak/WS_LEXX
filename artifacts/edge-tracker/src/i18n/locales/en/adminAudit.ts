@@ -47,9 +47,12 @@ export default {
     playbook: "Playbook",
     login: "Sign-in",
     regime: "Market regime",
+    leakGuard: "Leak guard",
   },
 
   text: {
+    leakGuardLevel: "changed the leak guard level of {trader}",
+    leakGuardRelease: "ended the leak guard pause of {trader}",
     ban: "banned {who}",
     unban: "unbanned {who}",
     freeze: "froze account {who}{bulk}",
@@ -170,6 +173,7 @@ export default {
     fallbackVerb: "{verb}: {subject}",
   },
 
+  leakGuardLevel: { off: "off", soft: "soft", firm: "firm", hard: "hard", default: "stage default" },
   detail: {
     curator: "curator {name}",
     was: "was: {value}",

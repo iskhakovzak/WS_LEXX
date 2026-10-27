@@ -17,6 +17,8 @@
  *   (new) job_runs retention                           → jobs.prune daily
  *   (new) honest what-if verdicts per trader           → whatif.honesty (on request + after each sync + every 2 min;
  *                                                        lib/whatIfHonestyJobDefs.ts via registerModuleJobs)
+ *   (new) live leak guard                              → leakguard.scan (after each sync + every 2 min 08–16 NY;
+ *                                                        lib/leakGuard/jobDefs.ts via registerModuleJobs)
  */
 import { pool } from "@workspace/db";
 import { config } from "../config";
@@ -30,6 +32,7 @@ import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
 import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
+import { registerLeakGuardJobs } from "../lib/leakGuard/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -342,4 +345,5 @@ function registerModuleJobs(): void {
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
   registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
+  registerLeakGuardJobs(registerJob); // live leak guard: detect / ladder / settle after each sync (lib/leakGuard/jobDefs.ts)
 }

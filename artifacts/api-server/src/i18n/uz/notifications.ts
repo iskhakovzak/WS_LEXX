@@ -79,6 +79,22 @@ export default {
     week: { title: "Hafta tahlili tayyor", body: "{period} dan boshlangan haftaning AI-tahlili: natija, hafta odatlari va keyingisi uchun bitta fokus." },
     month: { title: "Oy tahlili tayyor", body: "{period} dan boshlangan oyning AI-tahlili: natija, oy odatlari va keyingisi uchun bitta fokus." },
   },
+  leak_guard: {
+    pattern: { after_loss: "zarardan keyin darhol kirish", first_trade: "kunning birinchi savdosi", rule_violation: "qoidabuzarlikdan keyingi savdolar", near_stop: "kunlik stop yonidagi savdolar" },
+    trader: {
+      after_loss: { title: "{minutes} daq. pauza — {until} gacha (NY)", body: "Zarardan keyin darhol kirish sizga har savdoda oʻrtacha {usd} ga tushadi." },
+      first_trade: { title: "Kunning birinchi savdosi — yarim hajmda", body: "Kunning birinchi savdosi sizga oʻrtacha {usd} ga tushadi. Odatdagi hajmning yarmidan boshlang." },
+      rule_violation: { title: "Qoida buzildi — {minutes} daq. pauza, {until} gacha (NY)", body: "Qoidabuzarlikdan keyin har savdoda oʻrtacha {usd} yoʻqotasiz." },
+      near_stop: { title: "Stopga yaqin — {minutes} daq. pauza, {until} gacha (NY)", body: "Kunlik stop yonida har savdoda oʻrtacha {usd} yoʻqotasiz." },
+    },
+    level: { firm: "Pauzani saytda tasdiqlang.", hard: "Siz pauzadasiz: risk-menejer xabardor qilindi." },
+    ignored: { title: "{trader}: pauzaga rioya qilinmadi", noAck: "{trader} pauzani ({pattern}) {minutes} daq. ichida tasdiqlamadi.", traded: "{trader} pauza vaqtida savdo qildi ({pattern})." },
+    risk: {
+      title: "{trader} {until} gacha pauzada (NY)",
+      titleDay: "{trader} pauzada",
+      body: "Sizib chiqish himoyasi: {pattern}, har savdoda oʻrtacha {usd}. Savdoni broker platformasida cheklang — sayt orderlarni bloklay olmaydi.",
+    },
+  },
   types: {
     ai_review_ready: { label: "AI-tahlil tayyor", description: "Kuningizning tungi AI-tahlili (yoqilgan boʻlsa — hafta yoki oyniki ham) tayyor — ertalab keladi" },
     mention: { label: "Eslatish", description: "Kimdir sizni muhokama, gʻoya yoki qaydda @ism orqali eslatdi" },
@@ -100,6 +116,7 @@ export default {
     risk_breach_review: { label: "Qoidabuzarlik tahlili", description: "Kurator limit buzilishingiz tahlilini yozdi" },
     limit_change: { label: "Limitlar oʻzgarishi", description: "Kurator risk limitlaringiz yoki darajangizni oʻzgartirdi" },
     rule_violation: { label: "Qoidabuzarlik", description: "Skaner intizom qoidasi buzilishini topdi yoki kurator u boʻyicha qaror chiqardi" },
+    leak_guard: { label: "Sizib chiqish himoyasi", description: "Zarardan keyingi pauza, kunning birinchi savdosi, qoidabuzarlikdan keyin yoki stop yonidagi savdolar — shaxsiy statistikangiz boʻyicha" },
     scaling_proposal: { label: "Masshtablash taklifi", description: "Darajani oshirish / pasaytirish taklifi yaratildi" },
     scaling_decision: { label: "Masshtablash boʻyicha qaror", description: "Taklif maʼqullandi yoki rad etildi" },
     academy_promotion_ready: { label: "Koʻtarilishga tayyor", description: "Keyingi bosqichga koʻtarilish mezonlari bajarildi" },

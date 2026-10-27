@@ -51,9 +51,12 @@ export default {
     playbook: "Плейбук",
     login: "Вход",
     regime: "Режим рынка",
+    leakGuard: "Защита от утечек",
   },
 
   text: {
+    leakGuardLevel: "изменил уровень защиты от утечек для {trader}",
+    leakGuardRelease: "снял паузу защиты от утечек с {trader}",
     ban: "забанил {who}",
     unban: "разбанил {who}",
     freeze: "заморозил учётку {who}{bulk}",
@@ -195,6 +198,7 @@ export default {
     fallbackVerb: "{verb}: {subject}",
   },
 
+  leakGuardLevel: { off: "выключено", soft: "мягкий", firm: "твёрдый", hard: "жёсткий", default: "по ступени" },
   detail: {
     curator: "куратор {name}",
     was: "было: {value}",

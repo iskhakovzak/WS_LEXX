@@ -79,6 +79,22 @@ export default {
     week: { title: "Week review ready", body: "AI review of the week from {period}: the result, the week's habits and one focus for the next one." },
     month: { title: "Month review ready", body: "AI review of the month from {period}: the result, the month's habits and one focus for the next one." },
   },
+  leak_guard: {
+    pattern: { after_loss: "entering right after a loss", first_trade: "the first trade of the day", rule_violation: "trading on after a rule violation", near_stop: "trading near the daily stop" },
+    trader: {
+      after_loss: { title: "Pause {minutes} min — until {until} (NY)", body: "Entering right after a loss costs you {usd} per trade on average." },
+      first_trade: { title: "First trade of the day — at half size", body: "Your first trade of the day costs you {usd} on average. Start with half your usual size." },
+      rule_violation: { title: "Rule broken — pause {minutes} min, until {until} (NY)", body: "After a rule violation you lose {usd} per trade on average." },
+      near_stop: { title: "Close to the stop — pause {minutes} min, until {until} (NY)", body: "Near the daily stop you lose {usd} per trade on average." },
+    },
+    level: { firm: "Confirm the pause on the site.", hard: "You are on pause: the risk manager has been told." },
+    ignored: { title: "{trader}: pause not kept", noAck: "{trader} did not confirm the pause ({pattern}) within {minutes} min.", traded: "{trader} traded during the pause ({pattern})." },
+    risk: {
+      title: "{trader} on pause until {until} (NY)",
+      titleDay: "{trader} on pause",
+      body: "Leak guard: {pattern}, {usd} per trade on average. Restrict trading in the broker's platform — the site cannot block orders.",
+    },
+  },
   types: {
     ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },
     mention: { label: "Mention", description: "Someone mentioned you with @name in a discussion, idea or note" },
@@ -100,6 +116,7 @@ export default {
     risk_breach_review: { label: "Breach review", description: "The curator recorded a review of your limit breach" },
     limit_change: { label: "Limit change", description: "The curator changed your risk limits or tier" },
     rule_violation: { label: "Rule violation", description: "The scanner found a discipline rule violation or a curator ruled on it" },
+    leak_guard: { label: "Leak guard", description: "Pause after a loss, the first trade of the day, trading after a rule violation or near the stop — from your own numbers" },
     scaling_proposal: { label: "Scaling proposal", description: "A proposal to raise / lower the tier was created" },
     scaling_decision: { label: "Scaling decision", description: "The proposal was approved or rejected" },
     academy_promotion_ready: { label: "Ready for promotion", description: "Promotion criteria for the next stage are met" },
