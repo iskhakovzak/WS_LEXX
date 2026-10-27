@@ -47,6 +47,7 @@ export default {
     playbook: "Playbook",
     login: "Sign-in",
     regime: "Market regime",
+    capitalAllocation: "Capital allocation",
   },
 
   text: {
@@ -126,6 +127,10 @@ export default {
     permissionsUpdate: "changed the permission matrix",
     deskSettingUpdate: "changed the desk setting “{setting}”",
     regimeSet: "set the market regime for {day}",
+    capitalApply: "changed {trader}'s daily limit by capital allocation",
+    capitalReject: "rejected the limits decision for {trader}",
+    capitalRevert: "reverted the limit change of {trader}",
+    capitalRecompute: "recalculated capital allocation: {created} new, {updated} updated, {applied} applied",
     deskSettingReset: "reset the desk setting “{setting}” to the default",
 
     seedDemo: "created demo academy challenges",

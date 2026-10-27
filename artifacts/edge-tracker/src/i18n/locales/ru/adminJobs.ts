@@ -63,6 +63,7 @@ export default {
     finviz: { screener: "Finviz: скринер", snapshot: "Finviz: данные тикеров", "snapshot-pending": "Finviz: запрошенные тикеры", earnings: "Finviz: календарь отчётов" },
     "news-channel": { premarket: "Канал WS_NEWS: премаркет", open: "Канал WS_NEWS: от открытия", close: "Канал WS_NEWS: итоги дня" },
     edgemap: { nightly: "Карта «где зарабатываю / теряю»: ночной пересчёт" },
+    capital: { weekly: "Распределение риска: недельный расчёт" },
     whatif: { honesty: "Честная проверка подсказок «Что если»" },
     ai: { "batch-reviews": "AI-разборы за ночь (пакетом, за полцены)" },
   },

@@ -201,6 +201,9 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `PROPOSAL_NOT_FOUND` | 404 | Scaling proposal. | — |
 | `PROPOSAL_DECIDED` | 409 | Approve / reject of a decided proposal. | `{ proposal }` |
 | `PROPOSAL_TIER_GONE` | 400 | Approving a proposal whose target tier was removed. | — |
+| `CAPITAL_LIMITS_CHANGED` | 409 | Approving / reverting a capital allocation change after the trader's daily limit changed. | — |
+| `CAPITAL_ALREADY_REVERTED` | 409 | Reverting a capital allocation change twice. | — |
+| `CAPITAL_NOT_REVERTIBLE` | 400 | Reverting a history row that is not a capital allocation change. | — |
 | `AUDIENCE_INVALID` | 400 | Discussions: the audience value is not a list / string. | — |
 | `AUDIENCE_UNKNOWN` | 400 | Discussions: an unknown audience token. | — |
 | `AUDIENCE_TOO_MANY` | 400 | Discussions: more than 12 audience tokens. | — |

@@ -328,6 +328,13 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
 
+    // capital allocation (api lib/capital): limits applied / rejected / reverted by a curator or the weekly job
+    case "capital.apply": case "capital.revert": {
+      const lim = (x: unknown) => fmtUsd(n((x as { dailyLossLimit?: unknown } | null)?.dailyLossLimit), { decimals: 0 });
+      return { label: L("capitalAllocation"), tone: e.action === "capital.apply" ? "accent" : "warn", text: t(e.action === "capital.apply" ? "text.capitalApply" : "text.capitalRevert", { trader: pn(e.targetId) }), detail: `${lim(d.before)} → ${lim(d.after)}` };
+    }
+    case "capital.reject": return { label: L("capitalAllocation"), tone: "neutral", text: t("text.capitalReject", { trader: pn(e.targetId) }) };
+    case "capital.recompute": return { label: L("capitalAllocation"), tone: "neutral", text: t("text.capitalRecompute", { created: n(d.created), updated: n(d.updated), applied: n(d.applied) }) };
     case "regime.set": {
       const name = (k: unknown) => (isRegimeKey(k) ? regimeName(k) : t("none"));
       return { label: L("regime"), tone: "accent", text: t("text.regimeSet", { day: s(e.targetId) }), detail: `${name(d.from)} → ${name(d.to)}` };
@@ -387,7 +394,7 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
     case "office_capital.set": return {
-      label: L("capital"), tone: "neutral", text: t("text.capitalSet", { date: s(e.targetId) }),
+      label: L("capitalAllocation"), tone: "neutral", text: t("text.capitalSet", { date: s(e.targetId) }),
       detail: joinDetail([
         d.capital != null ? t("detail.capital", { value: fmtUsd(n(d.capital), { decimals: "trim" }) }) : "",
         d.goalPct != null ? t("detail.goal", { value: n(d.goalPct) }) : "",

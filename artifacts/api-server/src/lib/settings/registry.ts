@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "capital";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -341,6 +341,25 @@ export const SETTINGS = {
   "regime.mult.idiosyncratic": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
   "regime.mult.euphoria": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
   "regime.applyLimits": { group: "regime", type: "boolean", default: false },
+
+  // Capital allocation (lib/capital): weekly (Fri 19:30 NY) and on demand, per trader raise / keep / cut of the daily loss
+  // limit (BP in the same ratio) from the shrunk edge, the edge in the current regime and discipline. Proposals land in
+  // the scaling queue; autoApply (off by default) lets the weekly job apply them itself. Weights are relative shares.
+  "capital.weightEdge": { group: "capital", type: "number", default: 0.5, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "capital.weightRegime": { group: "capital", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "capital.weightDiscipline": { group: "capital", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "capital.maxStepUpPct": { group: "capital", type: "number", default: 20, min: 0, max: 100, step: 1, unit: "pct" },
+  "capital.maxStepDownPct": { group: "capital", type: "number", default: 25, min: 0, max: 90, step: 1, unit: "pct" },
+  "capital.minStepPct": { group: "capital", type: "number", default: 5, min: 1, max: 50, step: 1, unit: "pct" },
+  "capital.minTrades": { group: "capital", type: "number", default: 30, min: 5, max: 1000, step: 5, unit: "trades" },
+  "capital.windowDays": { group: "capital", type: "number", default: 60, min: 20, max: 250, step: 5, unit: "days" },
+  "capital.includeJuniors": { group: "capital", type: "boolean", default: false },
+  "capital.disciplineGate": { group: "capital", type: "number", default: 60, min: 0, max: 100, step: 1, unit: "points" },
+  "capital.disciplineCut": { group: "capital", type: "number", default: 35, min: 0, max: 100, step: 1, unit: "points" },
+  "capital.floorPctOfTier": { group: "capital", type: "number", default: 50, min: 10, max: 100, step: 5, unit: "pct" },
+  "capital.capPctOfTier": { group: "capital", type: "number", default: 150, min: 100, max: 500, step: 5, unit: "pct" },
+  "capital.maxDeskGrowthPct": { group: "capital", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "pct" },
+  "capital.autoApply": { group: "capital", type: "boolean", default: false },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

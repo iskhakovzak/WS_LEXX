@@ -51,6 +51,7 @@ export default {
     playbook: "Плейбук",
     login: "Вход",
     regime: "Режим рынка",
+    capitalAllocation: "Распределение риска",
   },
 
   text: {
@@ -140,6 +141,10 @@ export default {
     permissionsUpdate: "изменил матрицу прав доступа",
     deskSettingUpdate: "изменил настройку деска «{setting}»",
     regimeSet: "задал режим рынка на {day}",
+    capitalApply: "изменил дневной лимит {trader} по распределению риска",
+    capitalReject: "отклонил решение по лимитам {trader}",
+    capitalRevert: "откатил изменение лимита {trader}",
+    capitalRecompute: "пересчитал распределение риска: новых {created}, обновлено {updated}, применено {applied}",
     deskSettingReset: "вернул настройку деска «{setting}» к значению по умолчанию",
 
     seedDemo: "создал демо-челленджи академии",

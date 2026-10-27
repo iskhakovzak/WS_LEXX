@@ -27,6 +27,7 @@ export default {
     assistant: { title: "WS Assistant", description: "AI helper for the site (the ✦ button in the header, Ctrl+J). The key is the server variable AI_INTEGRATIONS_ANTHROPIC_API_KEY; without it the assistant shows how to enable it. Who may use it: «Roles and rights», the «WS Assistant» right." },
     aiBatch: { title: "Overnight AI reviews", description: "At night, in one batch, at half price (Message Batches API): when the day closes — everyone who traded closed the EOD, at the latest the set time — everyone gets an AI review of the day, and a “Day review ready” notice in the morning. Traders' personal assistant budgets are not spent — only the desk's nightly cap." },
     regime: { title: "Market regime and limits", description: "The daily loss limit multiplier of each desk market regime. By default it is a suggestion: the risk screen and the trader’s day show «base × multiplier». «Apply automatically» makes the stops use it; stored limits never change, so switching it off restores the base at once." },
+    capital: { title: "Capital allocation", description: "Weekly (Friday 19:30 NY) and with «Recalculate» on the scaling plan: whose daily loss limit and BP to raise, keep or cut. Uses the edge shrunk toward zero (a small sample is no proof), the edge in the current market regime and discipline. Decisions go to the scaling plan queue; without «Auto-apply» nothing changes by itself." },
     access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
     other: { title: "Other", description: "Settings without a group." },
   },
@@ -129,6 +130,23 @@ export default {
     unknown: "No such trader — remove or fix the name",
   },
   settings: {
+    capital: {
+      weightEdge: { label: "Edge weight", help: "Share of the overall edge (R and $ shrunk toward zero) in the score. Weights are relative: only their ratio matters." },
+      weightRegime: { label: "Regime edge weight", help: "Share of the edge in the desk's current market regime. Without a regime this week the part drops out." },
+      weightDiscipline: { label: "Discipline weight", help: "Share of discipline: the discipline index, violations, closed EOD days, risk stops." },
+      maxStepUpPct: { label: "Max step up", help: "By how many percent of the daily limit one decision may raise it." },
+      maxStepDownPct: { label: "Max step down", help: "By how many percent of the daily limit one decision may cut it." },
+      minStepPct: { label: "Min step", help: "Smaller changes are not proposed — no churn of limits." },
+      minTrades: { label: "Min trades", help: "Closed trades in the window a result-based raise or cut needs. Fewer — the edge is not proven, the limit stays (unless discipline is weak)." },
+      windowDays: { label: "History window", help: "How many recent trading days are used." },
+      includeJuniors: { label: "Include juniors", help: "Off — juniors' limits follow the ladder, the engine leaves them alone." },
+      disciplineGate: { label: "Discipline for a raise", help: "Below this score (0–100) the limit is not raised even with a proven edge." },
+      disciplineCut: { label: "Discipline for a cut", help: "Below this score the limit is cut by the max step whatever the results." },
+      floorPctOfTier: { label: "Limit floor", help: "The daily limit never goes below this share of the tier template." },
+      capPctOfTier: { label: "Limit cap", help: "The daily limit never goes above this share of the tier template (nor the next tier's template) — beyond that only a tier promotion." },
+      maxDeskGrowthPct: { label: "Desk risk growth per run", help: "The desk's total daily limit grows by at most this much (plus what cuts free up). Raises are scaled down proportionally." },
+      autoApply: { label: "Auto-apply", help: "Off — decisions wait for a curator or an admin in the queue. On — the weekly run applies them itself (logged and reversible). «Recalculate» never applies by itself." },
+    },
     regime: {
       mult: {
         theme_bull: { label: "Theme bull", help: "Daily limit multiplier in the «Theme bull» regime." },
