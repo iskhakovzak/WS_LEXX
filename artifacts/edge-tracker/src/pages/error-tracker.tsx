@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { ListChecks, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { ErrorState, Page, PageHeader, PanelSkeleton, SectionTabs, StatGridSkeleton, Toolbar } from "@/components/ds";
@@ -54,7 +55,7 @@ export default function RulesTracker() {
     const names = dbUsers.filter((u) => u.role === "trader" && u.active !== false).map((u) => u.name);
     return self && !names.includes(self) ? [self, ...names] : names;
   }, [dbUsers, self]);
-  // ?tab= / ?trader= (notification links) win over the remembered choice.
+  // ?tab= / ?trader= (notification links) win over the remembered choice; a new choice is written back to the URL.
   const [pickedTrader, setPickedTrader] = useState<string>(() => urlParam("trader") ?? lsGet(LS_KEYS.trader) ?? "");
   const traderName = !isStaff ? self : traderOptions.includes(pickedTrader) ? pickedTrader : traderOptions[0] ?? "";
 
@@ -62,7 +63,7 @@ export default function RulesTracker() {
     const t = (urlParam("tab") ?? lsGet(LS_KEYS.tab)) as Tab | null;
     return t && TABS.includes(t) ? t : "overview";
   });
-  const setTab = useCallback((t: Tab) => { setTabState(t); lsSet(LS_KEYS.tab, t); }, []);
+  const setTab = useCallback((t: Tab) => { setTabState(t); lsSet(LS_KEYS.tab, t); replaceSearchParams({ tab: t }, { tab: "overview" }); }, []);
   // ?period=month|quarter|year|custom(&from=&to=); the old «30 / 90 / 180 дн.» choice (LS rules.period) still reads.
   const pp = usePeriodParam({ fallback: "quarter", presets: PERIOD_PRESETS, storageKey: LS_KEYS.period });
   const range = pp.period === "custom" ? pp.custom : null;
@@ -186,7 +187,7 @@ export default function RulesTracker() {
         {isStaff && traderOptions.length > 1 && (
           <PersonSelect
             value={traderName}
-            onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); }}
+            onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); replaceSearchParams({ trader: v }); }}
             options={traderOptions}
             self={self}
             selfSuffix={t("page.selfSuffix")}

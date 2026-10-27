@@ -1,6 +1,7 @@
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import * as React from "react";
 import { ArrowDownRight, ArrowUpRight, Inbox, TrendingUp, Users } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, Toolbar, useTableSort } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, Toolbar, usePersistentState, useTableSort } from "@/components/ds";
 import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
@@ -61,10 +62,12 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const { t: tc } = commonI18n.useT();
   const ev = useEvaluation(null);
   const pending = useProposals("pending", null);
-  const [filter, setFilter] = React.useState<Filter>("all");
+  const [filter, setFilter] = usePersistentState<Filter>("scaling.desk.filter", "all");
   const [query, setQuery] = React.useState("");
-  const [selected, setSelected] = React.useState<string | null>(focusTrader);
-  React.useEffect(() => { if (focusTrader) setSelected(focusTrader); }, [focusTrader]);
+  const [selected, setSelectedState] = React.useState<string | null>(focusTrader);
+  React.useEffect(() => { if (focusTrader) setSelectedState(focusTrader); }, [focusTrader]);
+  // The open card lives in ?trader= (a reload keeps it, closing clears it).
+  const setSelected = React.useCallback((t: string | null) => { setSelectedState(t); replaceSearchParams({ trader: t }); }, []);
 
   React.useEffect(() => { if (ev.dataUpdatedAt) onUpdatedAt?.(ev.dataUpdatedAt); }, [ev.dataUpdatedAt, onUpdatedAt]);
 

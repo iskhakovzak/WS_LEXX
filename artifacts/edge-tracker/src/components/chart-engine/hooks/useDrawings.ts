@@ -9,7 +9,7 @@ import * as React from "react";
 import { http } from "@/lib/api/http";
 import { apiErrorStatus } from "@/lib/api/errors";
 import type { Drawing } from "../types";
-import { MAX_DRAWINGS, loadDrawings, parseDrawingsResponse, saveDrawings, toApiDrawing } from "../lib/drawings";
+import { MAX_DRAWINGS, loadDrawings, loadUnsavedDrawings, parseDrawingsResponse, saveDrawings, toApiDrawing } from "../lib/drawings";
 
 const SAVE_DELAY_MS = 400;
 
@@ -43,8 +43,11 @@ export function useDrawings(ticker: string, day: string, enabled = true): Drawin
       .then((body) => {
         sourceRef.current = "server";
         let list = parseDrawingsResponse(body);
+        // A set whose save failed here is newer than the server's: it wins and is written up now.
+        const unsaved = loadUnsavedDrawings(ticker, day);
+        if (unsaved) { list = unsaved; flushRef.current(unsaved); }
         // Drawings made in this browser before the server kept them: move them up once (the local copy is then cleared).
-        if (!list.length) { const local = loadDrawings(ticker, day); if (local.length) { list = local; flushRef.current(local); } }
+        else if (!list.length) { const local = loadDrawings(ticker, day); if (local.length) { list = local; flushRef.current(local); } }
         setState({ key, list, source: "server", loading: false });
       })
       .catch((e: unknown) => {
@@ -62,7 +65,7 @@ export function useDrawings(ticker: string, day: string, enabled = true): Drawin
       .then(() => { setSaveFailed(false); saveDrawings(ticker, day, []); })
       .catch((e: unknown) => {
         // No route / read-only viewer: keep them in this browser. Otherwise keep a browser copy until the next save works.
-        saveDrawings(ticker, day, list);
+        saveDrawings(ticker, day, list, { pending: !toLocal(apiErrorStatus(e)) });
         if (toLocal(apiErrorStatus(e))) { sourceRef.current = "local"; setState((s) => ({ ...s, source: "local" })); setSaveFailed(false); }
         else setSaveFailed(true);
       });
@@ -70,11 +73,17 @@ export function useDrawings(ticker: string, day: string, enabled = true): Drawin
   const flushRef = React.useRef(flush);
   flushRef.current = flush;
 
-  // Flush a pending save when the ticker-day changes or the chart unmounts.
-  React.useEffect(() => () => {
-    const p = pending.current;
-    if (p.timer != null) { window.clearTimeout(p.timer); p.timer = null; if (p.list) flush(p.list); }
-  }, [flush]);
+  // Flush a pending save when the ticker-day changes, the chart unmounts, or the tab is hidden / closed.
+  React.useEffect(() => {
+    const now = () => {
+      const p = pending.current;
+      if (p.timer != null) { window.clearTimeout(p.timer); p.timer = null; if (p.list) { saveDrawings(ticker, day, p.list, { pending: true }); flush(p.list); } }
+    };
+    const onHide = () => { if (document.visibilityState === "hidden") now(); };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", now);
+    return () => { document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", now); now(); };
+  }, [flush, ticker, day]);
 
   const update = React.useCallback((fn: (d: Drawing[]) => Drawing[], opts: { save?: boolean } = {}) => {
     setState((s) => {

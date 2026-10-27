@@ -1,6 +1,8 @@
-// History and pinned questions of «Спроси журнал» (localStorage via usePersistentState; one owner — the page).
+// History and pinned questions of the Ask journal page: history stays in this browser (usePersistentState); pinned
+// questions are the person's own list, kept on the account (prefs "ask.pinned"; the old browser copy is moved up once).
 import * as React from "react";
 import { usePersistentState } from "@/components/ds";
+import { useServerPref } from "@/hooks/use-server-pref";
 
 const HISTORY_MAX = 20;
 const PINNED_MAX = 12;
@@ -19,7 +21,7 @@ export interface AskMemory {
 
 export function useAskMemory(): AskMemory {
   const [rawHistory, setHistory] = usePersistentState<string[]>("ask.history", []);
-  const [rawPinned, setPinned] = usePersistentState<string[]>("ask.pinned", []);
+  const [rawPinned, setPinned] = useServerPref<string[]>("ask.pinned", [], { legacyKey: "ws_lexx.ask.pinned", parse: (v) => (Array.isArray(v) ? clean(v) : null) });
   const history = React.useMemo(() => clean(rawHistory).slice(0, HISTORY_MAX), [rawHistory]);
   const pinned = React.useMemo(() => clean(rawPinned).slice(0, PINNED_MAX), [rawPinned]);
 

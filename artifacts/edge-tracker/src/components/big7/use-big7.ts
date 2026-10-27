@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Candle } from "@/components/chart-engine/types";
 import { http } from "@/lib/api/http";
@@ -7,8 +7,8 @@ import { STALE } from "@/lib/api/keys";
 import { riskMeQuery } from "@/lib/api/queries";
 import { big7I18n } from "@/i18n/ns/big7";
 import {
-  DAY_CHANGE_EVENT, big7Today, getTickerDay, updateTickerDayField, getMarketContext, saveMarketContext,
-  type AutoEarning, type Catalyst, type GapRiskResponse, type MarketCtx, type RiskMeLite, type StockQuote, type TickerDay,
+  big7Today,
+  type AutoEarning, type Catalyst, type GapRiskResponse, type RiskMeLite, type StockQuote,
 } from "./lib";
 
 export const CATALYSTS_KEY = ["big7-catalysts"] as const;
@@ -224,43 +224,6 @@ export function useRiskMe() {
     refetchOnWindowFocus: false,
     retry: 0,
   });
-}
-
-/** Re-render on any Big 7 local day-state change (bias, in play, notes…). */
-export function useDayVersion() {
-  const [v, setV] = useState(0);
-  useEffect(() => {
-    const on = () => setV((x) => x + 1);
-    window.addEventListener(DAY_CHANGE_EVENT, on);
-    window.addEventListener("storage", on);
-    return () => {
-      window.removeEventListener(DAY_CHANGE_EVENT, on);
-      window.removeEventListener("storage", on);
-    };
-  }, []);
-  return v;
-}
-
-export function useTickerDay(ticker: string): [TickerDay, <K extends keyof TickerDay>(key: K, val: TickerDay[K]) => void] {
-  const version = useDayVersion();
-  const [day, setDay] = useState<TickerDay>(() => getTickerDay(ticker));
-  useEffect(() => { setDay(getTickerDay(ticker)); }, [ticker, version]);
-  const update = useCallback(<K extends keyof TickerDay>(key: K, val: TickerDay[K]) => {
-    setDay(updateTickerDayField(ticker, key, val));
-  }, [ticker]);
-  return [day, update];
-}
-
-export function useMarketCtx(): [MarketCtx, (key: keyof MarketCtx, val: string) => void] {
-  const version = useDayVersion();
-  const [ctx, setCtx] = useState<MarketCtx>(getMarketContext);
-  useEffect(() => { setCtx(getMarketContext()); }, [version]);
-  const update = useCallback((key: keyof MarketCtx, val: string) => {
-    const next = { ...getMarketContext(), [key]: val } as MarketCtx;
-    setCtx(next);
-    saveMarketContext(next);
-  }, []);
-  return [ctx, update];
 }
 
 /** Ticks every `ms` so relative times ("updated N s ago") stay fresh. */

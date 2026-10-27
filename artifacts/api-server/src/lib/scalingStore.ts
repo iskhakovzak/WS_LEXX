@@ -4,6 +4,7 @@
  */
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { markSeedDone, seedDone } from "./seedMarkers";
 import { DEFAULT_RULES, DEFAULT_TIERS, sortTiers, type MetricKey, type Op, type Rule, type RuleKind, type Tier, type Unit } from "./scalingEngine";
 
 const num = (v: unknown): number | null => {
@@ -19,16 +20,23 @@ let ensured: Promise<void> | null = null;
 export function ensureScalingSeed(): Promise<void> {
   if (!ensured) {
     ensured = (async () => {
-      const { rows: tc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_tiers`);
-      if (Number(tc[0]?.n ?? 0) === 0) {
-        for (const t of DEFAULT_TIERS) await upsertTier(pool, t, "system");
-        logger.info("scaling: seeded default tiers");
+      // Once per database (lib/seedMarkers): an emptied rule list stays empty after a restart.
+      if (!(await seedDone("scaling.tiers"))) {
+        const { rows: tc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_tiers`);
+        if (Number(tc[0]?.n ?? 0) === 0) {
+          for (const t of DEFAULT_TIERS) await upsertTier(pool, t, "system");
+          logger.info("scaling: seeded default tiers");
+        }
+        await markSeedDone("scaling.tiers");
       }
-      const { rows: rc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_rules`);
-      if (Number(rc[0]?.n ?? 0) === 0) {
-        let i = 0;
-        for (const r of DEFAULT_RULES) await insertRule(pool, r, i++, "system");
-        logger.info("scaling: seeded default rules");
+      if (!(await seedDone("scaling.rules"))) {
+        const { rows: rc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_rules`);
+        if (Number(rc[0]?.n ?? 0) === 0) {
+          let i = 0;
+          for (const r of DEFAULT_RULES) await insertRule(pool, r, i++, "system");
+          logger.info("scaling: seeded default rules");
+        }
+        await markSeedDone("scaling.rules");
       }
     })().catch((err) => {
       ensured = null;

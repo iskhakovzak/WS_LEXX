@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DRAWING_POINTS, MAX_DRAWINGS, drawingsStorageKey, fromApiDrawing, isValidDrawing, loadDrawings, makeDrawing, moveDrawing, movePoint,
-  parseDrawingsResponse, saveDrawings, toApiDrawing,
+  loadUnsavedDrawings, parseDrawingsResponse, saveDrawings, toApiDrawing,
 } from "./drawings";
 import { logicalX } from "../primitives/canvas";
 import { priceFormatFor, refPrice, topMargin } from "./chart-options";
@@ -67,6 +67,17 @@ describe("drawings browser fallback", () => {
     expect(loadDrawings("INTC", "2026-10-15")).toEqual([]);
     saveDrawings("INTC", "2026-10-16", []);
     expect(localStorage.getItem(drawingsStorageKey("INTC", "2026-10-16"))).toBeNull();
+  });
+  it("keeps a copy left by a failed server save (even an empty one) as the newer set", () => {
+    const d = makeDrawing("hline", [{ time: T0, price: 10 }], "accent");
+    saveDrawings("INTC", "2026-10-16", [d]);
+    expect(loadUnsavedDrawings("INTC", "2026-10-16")).toBeNull(); // a plain browser copy is not «newer»
+    saveDrawings("INTC", "2026-10-16", [d], { pending: true });
+    expect(loadUnsavedDrawings("INTC", "2026-10-16")).toMatchObject([{ id: d.id }]);
+    saveDrawings("INTC", "2026-10-16", [], { pending: true });
+    expect(loadUnsavedDrawings("INTC", "2026-10-16")).toEqual([]);
+    saveDrawings("INTC", "2026-10-16", []);
+    expect(loadUnsavedDrawings("INTC", "2026-10-16")).toBeNull();
   });
 });
 

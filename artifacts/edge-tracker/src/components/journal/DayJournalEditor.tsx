@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AssistHelp } from "@/components/shared/assist-help";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { KEYS } from "@/lib/api/keys";
 import { nyDate } from "@/lib/trading-date";
 import { useDayReport } from "@/components/day-report/api";
@@ -43,6 +44,17 @@ const TEXT_LIMIT = 4000; // eod summary fields (repeat / stop) are capped server
  * left with «Разобрал». Absent on older API builds.
  */
 type EodDayView = EodDayPayload & { closeOpensAt?: string | null; closedVia?: "daily" | "journal" | null; traderNote?: string | null };
+
+/** Conflict with another tab: the newer version is shown, and the typed one is one click away. */
+function conflictToast(toast: ReturnType<typeof useToast>["toast"], keepMine: () => void) {
+  const label = journalI18n.t("editor.keepMine");
+  toast({
+    title: journalI18n.t("editor.conflictTitle"),
+    description: journalI18n.t("editor.conflictDesc"),
+    duration: 30_000,
+    action: <ToastAction altText={label} onClick={keepMine}>{label}</ToastAction>,
+  });
+}
 
 /**
  * «Дневник дня»: a short guided reflection on top of the automatically imported trades —
@@ -132,13 +144,13 @@ export function DayJournalEditor({
         onError: (err) => {
           if (err instanceof JournalConflict) {
             const cur = err.current ?? emptyEntry(e.trader, e.date);
-            if (keyRef.current === `${e.trader}|${e.date}`) {
-              setDraft(cur);
-              draftRef.current = cur;
-              dirtyRef.current = false;
-              setStatus({ kind: "idle" });
-            }
-            toast({ title: journalI18n.t("editor.conflictTitle"), description: journalI18n.t("editor.conflictDesc") });
+            const show = (x: JournalEntry, save: boolean) => {
+              if (keyRef.current !== `${e.trader}|${e.date}`) return;
+              draftRef.current = x; setDraft(x); dirtyRef.current = false;
+              if (save) persist(x); else setStatus({ kind: "idle" });
+            };
+            show(cur, false);
+            conflictToast(toast, () => show({ ...e, updatedAt: cur.updatedAt ?? null, pendingSync: false }, true)); // typed text: one click away
             return;
           }
           dirtyRef.current = true;

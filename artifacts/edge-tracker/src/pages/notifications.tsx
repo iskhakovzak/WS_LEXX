@@ -18,6 +18,7 @@ import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NotificationItem } from "@/components/notifications/notification-item";
 import { NotificationPrefsPanel } from "@/components/notifications/notification-prefs";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { ALL_GROUPS, InboxFiltersButton, InboxKeysHint, inboxActiveFilters, type GroupPick } from "@/components/notifications/inbox-filters";
 import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
 import {
@@ -67,7 +68,7 @@ export default function NotificationsPage() {
     const id = setTimeout(() => setQ(search.trim()), 300);
     return () => clearTimeout(id);
   }, [search]);
-  const [group, setGroup] = useState<GroupPick>(ALL_GROUPS);
+  const [group, setGroup] = useState<GroupPick>(() => (new URLSearchParams(window.location.search).get("group") as GroupPick | null) || ALL_GROUPS);
   const [types, setTypes] = useState<string[]>(initial.types);
   const [severities, setSeverities] = useState<Severity[]>(initial.severities);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -77,18 +78,18 @@ export default function NotificationsPage() {
   const [undo, setUndo] = useState<{ ids: number[]; label: string } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Keep the URL in sync (shareable filters, back/forward friendly).
+  // Keep the URL in sync (shareable filters, back/forward friendly); other params (the team view's ?trader= /
+  // &section= carried over by the /activity redirect) stay.
   useEffect(() => {
-    const p = new URLSearchParams();
-    if (tab !== "inbox") p.set("tab", tab);
-    if (unreadOnly && tab !== "team") p.set("unread", "1");
-    if (q && tab !== "team") p.set("q", q);
-    if (types.length) p.set("type", types.join(","));
-    if (severities.length) p.set("severity", severities.join(","));
-    const qs = p.toString();
-    const next = `/notifications${qs ? `?${qs}` : ""}`;
-    if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(null, "", next);
-  }, [tab, unreadOnly, q, types, severities]);
+    replaceSearchParams({
+      tab: tab !== "inbox" ? tab : null,
+      unread: unreadOnly && tab !== "team" ? "1" : null,
+      q: q && tab !== "team" ? q : null,
+      type: types.length ? types.join(",") : null,
+      severity: severities.length ? severities.join(",") : null,
+      group: group !== ALL_GROUPS ? group : null,
+    });
+  }, [tab, unreadOnly, q, types, severities, group]);
 
   const effectiveTypes = useMemo(() => {
     if (types.length) return types;

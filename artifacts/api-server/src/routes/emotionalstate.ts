@@ -230,26 +230,17 @@ router.post("/emotional-state", asyncHandler(async (req, res): Promise<void> => 
   const revenge = bool(body.revenge);
   if (body.freeText != null && typeof body.freeText !== "string") throw new AppError("INVALID_FIELD", undefined, { field: "freeText" });
   const freeText = typeof body.freeText === "string" && body.freeText.trim() ? body.freeText.slice(0, 2000) : null;
-
-  const existing = await db
-    .select({ id: emotionalStateLogTable.id })
-    .from(emotionalStateLogTable)
-    .where(and(eq(emotionalStateLogTable.userId, userId), eq(emotionalStateLogTable.date, date)))
-    .limit(1);
-
-  let row;
-  if (existing.length > 0) {
-    [row] = await db
-      .update(emotionalStateLogTable)
-      .set({ sleepWell, stressed, tilted, focused, anxious, revenge, freeText })
-      .where(eq(emotionalStateLogTable.id, existing[0].id))
-      .returning();
-  } else {
-    [row] = await db
-      .insert(emotionalStateLogTable)
-      .values({ userId, date, sleepWell, stressed, tilted, focused, anxious, revenge, freeText })
-      .returning();
-  }
+  // One row per person and day (unique index, migration 0274): two quick saves update the same row. A save that does
+  // not send freeText (a flags-only edit) keeps the text already written that morning.
+  const flags = { sleepWell, stressed, tilted, focused, anxious, revenge };
+  const [row] = await db
+    .insert(emotionalStateLogTable)
+    .values({ userId, date, ...flags, freeText })
+    .onConflictDoUpdate({
+      target: [emotionalStateLogTable.userId, emotionalStateLogTable.date],
+      set: body.freeText === undefined ? flags : { ...flags, freeText },
+    })
+    .returning();
 
   res.status(201).json(present(row));
 }));

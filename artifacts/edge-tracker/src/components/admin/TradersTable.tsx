@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Link } from "wouter";
 import {
   Ban, BookOpen, CalendarCheck, Download, Flame, KeyRound, MoreHorizontal, ShieldAlert, UserCheck, UserCog, Users,
@@ -153,7 +154,8 @@ export function TradersTable({
   };
   const { t } = adminI18n.useT();
   const [q, setQ] = useState("");
-  const [openName, setOpenName] = useState<string | null>(null);
+  const [openParam, setOpenName] = useSearchParam("person", ""); // ?person= — the open card survives a reload
+  const openName = openParam || null;
   const actions = useUserActions(actor, onChange);
 
   const users = pulse?.users ?? [];

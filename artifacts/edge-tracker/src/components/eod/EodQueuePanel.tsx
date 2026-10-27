@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { AlertTriangle, ArrowDownUp, CheckCheck, ClipboardCheck, Clock, Inbox } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented, toneOf, toneText, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "pending" | "reviewed";
 type Sort = "oldest" | "newest";
+const TABS: readonly Tab[] = ["pending", "reviewed"];
 
 /**
  * Curator queue: closed days awaiting review (SLA 24 trading hours, oldest first) and the last 7 days of reviews.
@@ -26,14 +28,16 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   const { t: tc } = commonI18n.useT();
   const [scopePref, setScope] = usePersistentState<QueueScope | "auto">("eod.queueScope", "auto");
   const pendingQ = useEodQueue(enabled, scopePref);
-  const [tab, setTab] = useState<Tab>("pending");
+  // Tab and trader ride in the URL (?qtab= / ?qtrader=, next to ?view=queue); sort and «просроченные» are remembered.
+  const [tabRaw, setTab] = useSearchParam("qtab", "pending", { allowed: TABS });
+  const tab = tabRaw as Tab;
   // Loaded on both tabs: the «Проверено в срок» KPI needs it (it showed «…» forever on «Ждут проверки»).
   const reviewedQ = useEodReviewed(enabled, scopePref);
   const scope: QueueScope = scopePref === "auto" ? pendingQ.data?.scope ?? "desk" : scopePref;
   const wards = pendingQ.data?.wards ?? 0;
-  const [trader, setTrader] = useState("");
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [sort, setSort] = useState<Sort>("oldest");
+  const [trader, setTrader] = useSearchParam("qtrader", "");
+  const [overdueOnly, setOverdueOnly] = usePersistentState("eod.queue.overdueOnly", false);
+  const [sort, setSort] = usePersistentState<Sort>("eod.queue.sort", "oldest");
   const [current, setCurrent] = useState<QueueItem | null>(null);
 
   const sla = pendingQ.data?.slaHours ?? 24;

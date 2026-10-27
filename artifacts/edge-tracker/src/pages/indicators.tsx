@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { useTaggedTrades } from "@/components/indicators/use-tagged-trades";
 import { Activity, BookOpen, Gauge, Layers, LayoutGrid, Rows3, Search } from "lucide-react";
@@ -54,7 +55,9 @@ function IndicatorLibrary() {
   const [view, setView] = useState<"cards" | "table">(initialPrefs.view === "table" ? "table" : "cards");
   const [favorites, setFavorites] = useState<string[]>(loadFavorites);
   const [notes, setNotes] = useState<Record<string, string>>(loadNotes);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openParam, setOpenParam] = useSearchParam("id", ""); // ?id= — the open indicator survives a reload
+  const openId = openParam || null;
+  const setOpenId = useCallback((id: string | null) => setOpenParam(id), [setOpenParam]);
   const searchRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -185,7 +188,7 @@ function IndicatorLibrary() {
     const cur = openId ? filtered.findIndex((i) => i.id === openId) : -1;
     const next = cur < 0 ? 0 : (cur + dir + filtered.length) % filtered.length;
     setOpenId(filtered[next].id);
-  }, [filtered, openId]);
+  }, [filtered, openId, setOpenId]);
   const onPrev = useCallback(() => step(-1), [step]);
   const onNext = useCallback(() => step(1), [step]);
   const onClose = useCallback(() => {
@@ -193,7 +196,7 @@ function IndicatorLibrary() {
     setOpenId(null);
     // Return focus to the card that opened the sheet.
     if (id) setTimeout(() => gridRef.current?.querySelector<HTMLButtonElement>(`[data-card-id="${id}"]`)?.focus(), 0);
-  }, [openId]);
+  }, [openId, setOpenId]);
 
   // Arrow-key navigation across the card grid; F toggles favorite on the focused card.
   const onGridKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {

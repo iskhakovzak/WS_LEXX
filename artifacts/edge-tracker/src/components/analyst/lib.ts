@@ -362,6 +362,15 @@ export function activeFilterCount(f: Filters): number {
 
 export type SavedView = { id: string; name: string; filters: Filters };
 
+/** Saved views from the account (prefs "analyst.views") / the old browser copy: shape-checked, at most 30. */
+export function parseSavedViews(v: unknown): SavedView[] | null {
+  if (!Array.isArray(v)) return null;
+  return v
+    .filter((x): x is SavedView => !!x && typeof x === "object" && typeof (x as SavedView).name === "string" && !!(x as SavedView).filters && typeof (x as SavedView).filters === "object")
+    .map((x) => ({ id: String(x.id ?? x.name), name: x.name, filters: x.filters }))
+    .slice(0, 30);
+}
+
 export type FilterCtx = {
   isMine: (ticker: string) => boolean;
   isTop: (firm: string) => boolean;

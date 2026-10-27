@@ -2,7 +2,7 @@
  * Столбчатые кривые поведения: нетто по номеру сделки в дне, по минутам после убытка, по часу входа.
  */
 import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Segmented } from "@/components/ds";
+import { Segmented, usePersistentState } from "@/components/ds";
 import * as React from "react";
 import {
   BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, WrapTick, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps, useChartMotion,
@@ -18,7 +18,7 @@ type Mode = "avg" | "sum";
 
 export const BucketBars = React.memo(function BucketBars({ data, ariaLabel, height = 200 }: { data: Bucket[]; ariaLabel: string; height?: number }) {
   const motion = useChartMotion();
-  const [mode, setMode] = React.useState<Mode>("avg");
+  const [mode, setMode] = usePersistentState<Mode>("behavior.charts.mode", "avg");
   const rows = React.useMemo(() => data.map((b) => ({ ...b, value: mode === "avg" ? b.avgNet ?? 0 : b.net ?? 0 })), [data, mode]);
   const hasData = rows.some((r) => r.n > 0);
   return (

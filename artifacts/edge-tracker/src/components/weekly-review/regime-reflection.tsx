@@ -5,6 +5,7 @@
  * and shown read-only to the curator. Regimes start collapsed except today's one and the ones already answered.
  */
 import * as React from "react";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { useQuery } from "@tanstack/react-query";
 import { Compass } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
@@ -85,6 +86,8 @@ function Form({ data, rows, today, week }: { data: Reflection; rows: RegimeEdgeR
     setAnswers((a) => ({ ...a, [k]: { ...a[k], [q]: v } }));
     setDirty(true);
   };
+  // Unsaved answers survive a reload / a week switch (local draft until saved).
+  const draft = useTextDraft(editable ? `regime-reflection:${data.trader}:${week}` : null, answers, (d) => { setAnswers(d); setDirty(true); }, { base: data.answers });
   const n = countAnswers(answers);
   if (!editable && n === 0) return <p className="text-sm text-muted-foreground">{t("reflection.emptyTrader")}</p>;
   // Regimes with something to look at first: today's, then answered / traded ones; the rest stay folded.
@@ -112,7 +115,7 @@ function Form({ data, rows, today, week }: { data: Reflection; rows: RegimeEdgeR
             type="button"
             disabled={!dirty || save.isPending}
             onClick={() => save.mutate(answers, {
-              onSuccess: () => { setDirty(false); toast({ title: t("reflection.saved") }); },
+              onSuccess: () => { setDirty(false); draft.clear(); toast({ title: t("reflection.saved") }); },
               onError: () => toast({ title: t("reflection.failed"), variant: "destructive" }),
             })}
           >

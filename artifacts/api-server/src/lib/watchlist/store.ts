@@ -22,7 +22,7 @@ export type WatchRow = {
 export const CONTENT_COLUMNS = {
   ticker: "ticker", catalyst: "catalyst", targetPrice: "target_price", stopPrice: "stop_price", status: "status", notes: "notes",
   sector: "sector", tags: "tags", marketCap: "market_cap", float: "float", adv: "adv", atr: "atr", relativeVolume: "relative_volume",
-  beta: "beta", shortInterest: "short_interest", longName: "long_name",
+  beta: "beta", shortInterest: "short_interest", longName: "long_name", screenshotUrl: "screenshot_url",
 } as const;
 export type ContentField = keyof typeof CONTENT_COLUMNS;
 export type ContentPatch = Partial<Record<ContentField, string | null>>;

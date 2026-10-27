@@ -12,6 +12,7 @@ import { fmtDate, fmtDeskDateTime, fmtUsd, localeTag } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
+import { useTextDraft } from "@/hooks/use-text-draft";
 
 // Mirrors lib/curatorLogic.ts (server validates the keys).
 const REASON_KEYS = ["revenge", "size", "no_stop", "overtrading", "news", "overnight", "tilt", "technical", "other"] as const;
@@ -136,6 +137,7 @@ function ReviewForm({ breach, onDone, onCancel }: { breach: Breach; onDone: () =
   const { t } = curatorI18n.useT();
   const tc = commonI18n.useT().t;
   const [d, setD] = React.useState<Draft>(() => draftOf(breach));
+  const stored = useTextDraft(`breach-review:${breach.id}`, d, setD, { base: draftOf(breach) }); // survives a reload until saved
   const save = useCuratorMutation((v: Draft) => curatorApi.review(breach.id, {
     reason: v.reason,
     comment: v.comment.trim() || null,
@@ -148,7 +150,7 @@ function ReviewForm({ breach, onDone, onCancel }: { breach: Breach; onDone: () =
   const submit = () => {
     if (!d.reason || save.isPending) return;
     save.mutate(d, {
-      onSuccess: () => { toast({ title: t("breach.saved"), description: breach.review ? undefined : t("breach.traderNotified") }); onDone(); },
+      onSuccess: () => { stored.clear(); toast({ title: t("breach.saved"), description: breach.review ? undefined : t("breach.traderNotified") }); onDone(); },
       onError: (e) => toast({ title: t("breach.saveFailed"), description: (e as Error).message, variant: "destructive" }),
     });
   };

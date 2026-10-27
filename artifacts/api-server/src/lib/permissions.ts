@@ -50,11 +50,13 @@ export function invalidatePermissionsCache(): void {
 
 type OverrideRow = { role: string; capability: string; allowed: boolean; scope: string | null; updated_by: string | null; updated_at: Date | string | null };
 
-export async function loadOverrides(): Promise<{ overrides: Override[]; updatedAt: string | null; updatedBy: string | null }> {
+/** `strict`: a failed read throws (a save must never start from «no overrides» and wipe the desk's custom cells). */
+export async function loadOverrides(strict = false): Promise<{ overrides: Override[]; updatedAt: string | null; updatedBy: string | null }> {
   let rows: OverrideRow[] = [];
   try {
     rows = (await pool.query<OverrideRow>(`SELECT role, capability, allowed, scope, updated_by, updated_at FROM role_permissions ORDER BY role, capability`)).rows;
-  } catch {
+  } catch (err) {
+    if (strict) throw err;
     rows = []; // table missing / DB hiccup → defaults (never fail open or closed differently from today)
   }
   const overrides: Override[] = [];

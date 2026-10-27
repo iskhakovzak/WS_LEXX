@@ -579,16 +579,6 @@ export function readLS<T>(key: string, fallback: T): T {
   }
 }
 
-export function readLSArray<T>(key: string): T[] {
-  try {
-    const raw = window.localStorage.getItem(key);
-    const v = raw ? JSON.parse(raw) : [];
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-
 export function writeLS(key: string, value: unknown) {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));

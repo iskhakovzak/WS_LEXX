@@ -2,7 +2,9 @@
 // macro (CPI / NFP / FOMC / PPI / expirations), short days and closures, earnings of the trader's watchlist
 // and most traded tickers — all pulled automatically, plus «как я торгую в такие дни» from the trader's own
 // trades. The only manual input is a short day note (market_events), which keeps its sheet and «В плейбук».
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearch } from "wouter";
+import { replaceSearchParams, useSearchParam } from "@/hooks/use-search-param";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCreateEvent, useUpdateEvent, useDeleteEvent, getListEventsQueryKey,
@@ -52,16 +54,20 @@ export default function Events() {
   const { user, isCurator, isAdmin, dbUsers } = useAuth();
   const isStaff = isCurator || isAdmin;
 
-  // Deep links: ?date=YYYY-MM-DD (day), ?ticker=NVDA (ticker sheet), ?id=12 (note), ?new=1 (note form).
-  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  // Deep links: ?date=YYYY-MM-DD (day), ?ticker=NVDA (ticker sheet), ?id=12 (note), ?new=1 (note form), ?view=, ?trader=.
+  // The page writes them back as the person moves, so a reload reopens the same day / sheet / note / person.
+  const search = useSearch();
+  const urlParams = useMemo(() => new URLSearchParams(search), [search]);
   const urlDate = urlParams.get("date");
   const urlTicker = urlParams.get("ticker")?.trim().toUpperCase() ?? "";
 
-  const [storedView, setView] = usePersistentState<View>("catalysts.view", "today");
-  const view: View = VIEWS.includes(storedView) ? storedView : "today";
+  const [storedView, setStoredView] = usePersistentState<View>("catalysts.view", "today");
+  const urlView = urlParams.get("view") as View | null;
+  const view: View = urlView && VIEWS.includes(urlView) ? urlView : VIEWS.includes(storedView) ? storedView : "today";
+  const setView = useCallback((v: View) => { setStoredView(v); replaceSearchParams({ view: v }); }, [setStoredView]);
 
   // Trader scope: a trader always sees themself (server-scoped); staff can switch.
-  const [traderPick, setTraderPick] = useState<string>(() => user?.traderName ?? DESK);
+  const [traderPick, setTraderPick] = useSearchParam("trader", user?.traderName ?? DESK, { storageKey: "catalysts.trader" });
   const trader = isStaff ? (traderPick === DESK ? null : traderPick) : (user?.traderName ?? null);
   const traderOptions = useMemo(
     () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
@@ -75,7 +81,19 @@ export default function Events() {
   const selected = picked ?? focus;
   const [weekAnchor, setWeekAnchor] = useState<string | null>(() => (urlDate && YMD.test(urlDate) ? urlDate : null));
   const weekStart = weekStartOf(weekAnchor ?? selected);
-  useEffect(() => { if (urlDate && YMD.test(urlDate)) setView("week"); }, [urlDate, setView]);
+  // An outside link with ?date (no ?view) opens that day's week; the page's own ?date writes are not «links».
+  const wroteDate = useRef<string | null>(null);
+  useEffect(() => {
+    if (!urlDate || !YMD.test(urlDate) || urlDate === wroteDate.current) return;
+    setPicked(urlDate); setWeekAnchor(urlDate);
+    if (!new URLSearchParams(window.location.search).get("view")) setView("week");
+  }, [urlDate, setView]);
+  useEffect(() => {
+    wroteDate.current = picked;
+    const withView = picked && !new URLSearchParams(window.location.search).get("view");
+    replaceSearchParams({ date: picked, ...(withView ? { view } : {}) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked]);
 
   const pickDay = useCallback((d: string) => { setPicked(d); setWeekAnchor(d); setView("week"); }, [setView]);
 
@@ -87,8 +105,12 @@ export default function Events() {
 
   // ── Notes (market_events) ──
   const events = data.notesQ.data ?? [];
-  const [detailId, setDetailId] = useState<number | null>(() => Number(urlParams.get("id")) || null);
+  const [linkedId] = useState<number | null>(() => Number(urlParams.get("id")) || null);
+  const [detailId, setDetailId] = useState<number | null>(linkedId);
   const [formOpen, setFormOpen] = useState(() => urlParams.get("new") === "1");
+  useEffect(() => { replaceSearchParams({ ticker: sheet?.ticker ?? null }); }, [sheet]);
+  useEffect(() => { replaceSearchParams({ id: detailId ? String(detailId) : null }); }, [detailId]);
+  useEffect(() => { if (!formOpen) replaceSearchParams({ new: null }); }, [formOpen]);
   const [editing, setEditing] = useState<MarketEvent | null>(null);
   const [formInitial, setFormInitial] = useState<EventFormData>(() => blankEvent(urlDate && YMD.test(urlDate) ? { date: urlDate } : {}));
   const [undo, setUndo] = useState<{ id: number; label: string } | null>(null);
@@ -183,8 +205,8 @@ export default function Events() {
 
   // Deep link ?id → show that note's day.
   useEffect(() => {
-    if (detail && urlParams.get("id") && !picked) { setPicked(dayOf(detail)); setWeekAnchor(dayOf(detail)); }
-  }, [detail, urlParams, picked]);
+    if (detail && detail.id === linkedId && !picked) { setPicked(dayOf(detail)); setWeekAnchor(dayOf(detail)); }
+  }, [detail, linkedId, picked]);
 
   const addNote = useCallback((date: string) => (
     <QuickAdd date={date} onCreate={quickCreate} onMore={(f) => openCreate(f)} />

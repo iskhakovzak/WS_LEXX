@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Crosshair, FileText, Pencil, Plus, ShieldAlert, Users } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { MentorLine } from "@/components/mentor/mentor-line";
 
 type HorizonFilter = "all" | Horizon;
+const HZ_FILTERS: readonly string[] = ["all", ...Object.keys(HORIZON)];
 type View = PlanView;
 
 function readUrlView(): View | null {
@@ -76,7 +78,8 @@ export default function GamePlanPage() {
   const sessionAhead = today !== calToday;
   const [date, setDate] = useState<string>(() => readUrlDate() ?? today);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [hz, setHz] = useState<HorizonFilter>("all");
+  const [hzRaw, setHz] = useSearchParam("hz", "all", { allowed: HZ_FILTERS }); // ?hz= kept on reload
+  const hz = hzRaw as HorizonFilter;
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Keep ?date= in the URL for sharing (today ⇒ clean URL).
@@ -115,7 +118,7 @@ export default function GamePlanPage() {
   const go = useCallback((d: string) => {
     setDate(d);
     setHz("all");
-  }, []);
+  }, [setHz]);
 
   // Keyboard (wave 3): the day keys ([ ] ← → T) live in DayStepper; the page keeps E (edit, curator) and / (history search).
   useEffect(() => {

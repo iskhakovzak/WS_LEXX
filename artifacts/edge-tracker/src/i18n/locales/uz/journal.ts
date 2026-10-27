@@ -21,6 +21,7 @@ export default {
     saved: "Kundalik saqlandi",
     conflictTitle: "Yozuv boshqa varaqda oʻzgartirilgan",
     conflictDesc: "Joriy versiya yuklandi — tekshiring va keraklisini qoʻshing.",
+    keepMine: "Matnimni qaytarish",
     saveFailed: "Kundalikni saqlab boʻlmadi",
     dayClosed: "{date} kuni yopildi",
     sentToCurator: "Tahlil kuratorga yuborildi.",

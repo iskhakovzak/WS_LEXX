@@ -4,7 +4,7 @@
  * `?id=` opens an exam; `?user=` (staff) pre-filters by student — the «Путь трейдера» report links here.
  */
 import * as React from "react";
-import { useSearch } from "wouter";
+import { useSearchParam, useSearchParamId } from "@/hooks/use-search-param";
 import { Flag, Plus, RefreshCw, Target } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Segmented, SplitSkeleton, Toolbar } from "@/components/ds";
@@ -20,21 +20,18 @@ import { PersonSelect } from "@/components/people/person-select";
 import { cn } from "@/lib/utils";
 
 type Filter = "all" | "active" | "done" | "archived";
+const FILTERS: readonly Filter[] = ["all", "active", "done", "archived"];
 const DONE: ChallengeStatus[] = ["passed", "failed", "expired"];
 
 export default function AcademyChallengesPage() {
   const { t } = academyPathI18n.useT();
   const { isCurator, dbUsers } = useAuth();
-  const search = useSearch();
   const qc = useQueryClient();
-  const params = React.useMemo(() => new URLSearchParams(search), [search]);
-  const idParam = React.useMemo(() => { const v = Number(params.get("id")); return Number.isInteger(v) && v > 0 ? v : null; }, [params]);
-  const userParam = params.get("user") ?? "";
-  const [selected, setSelected] = React.useState<number | null>(idParam);
-  React.useEffect(() => { if (idParam) setSelected(idParam); }, [idParam]);
-  const [filter, setFilter] = React.useState<Filter>("all");
-  const [who, setWho] = React.useState<string>(userParam); // staff: "" = everyone
-  React.useEffect(() => { if (userParam) { setWho(userParam); setSelected(null); } }, [userParam]);
+  // ?id= (open exam), ?user= (staff: whose exams; "" = everyone), ?filter= — read and written, so a reload keeps them.
+  const [selected, setSelected] = useSearchParamId("id");
+  const [filterRaw, setFilter] = useSearchParam("filter", "all", { allowed: FILTERS });
+  const filter = filterRaw as Filter;
+  const [who, setWho] = useSearchParam("user", "");
   const [createOpen, setCreateOpen] = React.useState(false);
 
   const list = useChallenges(isCurator ? who || null : null, filter === "archived");
@@ -48,7 +45,7 @@ export default function AcademyChallengesPage() {
   // While a filter change still shows the previous list (placeholder), wait for the real one before auto-picking.
   React.useEffect(() => {
     if (selected == null && items.length && !list.isPlaceholderData) setSelected(items[0].id);
-  }, [items, selected, list.isPlaceholderData]);
+  }, [items, selected, list.isPlaceholderData, setSelected]);
 
   const noExams = !!list.data && !list.isPlaceholderData && list.data.challenges.length === 0 && filter === "all" && !who;
 

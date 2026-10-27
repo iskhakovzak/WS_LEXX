@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Lock, Send, Trash2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +36,7 @@ export function CommentsThread({
   const { t: tc } = commonI18n.useT();
   const [text, setText] = React.useState("");
   const [isPrivate, setIsPrivate] = React.useState(false);
+  const draft = useTextDraft(`idea-comment:${idea.id}`, text, setText); // an unsent reply survives a reload
   const { data: comments = [], isLoading, isError, error, refetch } = useIdeaComments(idea.id);
   const listRef = React.useRef<HTMLOListElement>(null);
   const inputId = React.useId();
@@ -46,7 +48,7 @@ export function CommentsThread({
 
   const add = useMutation({
     mutationFn: () => http.post(`/api/trade-ideas/${idea.id}/comments`, { text: text.trim(), is_private: isPrivate }),
-    onSuccess: () => { setText(""); refresh(); },
+    onSuccess: () => { draft.clear(); setText(""); refresh(); },
     onError: (e: Error) => toast({ title: ideasI18n.t("comments.sendFailed"), description: humanizeApiError(e), variant: "destructive" }),
   });
   const del = useMutation({

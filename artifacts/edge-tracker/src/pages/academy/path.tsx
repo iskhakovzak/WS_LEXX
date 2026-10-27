@@ -4,7 +4,7 @@
  * Mentor (curator/admin): funnel by stage, any trader's report, request queue with approve/reject, criteria editor.
  */
 import * as React from "react";
-import { useSearch } from "wouter";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { GraduationCap, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Page, PageHeader, SectionTabs } from "@/components/ds";
@@ -21,17 +21,18 @@ import { PersonSelect } from "@/components/people/person-select";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 type View = "person" | "funnel" | "requests" | "criteria";
+const VIEWS: readonly View[] = ["person", "funnel", "requests", "criteria"];
 
 export default function AcademyPathPage() {
   const { t } = academyPathI18n.useT();
   const { user, isCurator, dbUsers } = useAuth();
   const me = user && user.role !== "guest" ? user.traderName : null;
-  const search = useSearch();
   const qc = useQueryClient();
-  const initialUser = React.useMemo(() => new URLSearchParams(search).get("user"), [search]);
-  const [target, setTarget] = React.useState<string | null>(initialUser);
-  const [view, setView] = React.useState<View>(isCurator && !initialUser ? "funnel" : "person");
-  React.useEffect(() => { if (initialUser) { setTarget(initialUser); setView("person"); } }, [initialUser]);
+  // ?user= (whose path) and ?view= live in the URL (read and written): a reload keeps the person and the view.
+  const [userParam, setTarget] = useSearchParam("user", "");
+  const target = userParam || null;
+  const [viewParam, setView] = useSearchParam("view", "", { allowed: VIEWS });
+  const view: View = (viewParam as View) || (isCurator && !target ? "funnel" : "person");
 
   const config = usePathConfig();
   const pending = useRequests("pending", isCurator);

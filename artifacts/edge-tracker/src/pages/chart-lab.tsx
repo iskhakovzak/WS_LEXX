@@ -14,6 +14,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, RefreshCw, Search } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -255,7 +256,7 @@ export default function ChartLabPage() {
 
   const { user, isCurator, dbUsers } = useAuth();
   // Staff = traders: their own book by default, any trader by name (the multi-trade views only).
-  const [labTrader, setLabTrader] = React.useState("");
+  const [labTrader, setLabTrader] = useSearchParam("trader", ""); // ?trader= — the picked person survives a reload
   const traderNames = React.useMemo(() => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames), [dbUsers]);
   const adHoc: TradeLike | null = React.useMemo(() => (tradeId == null && adTicker && adDate ? { id: adHocId(adTicker, adDate), ticker: adTicker, date: adDate } : null), [tradeId, adTicker, adDate]);
   const current: TradeRow | null = tradeId != null ? trade.data?.trade ?? null : adHoc;

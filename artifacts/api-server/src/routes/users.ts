@@ -13,7 +13,7 @@ import { logger } from "../lib/logger";
 import { langOf, parseLang, rememberLocale } from "../i18n";
 import { cleanNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
-import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
+import { AppError, badRequest, forbidden, notFound, tooLarge, unauthorized } from "../lib/http";
 import { clearFeedStreamCache } from "../lib/feedStream";
 import { logAudit } from "../lib/audit";
 import { cleanUserName, RenameError, renameUserInTx, type RenameReport } from "../lib/people/renameUser";
@@ -23,6 +23,7 @@ import { StoredAppearanceSchema } from "../lib/people/appearanceSchema";
 import { OnboardingStateSchema } from "../lib/people/onboarding";
 import { QuotePrefsSchema } from "../lib/people/quotePrefs";
 import { DashboardLayoutSchema } from "../lib/people/dashboardLayoutSchema";
+import { MAX_PREFS_BYTES, PrefsPatchSchema, prefsMergeSql, splitPrefsPatch } from "../lib/people/uiPrefs";
 
 const router: IRouter = Router();
 
@@ -251,6 +252,8 @@ const SettingsPatch = z.object({
   dashboardLayout: DashboardLayoutSchema.nullable().optional(),
   /** «Рекомендации офису» hidden for a week: rec id → until YYYY-MM-DD (lib/officeRecs/redact). null removes it. */
   officeRecsHidden: z.record(z.string().min(1).max(80), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).refine((m) => Object.keys(m).length <= 50).nullable().optional(),
+  /** Small personal things kept across devices (saved views, templates, bookmarks…): merged PER KEY, null removes one. */
+  prefs: PrefsPatchSchema.optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -287,11 +290,22 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   else if (body.data.dashboardLayout !== undefined) set.dashboardLayout = body.data.dashboardLayout;
   if (body.data.officeRecsHidden === null) drop.push("officeRecsHidden");
   else if (body.data.officeRecsHidden !== undefined) set.officeRecsHidden = body.data.officeRecsHidden;
+  const prefs = splitPrefsPatch(body.data.prefs ?? {});
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
     [JSON.stringify(set), drop, req.authUser!.id],
   );
+  if (body.data.prefs && rows[0]) {
+    // Per-key merge, refused (nothing written) when the whole block would outgrow its bound.
+    const r = await pool.query<{ settings: Record<string, unknown> | null }>(
+      `UPDATE users SET settings = ${prefsMergeSql("$1", "$2")}
+        WHERE id = $3 AND length(((COALESCE(settings->'prefs', '{}'::jsonb) - $2::text[]) || $1::jsonb)::text) <= $4 RETURNING settings`,
+      [JSON.stringify(prefs.set), prefs.drop, req.authUser!.id, MAX_PREFS_BYTES],
+    );
+    if (!r.rows[0]) throw tooLarge();
+    rows[0] = r.rows[0];
+  }
   if (!rows[0]) throw notFound();
   if (body.data.shareAchievements !== undefined) clearFeedStreamCache(); // recognition in the desk feed follows the switch at once
   res.json({ settings: rows[0].settings ?? {} });

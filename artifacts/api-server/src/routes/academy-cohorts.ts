@@ -704,16 +704,26 @@ router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   if (b.room !== undefined) set("room", b.room || null);
   if (b.meetingUrl !== undefined) set("meeting_url", cleanUrl(b.meetingUrl));
   if (!sets.length) return badRequest(res, "NO_FIELDS");
+  // One transaction: an end before the start is refused AND not stored (it used to be saved, then answered 400).
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query<CohortRow>(
+    await client.query("BEGIN");
+    const { rows } = await client.query<CohortRow>(
       `UPDATE academy_cohorts c SET ${sets.join(", ")}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, params);
-    if (!rows[0]) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
     const r = rows[0];
-    if (r.starts_on && r.ends_on && r.ends_on < r.starts_on) return badRequest(res, "DATE_RANGE_INVALID");
+    if (!r || (r.starts_on && r.ends_on && r.ends_on < r.starts_on)) {
+      await client.query("ROLLBACK");
+      if (!r) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
+      return badRequest(res, "DATE_RANGE_INVALID");
+    }
+    await client.query("COMMIT");
     res.json(mapCohort(r));
   } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
     if (err?.code === "23505") { sendError(res, conflict("COHORT_NAME_TAKEN")); return; }
     throw err;
+  } finally {
+    client.release();
   }
 }));
 

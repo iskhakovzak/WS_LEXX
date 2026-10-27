@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Grid3x3, RefreshCw } from "lucide-react";
-import { Panel, Segmented, EmptyState, Pill, TableScroll, toneOf } from "@/components/ds";
+import { Panel, Segmented, EmptyState, Pill, TableScroll, toneOf, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -83,7 +83,7 @@ export function EdgeMatrixTab({
   const [rows, setRows] = useState<EdgeDimension>("setup");
   const [cols, setCols] = useState<EdgeDimension>("horizon");
   const [tod, setTod] = useState<15 | 30>(30);
-  const [metric, setMetric] = useState<Metric>("expectancy");
+  const [metric, setMetric] = usePersistentState<Metric>("analytics.matrix.metric", "expectancy");
   const [minN, setMinN] = useState<(typeof MIN_N_OPTIONS)[number]>(5);
   const [selected, setSelected] = useState<{ row: string; col: string } | null>(null);
   const u: Unit = unit ?? "r";

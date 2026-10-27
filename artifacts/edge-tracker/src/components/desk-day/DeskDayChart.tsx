@@ -6,6 +6,7 @@
  * − below), dashed price lines at the office's average entry / exit and shaded main-position / exit zones.
  */
 import * as React from "react";
+import { usePersistentState } from "@/components/ds";
 import {
   createChart, BaselineSeries, CandlestickSeries, HistogramSeries, LineStyle,
   type IChartApi, type IPriceLine, type ISeriesApi, type MouseEventParams, type Time, type UTCTimestamp,
@@ -120,7 +121,7 @@ export function DeskDayChart({ day, bars: baseBars, baseSec, colors, focus, onTo
   const containerRef = React.useRef<HTMLDivElement>(null);
   const refs = React.useRef<Refs | null>(null);
   const tfs: Timeframe[] = baseSec <= 60 ? ["1m", "5m"] : [];
-  const [tf, setTf] = React.useState<Timeframe>("1m");
+  const [tf, setTf] = usePersistentState<Timeframe>("deskDay.chart.tf", "1m");
   const bars = React.useMemo<Candle[]>(() => (baseSec <= 60 && tf === "5m" ? aggregate(baseBars, baseSec, "5m") : [...baseBars]), [baseBars, baseSec, tf]);
   const barSec = baseSec <= 60 && tf === "5m" ? 300 : baseSec;
   const markers = React.useMemo(() => buildMarkers(day, bars, barSec, colors), [day, bars, barSec, colors]);

@@ -2675,6 +2675,13 @@ CREATE TABLE public.sector_strength_cache (
   CONSTRAINT sector_strength_cache_pkey PRIMARY KEY (symbol)
 );
 
+CREATE TABLE public.seed_markers (
+  "key" text NOT NULL,
+  done_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT seed_markers_pkey PRIMARY KEY (key),
+  CONSTRAINT seed_markers_key_check CHECK (char_length(key) >= 1 AND char_length(key) <= 80)
+);
+
 CREATE TABLE public.setup_mastery (
   trader text NOT NULL,
   setup_id integer NOT NULL,
@@ -3312,6 +3319,16 @@ CREATE TABLE public.users (
   CONSTRAINT users_quick_code_kind_check CHECK (quick_code_kind = ANY (ARRAY['digits'::text, 'phrase'::text]))
 );
 
+CREATE TABLE public.voice_note_audio (
+  "key" text NOT NULL,
+  mime text NOT NULL,
+  data bytea NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT voice_note_audio_pkey PRIMARY KEY (key),
+  CONSTRAINT voice_note_audio_key_check CHECK (char_length(key) >= 1 AND char_length(key) <= 80),
+  CONSTRAINT voice_note_audio_mime_check CHECK (char_length(mime) >= 1 AND char_length(mime) <= 80)
+);
+
 CREATE TABLE public.voice_notes (
   id integer DEFAULT nextval('public.voice_notes_id_seq'::regclass) NOT NULL,
   user_id text NOT NULL,
@@ -3664,6 +3681,7 @@ CREATE INDEX edge_map_latest_idx ON public.edge_map USING btree (trader, as_of D
 CREATE INDEX edge_map_verdict_idx ON public.edge_map USING btree (as_of, verdict) WHERE (verdict <> 'NONE'::text);
 CREATE INDEX emotional_state_log_date_idx ON public.emotional_state_log USING btree (date);
 CREATE INDEX emotional_state_log_user_date_idx ON public.emotional_state_log USING btree (user_id, date);
+CREATE UNIQUE INDEX emotional_state_log_user_date_uniq ON public.emotional_state_log USING btree (user_id, date);
 CREATE INDEX emotional_state_log_user_id_idx ON public.emotional_state_log USING btree (user_id);
 CREATE INDEX eod_days_queue_idx ON public.eod_days USING btree (closed_at) WHERE ((closed_at IS NOT NULL) AND (reviewed_at IS NULL));
 CREATE INDEX finviz_earnings_date_idx ON public.finviz_earnings USING btree (date) WHERE (superseded_at IS NULL);

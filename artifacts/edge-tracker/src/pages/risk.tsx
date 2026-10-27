@@ -11,6 +11,7 @@ import { EmptyLink, EmptyState, Page, PageHeader, Panel, SectionTabs } from "@/c
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { DeskView } from "@/components/risk/desk-view";
 import { MyRiskView } from "@/components/risk/my-risk-view";
 import { OvernightView } from "@/components/risk/overnight-view";
@@ -35,9 +36,13 @@ export default function RiskPage() {
   // «Мой риск» only for someone with a trading account (staff without their own limits get the desk only).
   const account = useHasRiskAccount();
   const me = signedIn && account.has ? user!.traderName : null;
-  const [stored, setView] = useStoredState<View>("risk.view", "desk", VIEWS);
+  const [storedView, setStoredView] = useStoredState<View>("risk.view", "desk", VIEWS);
   const search = useSearch();
   const params = React.useMemo(() => new URLSearchParams(search), [search]);
+  // ?view= (shareable, survives a reload) over the remembered view.
+  const urlView = params.get("view") as View | null;
+  const stored: View = urlView && VIEWS.includes(urlView) ? urlView : storedView;
+  const setView = React.useCallback((v: View) => { setStoredView(v); replaceSearchParams({ view: v }); }, [setStoredView]);
   const focusTrader = params.get("trader");
   const focusTab = params.get("tab") === "limits" ? "limits" : "overview";
   // ?tab=breaches&alert=<id> (the breach review notification) opens the person's own breach row.

@@ -106,7 +106,10 @@ export const useAckEscalation = () => useMentorMutation((id: number) => http.pos
 export function useSaveCheckin(date: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (c: Checkin) => http.post("/api/emotional-state", { date, sleepWell: c.sleepWell, focused: c.focused, stressed: c.stressed, anxious: c.anxious, tilted: c.tilted, revenge: c.revenge, freeText: c.note }),
+    // The mentor shows a shortened note: an untouched note is not sent, so the API keeps the full text the morning
+    // check-in saved (≤ 2000; POST /emotional-state without freeText leaves it as it is).
+    mutationFn: (c: Checkin & { noteEdited?: boolean }) =>
+      http.post("/api/emotional-state", { date, sleepWell: c.sleepWell, focused: c.focused, stressed: c.stressed, anxious: c.anxious, tilted: c.tilted, revenge: c.revenge, ...(c.noteEdited ? { freeText: c.note } : {}) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: [MENTOR_DOMAIN] });
       void qc.invalidateQueries({ queryKey: ["emotional-state-today"] });
