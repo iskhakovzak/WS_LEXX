@@ -18,3 +18,10 @@ regexTarget = "line"
 regexes = [
   '''[A-Z][A-Z0-9_]*_KEY\s*=\s*["'][a-z][a-z0-9_.:-]*["']\s*;?\s*(//.*)?$''',
 ]
+
+[[allowlists]]
+description = "Identifier-valued object keys — rule ids like key: \"maxTradesPerTicker3\" and storage names like storageKey: \"ratings.lb.period.v2\" — names, not secrets"
+regexTarget = "match"
+regexes = [
+  '''\b(key|storageKey)\s*:\s*["'][a-z][A-Za-z0-9_.:-]*["']''',
+]
