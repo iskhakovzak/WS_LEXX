@@ -143,7 +143,7 @@ function ShortcutHint({ className }: { className?: string }) {
   return (
     <p className={cn("items-center gap-2.5 whitespace-nowrap text-2xs text-muted-foreground", className)} aria-label={t("hotkeys.title")}>
       {items.map(([keys, text]) => (
-        <span key={text} className="inline-flex items-center gap-1">{keys.map((k) => <Kbd key={k} className="px-1 py-0 text-[10px]">{k}</Kbd>)} {text}</span>
+        <span key={text} className="inline-flex items-center gap-1">{keys.map((k) => <Kbd key={k} className="px-1 py-0 text-2xs">{k}</Kbd>)} {text}</span>
       ))}
     </p>
   );

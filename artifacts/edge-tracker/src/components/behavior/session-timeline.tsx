@@ -185,7 +185,7 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
                     <g key={f.key}>
                       <line x1={x0 + 0.5} x2={x0 + 0.5} y1={cy + 7} y2={yy} stroke={TONE_VAR[PATTERN_TONE[f.key]]} strokeOpacity={0.5} />
                       <circle cx={cx} cy={cy} r={7} fill={TONE_VAR[PATTERN_TONE[f.key]]} />
-                      <text x={cx} y={cy + 4} textAnchor="middle" fontSize={10} fontWeight={700} fill="hsl(var(--background))">{MARKER_LETTER[f.key]}</text>
+                      <text x={cx} y={cy + 4} textAnchor="middle" fontSize={12} fontWeight={700} fill="hsl(var(--background))">{MARKER_LETTER[f.key]}</text>
                     </g>
                   );
                 })}
@@ -331,7 +331,7 @@ export function SessionTimeline({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {usedFlags.map((k) => (
               <span key={k} className="inline-flex items-center gap-1">
-                <span className="[display:inline-grid] h-4 w-4 place-items-center rounded-full text-[10px] font-bold text-background" style={{ background: TONE_VAR[PATTERN_TONE[k]] }} aria-hidden="true">{MARKER_LETTER[k]}</span>
+                <span className="[display:inline-grid] h-4 w-4 place-items-center rounded-full text-2xs font-bold text-background" style={{ background: TONE_VAR[PATTERN_TONE[k]] }} aria-hidden="true">{MARKER_LETTER[k]}</span>
                 {PATTERN_SHORT[k]}
               </span>
             ))}

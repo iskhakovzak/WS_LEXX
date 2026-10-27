@@ -146,7 +146,7 @@ export default function LockScreen() {
         </p>
         <div className="flex items-center gap-2.5 text-white/70">
           <WsMark size={22} />
-          {name && <span className="text-[0.7rem] font-medium uppercase tracking-[0.28em]">{name}</span>}
+          {name && <span className="text-2xs font-medium uppercase tracking-[0.28em]">{name}</span>}
         </div>
       </div>
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearch } from "wouter";
-import { Archive, CalendarDays, History as HistoryIcon, Pencil, Plus, RotateCcw, Sparkles, UserCheck, UserPlus, Users } from "lucide-react";
+import { Archive, CalendarDays, History as HistoryIcon, Pencil, Plus, RotateCcw, Sparkles, UserCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import {
-  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, useTableSort,
+  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, Toolbar, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +16,7 @@ import { CohortDialog, EnrollDialog, EnrollmentEditDialog, RosterDialog, Session
 import {
   AttendanceSummaryView, DualTime, StagePill, StatusPill, WhereLine, dateTimeDesk, fmtYmd,
 } from "@/components/academy/cohorts/shared";
+import { WeekStepper } from "@/components/academy/cohorts/week-stepper";
 import { fmtRate } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
@@ -67,15 +68,16 @@ export default function AcademyCohortsPage() {
   return (
     <Page>
       <PageHeader
-        icon={Users}
+        icon={UsersRound}
         title={shellI18n.t("nav.academyCohorts")}
         description={t("cohortsPage.description")}
-        actions={<>
-          <Segmented ariaLabel={t("cohortsPage.showAria")} value={archived ? "arch" : "live"} onChange={(v) => setArchived(v === "arch")}
-            options={[{ value: "live", label: t("cohortsPage.live") }, { value: "arch", label: t("cohortsPage.archive") }]} />
-          {staff && <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.newCohort")}</Button>}
-        </>}
+        actions={staff && <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.newCohort")}</Button>}
       />
+      {/* The list mode sits in the Toolbar under the header, not in it (design audit wave 3). */}
+      <Toolbar>
+        <Segmented ariaLabel={t("cohortsPage.showAria")} value={archived ? "arch" : "live"} onChange={(v) => setArchived(v === "arch")}
+          options={[{ value: "live", label: t("cohortsPage.live") }, { value: "arch", label: t("cohortsPage.archive") }]} />
+      </Toolbar>
       {list.isError && <ErrorState error={list.error} onRetry={() => list.refetch()} title={t("cohortsPage.loadFailed")} />}
       {list.isLoading && <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><Panel><ListSkeleton rows={4} /></Panel><PanelSkeleton height={320} /></div>}
       {list.data && cohorts.length === 0 && (
@@ -260,8 +262,10 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                   <td className="text-right">{e.attendance30 ? fmtRate(e.attendance30.rate) : "—"}</td>
                   {staff && (
                     <td className="whitespace-nowrap text-right">
-                      <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>{t("cohortsPage.members.stageStatus")}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => remove(e)} aria-label={t("cohortsPage.members.removeAria", { name: personName(e.userName) })} title={t("cohortsPage.members.removeTitle")}><Archive className="h-4 w-4" /></Button>
+                      {/* The everyday edit stays visible; removing from the cohort (rare, destructive) folds into «…». */}
+                      <RowActions more={[{ label: t("cohortsPage.members.removeTitle"), icon: Archive, onSelect: () => remove(e) }]}>
+                        <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>{t("cohortsPage.members.stageStatus")}</Button>
+                      </RowActions>
                     </td>
                   )}
                 </tr>
@@ -327,21 +331,16 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
                 </div>
               </div>
               {staff && (
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => setEdit(s)} aria-label={t("cohortsPage.schedule.editAria", { title: s.title })} title={ct("actions.edit")}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeSession(s)} aria-label={t("cohortsPage.schedule.removeAria", { title: s.title })} title={t("cohortsPage.schedule.removeTitle")}><Archive className="h-4 w-4" /></Button>
-                </div>
+                <RowActions more={[{ label: t("cohortsPage.schedule.removeTitle"), icon: Archive, onSelect: () => removeSession(s) }]}>
+                  <Button size="sm" variant="ghost" onClick={() => setEdit(s)} aria-label={t("cohortsPage.schedule.editAria", { title: s.title })} title={ct("actions.edit")}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
+                </RowActions>
               )}
             </li>
           ))}
         </ul>
       </Panel>
       <Panel title={t("cohortsPage.schedule.calendar")} icon={CalendarDays} description={t("cohortsPage.schedule.calendarDesc", { from: fmtYmd(from), to: fmtYmd(to) })}
-        actions={<div className="flex gap-1">
-          <Button size="sm" variant="outline" onClick={() => setWeekOffset((w) => w - 1)} aria-label={t("cohortsPage.schedule.prevWeek")} title={t("cohortsPage.schedule.prevWeek")}>←</Button>
-          <Button size="sm" variant="outline" onClick={() => setWeekOffset(0)} disabled={weekOffset === 0}>{ct("time.today")}</Button>
-          <Button size="sm" variant="outline" onClick={() => setWeekOffset((w) => w + 1)} aria-label={t("cohortsPage.schedule.nextWeek")} title={t("cohortsPage.schedule.nextWeek")}>→</Button>
-        </div>}>
+        actions={<WeekStepper offset={weekOffset} onChange={setWeekOffset} label={`${fmtYmd(from)} – ${fmtYmd(to)}`} />}>
         {sched.isLoading && <ListSkeleton rows={4} dense />}
         {sched.isError && <ErrorState error={sched.error} compact />}
         {sched.data && byDay.length === 0 && <p className="text-sm text-muted-foreground">{t("cohortsPage.schedule.rangeEmpty")}</p>}

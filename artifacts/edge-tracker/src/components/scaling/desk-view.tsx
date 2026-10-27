@@ -1,7 +1,7 @@
 import * as React from "react";
-import { ArrowDownRight, ArrowUpRight, Inbox, Search, TrendingUp, Users } from "lucide-react";
-import { DataTable, EmptyState, FilterChip, Panel, Pill, SortableTh, StatCard, StatGrid, Toolbar, useTableSort } from "@/components/ds";
-import { Input } from "@/components/ui/input";
+import { ArrowDownRight, ArrowUpRight, Inbox, TrendingUp, Users } from "lucide-react";
+import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, Toolbar, useTableSort } from "@/components/ds";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
@@ -65,19 +65,8 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const [query, setQuery] = React.useState("");
   const [selected, setSelected] = React.useState<string | null>(focusTrader);
   React.useEffect(() => { if (focusTrader) setSelected(focusTrader); }, [focusTrader]);
-  const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => { if (ev.dataUpdatedAt) onUpdatedAt?.(ev.dataUpdatedAt); }, [ev.dataUpdatedAt, onUpdatedAt]);
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const data: Evaluation | undefined = ev.data;
   const all = data?.traders ?? [];
@@ -136,15 +125,13 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
       <CapitalPanel canDecide={!!data?.canEdit} onOpenTrader={setSelected} />
 
       <Toolbar>
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("desk.searchPlaceholder")} aria-label={t("desk.searchAria")} className="pl-9" />
-        </div>
-        {FILTERS.map((f) => (
-          <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={f === "all" ? all.length : f === "action" ? actionCount : s?.pending}>
-            {filterLabel(f)}
-          </FilterChip>
-        ))}
+        <ToolbarSearch value={query} onChange={setQuery} placeholder={t("desk.searchPlaceholder")} ariaLabel={t("desk.searchAria")} />
+        <Segmented<Filter>
+          ariaLabel={t("desk.filterAria")}
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ value: f, label: filterLabel(f), count: f === "all" ? all.length : f === "action" ? actionCount : s?.pending }))}
+        />
       </Toolbar>
 
       <Panel padded={false} title={tc("trading.desk")} description={t("desk.tableDesc")} icon={TrendingUp}>

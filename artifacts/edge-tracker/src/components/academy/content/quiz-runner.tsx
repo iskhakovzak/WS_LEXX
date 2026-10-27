@@ -144,7 +144,7 @@ export function QuizRunner({ data, canAnswer }: { data: QuizResponse; canAnswer:
                 <span className="text-muted-foreground tabular-nums">#{data.attempts.length - i} · <DualTime iso={a.submittedAt} /></span>
                 <span className="flex items-center gap-2 tabular-nums">
                   {a.score} / {a.maxScore}
-                  <Pill tone={a.passed ? "up" : "down"}>{Math.round(a.pct ?? 0)}%</Pill>
+                  <Pill tone={a.passed ? "up" : "down"}>{a.pct != null ? `${Math.round(a.pct)}%` : "—"}</Pill>
                 </span>
               </li>
             ))}

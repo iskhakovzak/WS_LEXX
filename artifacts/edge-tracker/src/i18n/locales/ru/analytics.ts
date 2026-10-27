@@ -40,7 +40,6 @@ export default {
   },
   noMatch: { title: "Под фильтры не попала ни одна сделка", description: "Расширьте период или снимите часть фильтров." },
 
-  period: { "7d": "7 дн", "30d": "30 дн", "90d": "90 дн", ytd: "С начала года", all: "Всё время" },
   horizon: { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" },
   unit: { r: "в R", usd: "нетто, $", usdShort: "$ нетто" },
 
@@ -57,8 +56,7 @@ export default {
     account: "Счёт",
     allAccounts: "Все счета",
     ticker: "Тикер",
-    reset: "Сбросить",
-    resetAria: "Сбросить фильтры",
+    chip: "{label}: {value}",
     unit: "Единицы результата",
   },
 

@@ -3,15 +3,14 @@
  * индекс дисциплины по дням с лентой сессии, «мои триггеры» и авто-классификатор сетапов (правила без ИИ)
  * с интервалами, матрицами и принятием в сделку. Трейдер видит себя; staff (= трейдер + доп. функции) — тоже себя
  * по умолчанию, и любого человека со сделками через выбор (components/behavior/behavior-trader).
- * URL: ?trader=&period=&tab=&day=.
+ * URL: ?period=&from=&to=&trader= (the shared analytics scope, hooks/use-analytics-scope) and ?tab=&day=.
  */
 import * as React from "react";
 import { Activity, BellRing, Brain, CalendarRange, Gauge, Grid3x3, LineChart, Sparkles, UserRound } from "lucide-react";
 import {
-  ChartSkeleton, EmptyLink, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SkeletonBlock, TableSkeleton,
+  ChartSkeleton, EmptyLink, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SkeletonBlock, TableSkeleton, Toolbar,
 } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
-import { addDays, nyDate } from "@/lib/trading-date";
 import { useReducedMotion } from "@/lib/motion";
 import {
   useBehavior, useComputeAll, useSetupAggregates, useSetupsAuto, type BehaviorReport, type Range,
@@ -35,59 +34,36 @@ import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { fallbackBehaviorTrader, initialBehaviorTrader } from "@/components/behavior/behavior-trader";
 import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
-import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
-import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { RangeFacetSections, rangeFacetChips, rangeFacetCount, resetRangeFacets, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { ActiveFilters, FiltersButton } from "@/components/shared/filters/filter-toolbar";
+import { TEAM } from "@/components/people/staff-scope";
+import { ANALYTICS_PRESETS, useAnalyticsScope, type AnalyticsPreset } from "@/hooks/use-analytics-scope";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 type Tab = "behavior" | "setups";
-type Preset = "30d" | "90d" | "ytd" | "all";
-/** A preset or «Свой период» (?period=custom&from=&to=). */
-type Period = Preset | "custom";
-const PERIOD_KEYS: Preset[] = ["30d", "90d", "ytd", "all"];
-const periodOptions = () => PERIOD_KEYS.map((value) => ({ value, label: tb(`period.${value}`) }));
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-function rangeOf(p: Period, custom: DayRange | null): Range {
-  const today = nyDate();
-  if (p === "custom" && custom) return { from: custom.from, to: custom.to };
-  if (p === "all") return { from: null, to: null };
-  if (p === "ytd") return { from: `${today.slice(0, 4)}-01-01`, to: null };
-  return { from: addDays(today, -(p === "30d" ? 29 : 89)), to: null };
-}
-
-function readParams(): { trader: string | null; period: Period; custom: DayRange | null; tab: Tab; day: string | null } {
+/** The page's own params (the scope — period, from / to, trader — is written by useAnalyticsScope). */
+function readParams(): { tab: Tab; day: string | null } {
   const p = new URLSearchParams(window.location.search);
-  const period = p.get("period");
-  const custom = parseDayRange(p.get("from"), p.get("to"));
   const tab = p.get("tab");
   const day = p.get("day");
-  return {
-    trader: p.get("trader"),
-    period: period === "30d" || period === "90d" || period === "ytd" || period === "all" || (period === "custom" && custom) ? period : "90d",
-    custom,
-    tab: tab === "setups" ? "setups" : "behavior",
-    day: day && YMD.test(day) ? day : null,
-  };
+  return { tab: tab === "setups" ? "setups" : "behavior", day: day && YMD.test(day) ? day : null };
 }
 
-function writeParams(trader: string | null, period: Period, custom: DayRange | null, tab: Tab, day: string | null) {
+function writeParams(tab: Tab, day: string | null) {
   const p = new URLSearchParams(window.location.search);
-  if (trader) p.set("trader", trader); else p.delete("trader");
-  if (period !== "90d") p.set("period", period); else p.delete("period");
-  if (period === "custom" && custom) { p.set("from", custom.from); p.set("to", custom.to); } else { p.delete("from"); p.delete("to"); }
   if (tab !== "behavior") p.set("tab", tab); else p.delete("tab");
   if (day && tab === "behavior") p.set("day", day); else p.delete("day");
   const qs = p.toString();
-  window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash);
 }
 
-// v2: the old key also held the «first trader» the page used to swap a staff member's own name for.
+// v2: the old key also held the «first trader» the page used to swap a staff member's own name for. Read once (the
+// shared analytics scope took over); a saved pick survives.
 const TRADER_KEY = "behavior.trader.v2";
-function readStoredTrader(): string | null {
-  try { return localStorage.getItem(TRADER_KEY) || null; } catch { return null; }
-}
-function storeTrader(name: string) {
-  try { localStorage.setItem(TRADER_KEY, name); } catch { /* storage unavailable */ }
+function legacyScope() {
+  try { const v = localStorage.getItem(TRADER_KEY); return v ? { trader: v } : null; } catch { return null; }
 }
 
 export default function BehaviorPage() {
@@ -95,32 +71,33 @@ export default function BehaviorPage() {
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const initial = React.useMemo(readParams, []);
   const [tab, setTab] = React.useState<Tab>(initial.tab);
-  const [period, setPeriod] = React.useState<Period>(initial.period);
-  const [custom, setCustom] = React.useState<DayRange | null>(initial.custom);
-  // Staff: an explicit ?trader= wins, then the person picked by hand last time, then their own name.
-  const [trader, setTrader] = React.useState<string | null>(() =>
-    initialBehaviorTrader({ staff: isCurator, me, urlTrader: initial.trader, stored: isCurator ? readStoredTrader() : null }));
+  // The group's shared scope: period + person (?period=&from=&to=&trader=), the same on /stats, /analytics, /what-if.
+  const sc = useAnalyticsScope({ legacy: legacyScope, person: isCurator });
+  // Staff: an explicit ?trader= wins, then the person picked last time (shared), then their own name. No «Вся команда»
+  // here: a team pick from another page reads as the own name.
+  const picked = sc.trader === TEAM ? null : sc.trader || null;
+  const trader = initialBehaviorTrader({ staff: isCurator, me, urlTrader: null, stored: isCurator ? picked : null });
   const [day, setDay] = React.useState<string | null>(initial.day);
   // Everyone with trades in the viewer's scope (traders, curators, admins) — the staff picker's people.
   const facets = useTradesBookFacets({ enabled: isCurator });
   const names = facets.data?.traders;
 
-  React.useEffect(() => { if (!trader && me) setTrader(me); }, [trader, me]);
   React.useEffect(() => {
     const first = fallbackBehaviorTrader({ staff: isCurator, me, trader, names: names ?? [] });
-    if (first) setTrader(first);
-  }, [isCurator, me, trader, names]);
-  React.useEffect(() => { writeParams(isCurator ? trader : null, period, custom, tab, day); }, [trader, period, custom, tab, day, isCurator]);
-  const pickTrader = (v: string) => { setTrader(v); setDay(null); storeTrader(v); };
+    if (first) sc.setTrader(first);
+  }, [isCurator, me, trader, names]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { writeParams(tab, day); }, [tab, day]);
+  const pickTrader = (v: string) => { sc.setTrader(v === me ? "" : v); setDay(null); };
 
   // Сервер сам ограничивает scope: трейдер всегда видит только себя, staff — выбранного.
   const scopeTrader = isCurator ? trader : null;
-  const win = React.useMemo(() => rangeOf(period, custom), [period, custom]);
+  const win = React.useMemo<Range>(() => ({ from: sc.window?.from ?? null, to: sc.window?.to ?? null }), [sc.window]);
   // «Разрезы»: every block of both tabs reads the same selection (x* params on /behavior* and /setups-auto*).
-  const rf = useRangeFacets({ from: win.from, to: win.to, trader: scopeTrader }, user?.role !== "guest");
-  const range = React.useMemo<Range>(() => ({ ...win, facets: rf.query || undefined }), [win, rf.query]);
   const isGuest = user?.role === "guest";
+  const rf = useRangeFacets({ from: win.from, to: win.to, trader: scopeTrader }, !isGuest);
+  const range = React.useMemo<Range>(() => ({ ...win, facets: rf.query || undefined }), [win, rf.query]);
   const openSetups = React.useCallback(() => setTab("setups"), []);
+  const facetCount = rangeFacetCount(rf);
 
   return (
     <Page>
@@ -129,34 +106,36 @@ export default function BehaviorPage() {
         description={tb("description")}
         icon={Brain}
         actions={<HelpButton id="behavior" />}
-      >
-        {/* Tabs left, the scope (person, period) right — one row under the title, so the h1 keeps its width and the
-            profile below starts high (design audit wave 2B). Phones: the controls wrap under the tabs. */}
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-[var(--glass-border)]">
-          <SectionTabs
-            ariaLabel={tb("sectionsAria")}
-            value={tab}
-            onChange={setTab}
-            className="border-b-0"
-            tabs={[
-              { value: "behavior", label: tb("tab.behavior"), icon: Activity },
-              { value: "setups", label: tb("tab.setups"), icon: Sparkles },
-            ]}
-          />
-          <div className="flex w-full min-w-0 items-center gap-2 pb-1.5 sm:w-auto sm:flex-wrap">
-            {isCurator && (
-              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="h-9 w-auto min-w-0 flex-1 sm:min-w-[13rem] sm:max-w-[18rem] sm:flex-none" ariaLabel={tb("traderAria")} />
-            )}
-            <PeriodPicker<Preset>
-              ariaLabel={tb("periodAria")} value={period} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()} size="sm"
-              onPreset={setPeriod} onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
-            />
-          </div>
-        </div>
-      </PageHeader>
+      />
       <PageHint id="behavior" />
 
-      {!isGuest && <RangeFacetsPanel rf={rf} />}
+      {/* The scope (period · person) and «Фильтры» in one row right under the header, the same order on every page of
+          the group (design audit wave 3); the sections below it. */}
+      {!isGuest && (
+        <Toolbar>
+          <PeriodPicker<AnalyticsPreset>
+            compact ariaLabel={tb("periodAria")} presets={ANALYTICS_PRESETS} value={sc.period} custom={sc.custom} today={sc.today}
+            onPreset={sc.setPreset} onCustom={sc.setCustom}
+          />
+          {isCurator && (
+            <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="h-9 w-auto min-w-0 max-w-[18rem] sm:min-w-[13rem]" ariaLabel={tb("traderAria")} />
+          )}
+          <FiltersButton count={facetCount} onReset={() => resetRangeFacets(rf)} width="xl">
+            <RangeFacetSections rf={rf} />
+          </FiltersButton>
+        </Toolbar>
+      )}
+      {!isGuest && <ActiveFilters items={rangeFacetChips(rf)} onReset={() => resetRangeFacets(rf)} />}
+
+      <SectionTabs
+        ariaLabel={tb("sectionsAria")}
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { value: "behavior", label: tb("tab.behavior"), icon: Activity },
+          { value: "setups", label: tb("tab.setups"), icon: Sparkles },
+        ]}
+      />
 
       {isGuest ? (
         <Panel><EmptyState icon={Brain} title={tb("guest")} description={tb("guestHint")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} /></Panel>

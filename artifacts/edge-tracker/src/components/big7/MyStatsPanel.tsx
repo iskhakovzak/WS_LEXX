@@ -5,7 +5,10 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
-import { DataTable, Panel, Segmented, SortableTh, TermTooltip, toneOf, toneText, useTableSort } from "@/components/ds";
+import { DataTable, Panel, SortableTh, TermTooltip, toneOf, toneText, useTableSort } from "@/components/ds";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import type { DayRange } from "@/lib/period-range";
+import { nyDate } from "@/lib/trading-date";
 import { fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -14,7 +17,20 @@ import { sideNet } from "./lib";
 import { big7I18n } from "@/i18n/ns/big7";
 import { commonI18n } from "@/i18n/ns/common";
 
-export type StatsPeriod = "90" | "0";
+/** The periods of the own stats (GET /api/big7/mystats takes from/to, so any window works; «Сегодня» is too thin). */
+export const STATS_PRESETS = ["week", "month", "quarter", "year", "all"] as const;
+type StatsPreset = (typeof STATS_PRESETS)[number];
+export type StatsPeriodState = { period: StatsPreset | "custom"; custom: DayRange | null; setPreset: (p: StatsPreset) => void; setCustom: (r: DayRange) => void };
+
+/** The choice an older build stored («90» / «0», JSON) — read once as the vocabulary. */
+export function legacyStatsPeriod(): unknown {
+  try {
+    const raw = localStorage.getItem("ws_lexx.big7.statsPeriod");
+    return raw == null ? null : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 type SortKey = "ticker" | "n" | "net" | "wr" | "long" | "best";
 const SORT_ACCESSORS: Record<SortKey, (r: MyTicker) => number | string | null> = {
@@ -74,10 +90,9 @@ function SideCell({ net }: { net: number | null }) {
     : <span className={toneText(toneOf(net))}>{fmtUsd(net, { signed: true, decimals: 0 })}</span>;
 }
 
-export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
+export function MyStatsPanel({ stats, period, onOpen }: {
   stats: MyStats;
-  period: StatsPeriod;
-  onPeriod: (p: StatsPeriod) => void;
+  period: StatsPeriodState;
   onOpen: (symbol: string) => void;
 }) {
   const traded = React.useMemo(() => stats.tickers.filter((t) => t.n > 0), [stats.tickers]);
@@ -93,12 +108,15 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
           : t("my.noTrades")
       }
       actions={
-        <Segmented
+        <PeriodPicker
+          compact
           ariaLabel={t("my.periodAria")}
-          size="sm"
-          value={period}
-          onChange={onPeriod}
-          options={[{ value: "90", label: t("my.days90") }, { value: "0", label: t("my.allTime") }]}
+          presets={STATS_PRESETS}
+          value={period.period}
+          custom={period.custom}
+          onPreset={period.setPreset}
+          onCustom={period.setCustom}
+          today={nyDate()}
         />
       }
     >

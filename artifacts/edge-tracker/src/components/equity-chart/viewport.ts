@@ -57,14 +57,15 @@ export function pan(v: View, delta: number, n: number): View {
   return clampView({ from: v.from + delta, to: v.to + delta }, n);
 }
 
-/** First trading date of a preset (inclusive) or null for «Всё». */
+/**
+ * First date of a zoom preset (inclusive) or null for «Всё». The presets speak the app's period vocabulary (design
+ * audit wave 3, lib/period-range): Неделя / Месяц / Квартал / Год = the last 7 / 30 / 90 / 365 days ending today.
+ * The keys stay `1w / 1m / 3m / ytd` so a stored zoom keeps working.
+ */
 export function presetStart(p: Preset, today: string = nyDate()): string | null {
   if (p === "all") return null;
-  if (p === "ytd") return `${today.slice(0, 4)}-01-01`;
-  if (p === "1w") return addDays(today, -6);
-  const [y, m, d] = today.split("-").map(Number);
-  const back = p === "1m" ? 1 : 3;
-  return new Date(Date.UTC(y, m - 1 - back, d)).toISOString().slice(0, 10);
+  const days = p === "1w" ? 7 : p === "1m" ? 30 : p === "3m" ? 90 : 365;
+  return addDays(today, -(days - 1));
 }
 
 /** First candle whose last day is on / after `date` (keys sorted); n when none. */

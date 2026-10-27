@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Award, Download, HelpCircle, ListFilter, Loader2, MoreHorizontal, RefreshCw, SearchX, Sunrise, UserRound, Zap } from "lucide-react";
+import { Award, Download, ListFilter, Loader2, MoreHorizontal, RefreshCw, SearchX, Sunrise, UserRound, Zap } from "lucide-react";
 import {
-  EmptyState, Kbd, Page, PageHeader, Panel, Pill, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState,
+  EmptyState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -21,34 +20,26 @@ import {
 import { ActionsTable, scrollRowIntoView } from "@/components/analyst/ActionsTable";
 import { FiltersBar, type TypeCounts } from "@/components/analyst/FiltersBar";
 import { FirmStatsPanel, FirmStatsSheet, FirmWeightPanel } from "@/components/analyst/FirmStats";
+import { HotkeysHelp } from "@/components/analyst/HotkeysHelp";
 import { MyDaysPanel } from "@/components/analyst/MyDaysPanel";
 import { PremarketPanel } from "@/components/analyst/PremarketPanel";
 import { TickerSheet } from "@/components/analyst/TickerSheet";
 import { enrich, sortRows, weightMap, type Row, type SortState } from "@/components/analyst/rows";
 import {
-  DEFAULT_FILTERS, PERIODS, gapOf, isTopFirm, matchesFilters, matchesType, normalizeFilters, nyKey, nyParts, previousSessionDay,
+  DEFAULT_FILTERS, analystPeriod, gapOf, periodFetchDays, isTopFirm, matchesFilters, matchesType, normalizeFilters, nyKey, nyParts, previousSessionDay,
   ptChangePct, sessionWindow, shortDay, watchlistCatalyst,
-  type FeedAction, type Filters, type OpenPosition, type SavedView, type SortKey,
+  type FeedAction, type Filters, type OpenPosition, type Period, type SavedView, type SortKey,
 } from "@/components/analyst/lib";
+import { useUrlPeriod } from "@/components/analyst/use-url-period";
+import { periodLabel as periodName } from "@/components/shared/period/PeriodPicker";
 import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
-
 import { personName } from "@/i18n";
+
 const DEFAULT_SORT: SortState = { key: "time", dir: "desc" };
 const SORT_KEYS: SortKey[] = ["score", "time", "pt", "gap", "weight", "ticker"];
 
-/** Key → hotkey label key (labels resolved at render). */
-const HOTKEYS = [
-  ["/", "search"],
-  ["T", "session"],
-  ["M", "mine"],
-  ["J / K", "rows"],
-  ["Enter", "open"],
-  ["W", "watch"],
-  ["P", "plan"],
-  ["Esc", "reset"],
-] as const;
 const tf = analystI18n.t;
 
 export default function AnalystActionsPage() {
@@ -61,8 +52,11 @@ export default function AnalystActionsPage() {
 
   /* ── persisted view ─────────────────────────────────────────────────── */
   const [rawFilters, setRawFilters] = usePersistentState<Filters>("analyst.filters.v6", DEFAULT_FILTERS);
-  const filters = useMemo(() => normalizeFilters(rawFilters), [rawFilters]);
   const setFilters = useCallback((patch: Partial<Filters>) => setRawFilters((prev) => ({ ...normalizeFilters(prev), ...patch })), [setRawFilters]);
+  const stored = useMemo(() => normalizeFilters(rawFilters), [rawFilters]);
+  // ?period (+ from/to) wins on load and mirrors every change; the stored filters stay the fallback.
+  const linked = useUrlPeriod<Period>({ normalize: analystPeriod, period: stored.period, custom: stored.custom, fallback: DEFAULT_FILTERS.period, apply: setFilters });
+  const filters = useMemo(() => (linked ? normalizeFilters({ ...stored, ...linked }) : stored), [stored, linked]);
   const [views, setViews] = usePersistentState<SavedView[]>("analyst.views", []);
   const [rawSort, setSort] = usePersistentState<SortState>("analyst.sort", DEFAULT_SORT);
   const sort: SortState = SORT_KEYS.includes(rawSort?.key) && (rawSort.dir === "asc" || rawSort.dir === "desc") ? rawSort : DEFAULT_SORT;
@@ -82,7 +76,8 @@ export default function AnalystActionsPage() {
   const tableRef = useRef<HTMLDivElement>(null);
 
   /* ── data ───────────────────────────────────────────────────────────── */
-  const period = Number(filters.period);
+  const nowDay = useMemo(() => nyParts(new Date()).day, []);
+  const period = periodFetchDays(filters.period, filters.custom, nowDay);
   // Always load ≥ 5 days so «Сегодня до открытия» has the previous close over a weekend; the period is applied below.
   const feed = useAnalystFeed({ days: Math.max(period, 5), minCapB: filters.minCapB, includeUnknownCap: filters.includeUnknownCap });
   const positions = useOpenPositions();
@@ -131,7 +126,10 @@ export default function AnalystActionsPage() {
     () => (fallbackDay ? items.filter((a) => nyKey(a.gradedAt).slice(0, 10) === fallbackDay) : windowItems),
     [items, windowItems, fallbackDay],
   );
-  const periodItems = useMemo(() => items.filter((a) => (a.gradedAt ?? "") >= periodStart), [items, periodStart]);
+  const range = filters.period === "custom" ? filters.custom : null; // «Период…»: NY days from–to, both included
+  const periodItems = useMemo(() => items.filter((a) => (range
+    ? nyKey(a.gradedAt).slice(0, 10) >= range.from && nyKey(a.gradedAt).slice(0, 10) <= range.to
+    : (a.gradedAt ?? "") >= periodStart)), [items, periodStart, range]);
 
   /* quotes / reactions: premarket names first, then the freshest names in the period */
   const focusTickers = useMemo(() => {
@@ -320,10 +318,11 @@ export default function AnalystActionsPage() {
 
   const resetFilters = useCallback(() => {
     setSearch(""); setFirmFilter(null); setTickerFilter(null);
-    setFilters({ type: "all", tier: "all", ptMin: 0, sector: null, mineOnly: false, todayOnly: false });
-  }, [setFilters]);
+    setFilters({ type: "all", tier: "all", ptMin: 0, sector: null, mineOnly: false, todayOnly: false, minCapB: 0 });
+    setSort((s) => (s?.key === "score" ? DEFAULT_SORT : s));
+  }, [setFilters, setSort]);
   const hasFilters = !!(search || firmFilter || tickerFilter) || filters.type !== "all" || filters.tier !== "all" || !!filters.ptMin
-    || !!filters.sector || filters.mineOnly || filters.todayOnly;
+    || !!filters.sector || filters.mineOnly || filters.todayOnly || filters.minCapB > 0 || sort.key === "score";
 
   const saveView = useCallback((name: string) => {
     setViews((v) => [...(Array.isArray(v) ? v : []).filter((x) => x.name !== name), { id: `v${Date.now().toString(36)}`, name, filters }].slice(-12));
@@ -339,7 +338,6 @@ export default function AnalystActionsPage() {
       const el = e.target as HTMLElement | null;
       const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "/" && !typing) { e.preventDefault(); searchRef.current?.focus(); return; }
       if (typing || sheetTicker || firmsOpen) return;
       if (document.querySelector("[role=dialog],[data-radix-popper-content-wrapper]")) return;
       const k = e.key.toLowerCase();
@@ -369,7 +367,7 @@ export default function AnalystActionsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sheetTicker, firmsOpen, filters.todayOnly, filters.mineOnly, setFilters, hasFilters, resetFilters, tableRows, focusedIndex, addToWatch, addToPlan, inPlan]);
 
-  const periodLabel = PERIODS.find((p) => p.value === filters.period)?.label ?? tf("period.d", { count: period });
+  const periodLabel = periodName(filters.period, filters.custom);
   const scopeLabel = traderName ? personName(traderName) : tf("page.wholeTeam");
   const sheetRow = sheetTicker ? sheetTicker.toUpperCase() : null;
 
@@ -395,23 +393,7 @@ export default function AnalystActionsPage() {
             {tableRows.length > 0 && <Button variant="ghost" size="icon" onClick={exportCsv} aria-label={tf("page.exportAria")} title={tf("page.exportTitle")}>
               <Download aria-hidden="true" />
             </Button>}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={tf("page.hotkeysAria")}>
-                  <HelpCircle aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="w-64">
-                <div className="flex flex-col gap-1.5 py-0.5">
-                  <span className="text-xs font-semibold text-foreground">{tf("page.hotkeysAria")}</span>
-                  {HOTKEYS.map(([k, label]) => (
-                    <span key={k} className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      {tf(`page.hotkeys.${label}`)} <Kbd>{k}</Kbd>
-                    </span>
-                  ))}
-                </div>
-              </TooltipContent>
-            </Tooltip>
+            <HotkeysHelp />
             <Button variant="outline" onClick={() => setFirmsOpen(true)}>{tf("page.firms")}</Button>
             {canScan && (
               <DropdownMenu>
@@ -534,6 +516,7 @@ export default function AnalystActionsPage() {
             sortKey={sort.key}
             onSortMode={(k) => setSort({ key: k, dir: "desc" })}
             shown={tableRows.length}
+            today={nowDay}
           />
           <div className="min-h-[420px]">
             {feed.isLoading ? (
@@ -550,7 +533,7 @@ export default function AnalystActionsPage() {
                     : tf("page.emptyText")}
                   action={filters.minCapB > 0 && !filters.includeUnknownCap
                     ? <Button variant="outline" onClick={() => setFilters({ includeUnknownCap: true })}>{tf("page.includeUnknown")}</Button>
-                    : <Button variant="outline" onClick={() => setFilters({ period: "30" })}>{tf("page.show30")}</Button>}
+                    : <Button variant="outline" onClick={() => setFilters({ period: "month" })}>{tf("page.show30")}</Button>}
                 />
               ) : filters.todayOnly && !windowItems.length ? (
                 <EmptyState
@@ -623,7 +606,6 @@ export default function AnalystActionsPage() {
   );
 }
 
-/** «источник недоступен · HH:MM NY» — the scan failed / never ran (item 1.14); one muted line, never a banner. */
 /** The source is down: a yellow status next to ↻ — the main status of the screen (design audit wave 2). */
 function SourceDown({ at }: { at: string | undefined }) {
   const { t } = analystI18n.useT();

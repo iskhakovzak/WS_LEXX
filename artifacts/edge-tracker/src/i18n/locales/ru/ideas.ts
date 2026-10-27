@@ -261,8 +261,7 @@ export default {
     undoDeleted: "удалена",
   },
   stats: {
-    periods: { d30: "30 дней", d90: "90 дней", year: "Год", all: "Всё" },
-    periodText: { all: "за всё время", d30: "за 30 дней", d90: "за 90 дней", year: "за год" },
+    periodText: { week: "за неделю", month: "за месяц", quarter: "за квартал", year: "за год", all: "за всё время", custom: "за {range}" },
     cols: {
       ideas: "Идей",
       conversion: "Конверсия",
@@ -312,8 +311,6 @@ export default {
     authorAria: "Автор идей",
     you: "(вы)",
     youShort: "вы",
-    myIdeas: "Мои идеи",
-    resetAuthor: "Сбросить автора",
     loadingPrices: "загружаем цены…",
     pricesFailed: "Цены не загрузились.",
     loading: "Загрузка статистики",

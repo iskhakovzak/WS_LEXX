@@ -81,15 +81,18 @@ export type MyTicker = MyAgg & {
   bestHour: { key: string; label: string; net: number; n: number } | null;
   worstHour: { key: string; label: string; net: number; n: number } | null;
 };
-export type MyStats = { trader: string; from: string | null; total: MyAgg; tickers: MyTicker[]; hours: MyHour[] };
+export type MyStats = { trader: string; from: string | null; to?: string | null; total: MyAgg; tickers: MyTicker[]; hours: MyHour[] };
 
-/** The trader's own results on the board tickers (GET /api/big7/mystats). null → endpoint absent or no access. */
-export function useMyStats(symbols: string[], days: number, trader: string | null | undefined) {
+/**
+ * The trader's own results on the board tickers (GET /api/big7/mystats) over a from–to window (null = all time).
+ * null → endpoint absent or no access.
+ */
+export function useMyStats(symbols: string[], win: { from: string; to: string } | null, trader: string | null | undefined) {
   const key = [...symbols].sort().join(",");
   return useQuery<MyStats | null>({
-    queryKey: ["big7-mystats", key, days, trader ?? ""],
+    queryKey: ["big7-mystats", key, win ? `${win.from}_${win.to}` : "all", trader ?? ""],
     queryFn: async () => {
-      const qs = new URLSearchParams({ symbols: key, days: String(days) });
+      const qs = new URLSearchParams(win ? { symbols: key, from: win.from, to: win.to } : { symbols: key, days: "0" });
       if (trader) qs.set("trader", trader);
       return http.get<MyStats>(`/api/big7/mystats?${qs}`).catch(() => null);
     },

@@ -179,7 +179,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                 <td>
                   {e?.topTicker ? (
                     <span className={cn("text-xs", concentrated ? "font-medium text-warn" : "text-muted-foreground")} title={concentrated ? t("table.concentrated") : undefined}>
-                      {e.topTicker} {Math.round(e.topTickerPct ?? 0)}%
+                      {e.topTicker}{e.topTickerPct != null && ` ${Math.round(e.topTickerPct)}%`}
                     </span>
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>

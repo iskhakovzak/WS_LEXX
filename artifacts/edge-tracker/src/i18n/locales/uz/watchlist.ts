@@ -160,6 +160,7 @@ export default {
     addTickers: "Tiker qoʻshish",
   },
   filters: {
+    section: "Signallar",
     events: "Voqealar",
     eventsHint: "Bugun / kecha AMC / yaqin 2 kunda earnings yoki 24 soatdagi yangiliklar",
     gap: "Gap ≥ 3%",

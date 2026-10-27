@@ -9,7 +9,7 @@ import { Link, useLocation } from "wouter";
 import { useUpdateTrade, getTrade } from "@workspace/api-client-react";
 import type { Trade, UpdateTradeBody } from "@workspace/api-client-react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { BookText, CheckCircle2, Download, Filter, Keyboard, Loader2 } from "lucide-react";
+import { BookText, CandlestickChart, CheckCircle2, Download, Filter, Keyboard, Loader2 } from "lucide-react";
 import { EmptyState, Kbd, Page, PageHeader, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,12 +23,17 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useHolidaysRange, type HolidayEvent } from "@/lib/market-intel";
 import { invalidateTradeDependents } from "@/lib/query-keys";
-import { ENTRY_DECISION_FIELDS, HORIZONS, HORIZON_LABEL, RESULT_LABEL, advancedFilterCount, apiErrorMessage, blankForm, dayOf, downloadCsv, formToBody, isBrokerTrade, isDefaultFilters, isTypingTarget, resultKey, tradeToForm, type FormData, type Outcome } from "@/components/trades/trade-utils";
+import { ENTRY_DECISION_FIELDS, HORIZONS, DEFAULT_FILTERS, RESULT_LABEL, apiErrorMessage, blankForm, dayOf, downloadCsv, formToBody, isBrokerTrade, isDefaultFilters, isTypingTarget, resultKey, tradeToForm, type FormData, type Outcome } from "@/components/trades/trade-utils";
 import { useTradeFilters } from "@/components/trades/use-trade-filters";
 import { useTradesPage, useTradeDays, dayTradesQuery, patchTradeInPages } from "@/hooks/use-trades-page";
-import { TradeFilterBar, SelectedIdsBanner } from "@/components/trades/TradeFilterBar";
-import { TradesFacets, useFacetFilters } from "@/components/trades/TradesFacets";
+import { TradeFilterBar, type TradesMode } from "@/components/trades/TradeFilterBar";
+import { useFacetFilters, useTradesFacets } from "@/components/trades/TradesFacets";
 import { useFacetView } from "@/components/shared/trade-facets/api";
+import { facetChips, resetFacetFilters } from "@/components/shared/trade-facets/facet-filters";
+import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { PresetNote, tradeFilterChips, tradesScopeLabel } from "@/components/trades/trade-filter-chips";
+import { ReviewKpiLine } from "@/components/trades/review-kpi-line";
 import { TradePagination } from "@/components/trades/TradePagination";
 import { TradeDetailSheet, type TradePatch } from "@/components/trades/TradeDetailSheet";
 import { TradeFormDialog, formSaveError } from "@/components/trades/TradeFormDialog";
@@ -41,7 +46,7 @@ import { tradePlaybookPayload } from "@/components/trades/trade-utils";
 import { bulkTrades, type BulkBody } from "@/components/trades/bulk-api";
 import { PRESET_META, hasTag, tagLabel, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
 import type { PickerTarget, PickState } from "@/components/trades/review-tagging";
-import { DayCard, PresetBar, ReviewKpis, ReviewTradeRow, RowsHeader, RowsSkeleton } from "@/components/trades/review-list";
+import { DayCard, ReviewTradeRow, RowsHeader, RowsSkeleton } from "@/components/trades/review-list";
 import { commonI18n } from "@/i18n/ns/common";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -105,6 +110,7 @@ export default function Trades() {
   const { filters: pageFilters, sort, page, pageSize, preset, view } = F;
   const FV = useFacetView();
   const filters = useFacetFilters(pageFilters, FV.view); // + «Фильтры» panel / «Исключить IMX» (x* params)
+  const FQ = useTradesFacets(pageFilters, FV);
   const listMode = !!preset || view === "list";
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -176,24 +182,7 @@ export default function Trades() {
     if (page > 1 && P.items.length === 0 && summary.total > 0) F.setPage(Math.max(1, Math.ceil(summary.total / pageSize)));
   }, [summary, P.items.length, page, pageSize, P.isPlaceholder, listMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Cumulative net by day, oldest → newest (spark on the net KPI). */
-  const dayCurve = useMemo(() => {
-    let c = 0;
-    return [...D.days].reverse().map((d) => (c += d.net ?? 0));
-  }, [D.days]);
-
-  const scopeLabel = useMemo(() => {
-    const parts: string[] = [tradesI18n.t(`page.scope.${filters.period}`)];
-    if (filters.outcome !== "all") parts.push(filters.outcome === "open" ? tradesI18n.t("page.openPositions") : RESULT_LABEL[filters.outcome].toLowerCase());
-    if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());
-    if (filters.side) parts.push(filters.side === "Long" ? commonI18n.t("trading.long") : filters.side === "Short" ? commonI18n.t("trading.short") : filters.side);
-    if (filters.setup) parts.push(filters.setup);
-    if (filters.ticker) parts.push(filters.ticker);
-    const adv = advancedFilterCount(filters) - (filters.period === "custom" ? 1 : 0) - (filters.ticker ? 1 : 0);
-    if (adv > 0) parts.push(tradesI18n.t("page.moreFilters", { count: adv }));
-    if (filters.q.trim()) parts.push(`«${filters.q.trim()}»`);
-    return parts.join(" · ");
-  }, [filters]);
+  const scopeLabel = useMemo(() => tradesScopeLabel(filters), [filters]); // empty states: «Сейчас: …»
 
   // Holidays: only for the badge in the trade card header.
   const { data: holidaysData } = useHolidaysRange(summary?.firstDate ?? "", summary?.lastDate ?? "");
@@ -560,13 +549,13 @@ export default function Trades() {
   const isLoading = P.isLoading;
   const isError = P.isError || (!listMode && D.isError);
   const noTrades = !isLoading && !P.isError && total === 0 && noFilters && !preset;
-  const days = summary?.days ?? D.totalDays;
-  const headerText = isLoading
-    ? tc("states.loading")
-    : days
-      ? tt("page.headerDays", { trades: nTrades(total), days: tc("units.tradingDays", { count: days }), scope: scopeLabel })
-      : tt("page.header", { trades: nTrades(total), scope: scopeLabel });
   const presetMeta = preset ? PRESET_META[preset] : null;
+  const mode: TradesMode = preset ?? view;
+  const setMode = (m: TradesMode) => {
+    if (m === "days" || m === "list") { if (preset) F.setPreset(null); F.setView(m); } else F.setPreset(m);
+  };
+  const resetFacets = () => FV.update(resetFacetFilters(FV.view));
+  const resetAll = () => { F.reset(); resetFacets(); };
 
   const presetEmpty = (p: Preset) => (
     <EmptyState
@@ -581,8 +570,8 @@ export default function Trades() {
     <Page className="pb-24">
       <PageHeader
         title={shellI18n.t("nav.trades")}
-        icon={BookText}
-        description={headerText}
+        icon={CandlestickChart}
+        description={tt("page.description")}
         actions={
           <>
             {/* Phones: no keyboard, and a CSV of the whole book is a desktop job (the bulk bar keeps CSV of a
@@ -612,40 +601,42 @@ export default function Trades() {
       />
 
       {!noTrades && (
-        <TradeFilterBar
-          filters={pageFilters}
-          patch={F.patch}
-          reset={F.reset}
-          outcomeCounts={facets?.outcomes ?? EMPTY_OUTCOMES}
-          horizonCounts={facets?.horizons ?? {}}
-          setups={facets?.setups ?? []}
-          traders={isStaff ? distinctTraders : []}
-          sectors={facets?.sectors ?? []}
-          views={F.views}
-          onSaveView={(n) => { F.saveView(n); toast({ title: tt("page.toast.viewSaved", { name: n }) }); }}
-          onApplyView={F.applyView}
-          onRemoveView={F.removeView}
-          searchRef={searchRef}
-        />
-      )}
-      <SelectedIdsBanner ids={pageFilters.ids} onClear={() => F.patch({ ids: "" })} />
-      {!noTrades && <TradesFacets filters={pageFilters} fv={FV} />}
-
-      {!noTrades && !P.isError && (
-        <ReviewKpis summary={summary} loading={isLoading} dayCurve={preset ? [] : dayCurve} onPreset={(p) => F.setPreset(p)} />
-      )}
-
-      {!noTrades && (
-        <PresetBar
-          view={view}
-          onView={(v) => { if (v === "days") F.setPreset(null); F.setView(v); }}
-          preset={preset}
-          onPreset={F.setPreset}
-          counts={facets?.presets ?? null}
-          sort={sort}
-          onSort={F.setSort}
-          trader={traderForLinks}
-        />
+        <>
+          <TradeFilterBar
+            filters={pageFilters}
+            patch={F.patch}
+            searchRef={searchRef}
+            mode={mode}
+            onMode={setMode}
+            presetCounts={facets?.presets ?? null}
+            sort={sort}
+            onSort={F.setSort}
+            onResetPanel={() => { F.patch({ ...DEFAULT_FILTERS, q: pageFilters.q, period: pageFilters.period, from: pageFilters.from, to: pageFilters.to }); resetFacets(); }}
+            outcomeCounts={facets?.outcomes ?? EMPTY_OUTCOMES}
+            horizonCounts={facets?.horizons ?? {}}
+            setups={facets?.setups ?? []}
+            traders={isStaff ? distinctTraders : []}
+            sectors={facets?.sectors ?? []}
+            views={F.views}
+            onSaveView={(n) => { F.saveView(n); toast({ title: tt("page.toast.viewSaved", { name: n }) }); }}
+            onApplyView={F.applyView}
+            onRemoveView={F.removeView}
+            facets={{ view: FV.view, onChange: FV.update, data: FQ.data, loading: FQ.isFetching, error: FQ.isError, help: <HelpButton id="facets" /> }}
+            resultCount={summary?.total}
+          />
+          <PageHint id="facets" />
+          <ActiveFilters items={[...tradeFilterChips(pageFilters, F.patch), ...facetChips(FV.view, FV.update, FQ.data)]} onReset={resetAll} />
+          {preset && <PresetNote preset={preset} trader={traderForLinks} onClose={() => F.setPreset(null)} />}
+          {!P.isError && (
+            <ReviewKpiLine
+              summary={summary}
+              loading={isLoading || P.isPlaceholder}
+              days={summary?.days ?? D.totalDays}
+              imx={FQ.data ? { total: FQ.data.total.net, imx: FQ.data.imx, excluded: FV.view.excludeImx } : undefined}
+              onPreset={(p) => F.setPreset(p)}
+            />
+          )}
+        </>
       )}
 
       {isError ? (
@@ -665,7 +656,7 @@ export default function Trades() {
             <RowsSkeleton rows={8} />
           ) : total === 0 ? (
             preset ? presetEmpty(preset) : (
-              <EmptyState art="amphora" icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
+              <EmptyState art="amphora" icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button onClick={resetAll}>{tc("actions.resetFilters")}</Button>} />
             )
           ) : (
             <div role="table" aria-label={shellI18n.t("nav.trades")} className={P.isPlaceholder ? "opacity-70 transition-opacity" : "transition-opacity"} aria-busy={P.isPlaceholder || undefined}>
@@ -693,7 +684,7 @@ export default function Trades() {
         <Panel padded={false}><RowsSkeleton rows={6} /></Panel>
       ) : !D.days.length ? (
         <Panel>
-          <EmptyState art="amphora" icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
+          <EmptyState art="amphora" icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button onClick={resetAll}>{tc("actions.resetFilters")}</Button>} />
         </Panel>
       ) : (
         <div className="space-y-[var(--grid-gap)]" aria-busy={D.isFetching || undefined}>

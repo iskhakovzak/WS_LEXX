@@ -9,7 +9,7 @@ import {
   type MarketEvent, type UpdateEventBody,
 } from "@workspace/api-client-react";
 import { CalendarClock, CalendarDays, Plus, Scale, Sun, AlertTriangle, RefreshCw } from "lucide-react";
-import { Page, PageHeader, Panel, Segmented, EmptyState, usePersistentState } from "@/components/ds";
+import { Page, PageHeader, Panel, Segmented, EmptyState, Toolbar, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { UndoToast } from "@/components/undo-toast";
 import { useToast } from "@/hooks/use-toast";
@@ -232,17 +232,20 @@ export default function Events() {
           </span>
         }
         actions={
-          <>
-            {isStaff && (
-              <PersonSelect value={traderPick} onValueChange={setTraderPick} allValue={DESK} allLabel={t("page.wholeDeskOption")} options={traderOptions} className="h-9 w-[180px]" ariaLabel={t("page.whoseTrades")} />
-            )}
-            <Segmented<View> ariaLabel={t("page.view")} value={view} onChange={setView} options={viewOptions} />
-            <Button variant="outline" onClick={() => openCreate({ date: selected })}>
-              <Plus /> {t("page.note")}
-            </Button>
-          </>
+          <Button variant="outline" onClick={() => openCreate({ date: selected })}>
+            <Plus /> {t("page.note")}
+          </Button>
         }
       />
+
+      {/* Wave 3: the header holds the title and the one action; the main mode (Сегодня · Неделя · Edge) and the scope
+          (whose trades, staff) sit in the Toolbar under it. Day keys ← / → / T stay on the page. */}
+      <Toolbar>
+        <Segmented<View> ariaLabel={t("page.view")} value={view} onChange={setView} options={viewOptions} />
+        {isStaff && (
+          <PersonSelect value={traderPick} onValueChange={setTraderPick} allValue={DESK} allLabel={t("page.wholeDeskOption")} options={traderOptions} className="h-9 w-[180px]" ariaLabel={t("page.whoseTrades")} />
+        )}
+      </Toolbar>
 
       {tradesError && (
         <Panel>

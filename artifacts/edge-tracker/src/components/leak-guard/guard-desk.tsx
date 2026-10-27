@@ -4,6 +4,7 @@
  * period and, behind one toggle, the per-trader table with the ladder level (risk.limits.edit changes it, audited).
  * PropReports cannot block orders: the note says where the real restriction is set.
  */
+import { cn } from "@/lib/utils";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { OctagonPause, ShieldCheck } from "lucide-react";
@@ -102,8 +103,8 @@ function TradersTable({ d, canEdit }: { d: GuardDesk; canEdit: boolean }) {
               </td>
               <td className="py-1.5 pr-3 text-right tabular-nums">{r.today}</td>
               <td className="py-1.5 pr-3 text-right tabular-nums">{r.summary.compliance == null ? "—" : fmtRate(r.summary.compliance)}</td>
-              <td className="py-1.5 pr-3 text-right tabular-nums text-up">{r.summary.saved ? fmtUsd(r.summary.saved, { decimals: 0 }) : "—"}</td>
-              <td className="py-1.5 text-right tabular-nums text-down">{r.summary.lost ? fmtUsd(r.summary.lost, { decimals: 0 }) : "—"}</td>
+              <td className={cn("py-1.5 pr-3 text-right tabular-nums", r.summary.saved ? "text-up" : "text-muted-foreground")}>{fmtUsd(r.summary.saved, { decimals: 0 })}</td>
+              <td className={cn("py-1.5 text-right tabular-nums", r.summary.lost ? "text-down" : "text-muted-foreground")}>{fmtUsd(r.summary.lost, { decimals: 0 })}</td>
             </tr>
           ))}
         </tbody>
@@ -119,7 +120,7 @@ function Body({ d, canEdit }: { d: GuardDesk; canEdit: boolean }) {
   return (
     <div className="space-y-3">
       <section aria-label={t("desk.activeTitle")}>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("desk.activeTitle")}</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">{t("desk.activeTitle")}</h3>
         <ActivePauses d={d} canEdit={canEdit} />
       </section>
       <p className="text-xs text-muted-foreground">

@@ -14,7 +14,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { Dumbbell } from "lucide-react";
+import { Dumbbell, Gamepad2 } from "lucide-react";
 import { BentoGrid, EmptyState, Page, PageHeader, usePersistentState } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { trainerI18n } from "@/i18n/ns/trainer";
@@ -180,7 +180,7 @@ export default function TrainerPage() {
 
   return (
     <Page>
-      <PageHeader title={t("title")} description={t("description")} icon={Dumbbell} meta={<TrainerStatsLine stats={home.data?.stats} />} />
+      <PageHeader title={t("title")} description={t("description")} icon={Gamepad2} meta={<TrainerStatsLine stats={home.data?.stats} />} />
       {guest ? (
         <EmptyState icon={Dumbbell} title={t("title")} description={t("guest")} />
       ) : (

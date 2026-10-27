@@ -5,7 +5,7 @@
  */
 import * as React from "react";
 import { useSearch } from "wouter";
-import { RefreshCw, Route as RouteIcon } from "lucide-react";
+import { GraduationCap, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Page, PageHeader, SectionTabs } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ export default function AcademyPathPage() {
     <Page>
       <PageHeader
         title={shellI18n.t("nav.academyPath")}
-        icon={RouteIcon}
+        icon={GraduationCap}
         description={t("page.pathDescription", { ladder: ladderText() })}
         actions={<>
           <Button variant="ghost" size="sm" onClick={() => void qc.invalidateQueries({ queryKey: pathKeys.all })} aria-label={t("page.refreshData")} title={t("page.refreshData")}>

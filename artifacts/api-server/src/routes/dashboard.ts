@@ -582,7 +582,10 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
 // ═════════════════════════════════════════════════════════════════════════════
 // /dashboard/equity — daily curve by close date; R and net $ side by side.
 // ═════════════════════════════════════════════════════════════════════════════
-const PERIODS = ["week", "7d", "30d", "90d", "ytd", "all"] as const;
+// The period vocabulary (design audit wave 3): week · month · quarter · year · all. «week» stays this calendar week from
+// Monday (the curve equals the week card, ROMAN-23); month / quarter / year are rolling windows ending today. The old
+// values (7d / 30d / 90d / ytd) are still accepted for older clients.
+const PERIODS = ["week", "month", "quarter", "year", "7d", "30d", "90d", "ytd", "all"] as const;
 type Period = (typeof PERIODS)[number];
 
 router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => {
@@ -594,8 +597,9 @@ router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => 
   const period: Period = (PERIODS as readonly string[]).includes(requested) ? (requested as Period) : "30d";
   const from =
     period === "week" || period === "7d" ? mondayOf(today)
-    : period === "30d" ? addDays(today, -29)
-    : period === "90d" ? addDays(today, -89)
+    : period === "month" || period === "30d" ? addDays(today, -29)
+    : period === "quarter" || period === "90d" ? addDays(today, -89)
+    : period === "year" ? addDays(today, -364)
     : period === "ytd" ? `${today.slice(0, 4)}-01-01`
     : "0000-01-01";
 

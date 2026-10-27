@@ -37,7 +37,7 @@ describe("period-range («Свой период»)", () => {
   it("drives /analytics and /stats windows", () => {
     expect(filtersRange({ period: "custom", from: "2026-03-01", to: "2026-03-10" })).toEqual({ from: "2026-03-01", to: "2026-03-10", prevFrom: "2026-02-19", prevTo: "2026-02-28" });
     // A custom period without a valid range falls back to the default 90 days.
-    expect(filtersRange({ period: "custom", from: "x" }, new Date(2026, 9, 19))?.from).toBe(filtersRange({ period: "90d" }, new Date(2026, 9, 19))?.from);
+    expect(filtersRange({ period: "custom", from: "x" }, new Date(2026, 9, 19))?.from).toBe(filtersRange({ period: "quarter" }, new Date(2026, 9, 19))?.from);
     expect(statsRanges("custom", { from: "2026-03-01", to: "2026-03-10" })).toEqual({ cur: { from: "2026-03-01", to: "2026-03-10" }, prev: { from: "2026-02-19", to: "2026-02-28" } });
   });
 });

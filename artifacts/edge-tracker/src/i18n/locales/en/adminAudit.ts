@@ -354,11 +354,6 @@ export default {
     objectId: "ID / name",
     objectIdAria: "Object ID",
     period: "Period",
-    quick: { day: "24h", week: "7d", month: "30d", all: "All", custom: "Dates" },
-    from: "from",
-    to: "to",
-    fromAria: "From date",
-    toAria: "To date",
     shown: "showing {shown} of {total}",
     timeTitle: "{ny} NY · your time {local}",
     groups: {

@@ -62,8 +62,7 @@ export default {
   overall: "Общая оценка",
   legacyTier: { starter: "Старт", standard: "Стандарт", lead: "Лид" },
   leaderboard: {
-    periods: { p7: "7 дней", p30: "30 дней", p90: "90 дней", all: "Всё" },
-    periodFor: { p7: "за 7 дней", p30: "за 30 дней", p90: "за 90 дней", all: "за всё время" },
+    periodFor: { today: "за сегодня", week: "за 7 дней", month: "за 30 дней", quarter: "за 90 дней", year: "за 365 дней", all: "за всё время", custom: "за {range}" },
     metrics: { r: "Сумма R", winrate: "Винрейт", expR: "Ожидание R" },
     prevAll: "положения неделю назад",
     prevPeriod: "прошлого периода",
@@ -252,7 +251,7 @@ export default {
     current: "текущая",
     by: "от {curator}",
     editAria: "Изменить оценку {name}",
-    deleteAria: "Удалить оценку {name}",
+    moreAria: "Ещё действия: оценка {name}",
     showMore: "Показать ещё ({count} нед.)",
   },
   page: {
@@ -272,8 +271,13 @@ export default {
     deleting: "Удаляем…",
   },
   top: {
-    periods: { week: "Неделя", month: "Месяц", quarter: "Квартал", all: "Всё время" },
-    prev: { week: "к пред. неделе", month: "к пред. месяцу", quarter: "к пред. кварталу" },
+    /** Hints of the calendar periods (the desk leaderboard is anchored on a date, not a rolling window). */
+    periodHints: { week: "Пн–пт одной недели", month: "Календарный месяц", quarter: "Календарный квартал", all: "Вся история" },
+    prev: { week: "к пред. неделе", month: "к пред. месяцу", quarter: "к пред. кварталу", custom: "к такому же отрезку до него" },
+    anchorAria: "Период рейтинга: {range}",
+    rankFilters: "Рейтинг",
+    metricChip: "Метрика: {metric}",
+    minTradesChip: "От {count} сделок",
     csv: {
       place: "Место",
       trader: "Трейдер",

@@ -61,8 +61,7 @@ export default {
   overall: "Umumiy baho",
   legacyTier: { starter: "Start", standard: "Standart", lead: "Lid" },
   leaderboard: {
-    periods: { p7: "7 kun", p30: "30 kun", p90: "90 kun", all: "Hammasi" },
-    periodFor: { p7: "soʻnggi 7 kunda", p30: "soʻnggi 30 kunda", p90: "soʻnggi 90 kunda", all: "butun davr" },
+    periodFor: { today: "bugun", week: "soʻnggi 7 kunda", month: "soʻnggi 30 kunda", quarter: "soʻnggi 90 kunda", year: "soʻnggi 365 kunda", all: "butun davr", custom: "{range} uchun" },
     metrics: { r: "Jami R", winrate: "Win rate", expR: "Kutilma R" },
     prevAll: "bir hafta oldingi holatga",
     prevPeriod: "oldingi davrga",
@@ -251,7 +250,7 @@ export default {
     current: "joriy",
     by: "{curator}dan",
     editAria: "{name} bahosini oʻzgartirish",
-    deleteAria: "{name} bahosini oʻchirish",
+    moreAria: "Boshqa amallar: {name} bahosi",
     showMore: "Yana koʻrsatish ({count} hafta)",
   },
   page: {
@@ -271,8 +270,13 @@ export default {
     deleting: "Oʻchirilmoqda…",
   },
   top: {
-    periods: { week: "Hafta", month: "Oy", quarter: "Chorak", all: "Butun davr" },
-    prev: { week: "oldingi haftaga", month: "oldingi oyga", quarter: "oldingi chorakka" },
+    /** Hints of the calendar periods (the desk leaderboard is anchored on a date, not a rolling window). */
+    periodHints: { week: "Bir haftaning Du–Ju", month: "Kalendar oyi", quarter: "Kalendar choragi", all: "Butun tarix" },
+    prev: { week: "oldingi haftaga", month: "oldingi oyga", quarter: "oldingi chorakka", custom: "undan oldingi shunday davrga" },
+    anchorAria: "Reyting davri: {range}",
+    rankFilters: "Reyting",
+    metricChip: "Metrika: {metric}",
+    minTradesChip: "{count}+ savdo",
     csv: {
       place: "Oʻrin",
       trader: "Treyder",

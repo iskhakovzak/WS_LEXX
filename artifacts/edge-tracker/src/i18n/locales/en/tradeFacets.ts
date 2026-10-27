@@ -81,6 +81,7 @@ export default {
   },
   imx: {
     toggle: "Exclude IMX",
+    chip: "No IMX",
     hint: "IMX are closing-auction trades (any fill 15:50–16:00 New York time, tag «IMX»). By default they stay in lists and totals.",
     line: "Total {total} · of which IMX {imx}",
     lineExcluded: "Total {total} without IMX · IMX excluded: {imx}",

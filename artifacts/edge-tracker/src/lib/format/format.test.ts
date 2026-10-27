@@ -57,12 +57,12 @@ describe("fmtUsd", () => {
   });
 
   eachLang("zero, negative zero, rounds to zero", () => {
-    expect(fmtUsd(0)).toBe("$0.00");
-    expect(fmtUsd(0, { signed: true })).toBe("$0.00");
-    expect(fmtUsd(-0, { signed: true })).toBe("$0.00");
-    expect(fmtUsd(-0.004, { signed: true })).toBe("$0.00");
+    expect(fmtUsd(0)).toBe("$0");
+    expect(fmtUsd(0, { signed: true })).toBe("$0");
+    expect(fmtUsd(-0, { signed: true })).toBe("$0");
+    expect(fmtUsd(-0.004, { signed: true })).toBe("$0");
     expect(fmtUsd(-0.4, { decimals: 0, signed: true })).toBe("$0");
-    expect(fmtUsd(0.004, { signed: true })).toBe("$0.00");
+    expect(fmtUsd(0.004, { signed: true })).toBe("$0");
   });
 
   eachLang("missing values", () => {
@@ -87,7 +87,7 @@ describe("fmtUsd", () => {
 
   eachLang("huge and tiny", () => {
     expect(fmtUsd(1234567890.12)).toBe("$1,234,567,890.12");
-    expect(fmtUsd(0.001)).toBe("$0.00");
+    expect(fmtUsd(0.001)).toBe("$0");
     expect(fmtUsd(1e15, { compact: true })).toBe("$1000T");
   });
 

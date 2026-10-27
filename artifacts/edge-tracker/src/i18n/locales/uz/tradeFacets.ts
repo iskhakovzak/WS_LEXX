@@ -81,6 +81,7 @@ export default {
   },
   imx: {
     toggle: "IMX ni chiqarib tashlash",
+    chip: "IMXsiz",
     hint: "IMX — yopilish auksioni savdolari (Nyu-York vaqti bilan 15:50–16:00 dagi istalgan ijro, «IMX» tegi). Odatda ular roʻyxat va jamilarda qoladi.",
     line: "Jami {total} · shundan IMX {imx}",
     lineExcluded: "Jami {total} IMXsiz · IMX chiqarilgan: {imx}",

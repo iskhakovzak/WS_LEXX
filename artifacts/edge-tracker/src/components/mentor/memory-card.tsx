@@ -81,7 +81,7 @@ export function MemoryCard({ facts, notes, curator, trader }: { facts: Fact[]; n
       <div className="flex flex-col gap-4">
         {facts.length > 0 && (
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("memory.facts")}</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">{t("memory.facts")}</h3>
             <ul className="flex flex-col gap-1">
               {facts.map((f) => (
                 <li key={f.key} className={`flex items-center gap-2 text-sm ${f.hidden ? "text-muted-foreground line-through" : "text-foreground"}`}>
@@ -97,13 +97,13 @@ export function MemoryCard({ facts, notes, curator, trader }: { facts: Fact[]; n
           </section>
         )}
         <section className="flex flex-col gap-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("memory.notes")}</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">{t("memory.notes")}</h3>
           {own.length ? <ul className="flex flex-col gap-1.5">{own.map((n) => <NoteRow key={n.id} n={n} editable={!curator} />)}</ul> : <p className="text-sm text-muted-foreground">{curator ? t("curator.noNotes") : t("memory.empty")}</p>}
           {!curator && <AddNote guidance={false} />}
         </section>
         {(guidance.length > 0 || curator) && (
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("memory.guidance")}</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">{t("memory.guidance")}</h3>
             {guidance.length > 0 && <ul className="flex flex-col gap-1.5">{guidance.map((n) => <NoteRow key={n.id} n={n} editable={!!curator} />)}</ul>}
             {curator && <AddNote trader={trader} guidance />}
           </section>

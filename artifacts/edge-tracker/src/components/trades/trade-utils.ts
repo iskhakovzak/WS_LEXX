@@ -7,7 +7,8 @@ import {
   screenshotNotesToString,
   stringToScreenshotNotes,
 } from "@/components/screenshot-fields";
-import { nyDate, addDays } from "@/lib/trading-date";
+import { nyDate } from "@/lib/trading-date";
+import { presetRange, type PeriodValue } from "@/lib/period-range";
 import { normalizeResult } from "@/lib/trade-result";
 import { signedR, priceR, netPnl as sharedNetPnl, isOpen as sharedIsOpen } from "@/lib/trade-math";
 import type { Tone } from "@/components/ds";
@@ -347,7 +348,8 @@ export function computeStats(list: Trade[]): TradeStats {
 
 // ── Filters ─────────────────────────────────────────────────────────────────
 
-export type Period = "all" | "today" | "week" | "month" | "custom";
+/** The one period vocabulary (lib/period-range): presets are windows ending today; «custom» = from / to. */
+export type Period = PeriodValue;
 export type Outcome = "all" | "win" | "loss" | "breakeven" | "open";
 
 export type TradeFilters = {
@@ -422,23 +424,18 @@ export function applyQualityFilters(trades: Trade[], f: TradeFilters, quality: Q
   });
 }
 
-/** Period bounds on the New York trading calendar (never the browser's local date). */
+/** Period bounds on the New York trading calendar (never the browser's local date); presets are rolling windows. */
 export function periodRange(f: Pick<TradeFilters, "period" | "from" | "to">, now = new Date()): { from: string; to: string } {
-  const today = nyDate(now);
-  if (f.period === "today") return { from: today, to: today };
-  if (f.period === "week") {
-    const dow = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 = Sunday
-    const back = dow === 0 ? 6 : dow - 1; // Monday-based week
-    return { from: addDays(today, -back), to: today };
-  }
-  if (f.period === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
   if (f.period === "custom") return { from: f.from, to: f.to };
-  return { from: "", to: "" };
+  return presetRange(f.period, nyDate(now)) ?? { from: "", to: "" };
 }
 
-/** Number of non-default "advanced" filters (those hidden in the popover). */
-export function advancedFilterCount(f: TradeFilters): number {
-  return [f.ticker, f.playbookId, f.trader, f.sector, f.tag, f.session, f.eventType, f.source, f.exitEffMax, f.mfeRMin, f.leftMin, f.ids, f.period === "custom" ? f.from || f.to : ""].filter(Boolean).length;
+/** Active filters inside «Фильтры (n)» (everything except the search and the period, which sit in the toolbar). */
+export function popoverFilterCount(f: TradeFilters): number {
+  return [
+    f.outcome !== "all" ? f.outcome : "", f.side, f.horizon, f.setup, f.ticker, f.playbookId, f.trader, f.sector, f.tag.trim(), f.session, f.eventType,
+    f.source, f.exitEffMax, f.mfeRMin, f.leftMin, f.ids,
+  ].filter(Boolean).length;
 }
 
 function idSet(ids: string): Set<number> | null {

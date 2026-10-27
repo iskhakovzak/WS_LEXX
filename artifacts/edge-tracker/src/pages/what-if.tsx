@@ -9,7 +9,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartSkeleton, EmptyLink, EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";
-import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
@@ -32,12 +31,12 @@ import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
 import { type Question, buildQuestions, changedDays, presetsWithLimits } from "@/components/what-if/presets";
 import { useLocation } from "wouter";
-import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM } from "@/components/people/staff-scope";
-import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
-import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { WhatIfScopeToolbar } from "@/components/what-if/scope-toolbar";
 import { useAssistantContext } from "@/components/shared/ask-assistant";
-import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { useAnalyticsScope } from "@/hooks/use-analytics-scope";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 /**
@@ -45,53 +44,18 @@ import { HelpButton, PageHint } from "@/components/shared/page-hint";
  * api-server/src/lib/whatIf.ts). One page, top to bottom: questions («а что если бы я…», one click each) → the
  * result first (before → after in $ and R, the difference big, equity curves, the days that change most — each
  * opens /day-report) → suggestions found in the data → own rule builder. The scenario, period and trader
- * live in the URL (?r=…&p=…&trader=…), so a link opens exactly the same view. Nothing is stored unless
+ * live in the URL (?r=…&period=…&trader=…; period and person are the group's shared scope), so a link opens exactly the same view. Nothing is stored unless
  * a scenario is saved explicitly. This is the one place for rule what-ifs: the analytics «Что если» tab is a compact
  * summary that links here. Commission tariffs are not simulated for traders (the desk does not choose its broker fees);
  * staff get one plan what-if box (components/what-if/fee-plan-box, roadmap R2.4 — the API refuses it to non-staff).
  */
 
-type Preset = "30d" | "90d" | "ytd" | "all";
-/** A preset or «Свой период» (?p=custom&from=&to=; the range is remembered with the prefs). */
-type PeriodKey = Preset | "custom";
-const PERIOD_KEYS: Preset[] = ["30d", "90d", "ytd", "all"];
-const ALL = "__all__";
 const PREFS_KEY = "ws.simulator.prefs.v1";
 
-function periodFrom(p: PeriodKey, today: string): string {
-  switch (p) {
-    case "30d": return addDays(today, -30);
-    case "90d": return addDays(today, -90);
-    case "ytd": return `${today.slice(0, 4)}-01-01`;
-    default: return "";
-  }
-}
-
-const isPeriod = (v: unknown, custom: DayRange | null): v is PeriodKey => PERIOD_KEYS.includes(v as Preset) || (v === "custom" && !!custom);
-
-function loadPrefs(): { period: PeriodKey; trader: string; custom: DayRange | null } {
-  try {
-    const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<{ period: PeriodKey; trader: string; from: string; to: string }>;
-    const custom = parseDayRange(p.from, p.to);
-    return { period: isPeriod(p.period, custom) ? p.period : "all", trader: typeof p.trader === "string" ? p.trader : "", custom };
-  } catch {
-    return { period: "all", trader: "", custom: null };
-  }
-}
-
-/** Initial state: URL first (shared link), then the viewer's last choice. */
-function initialState(me: string) {
-  const sp = new URLSearchParams(window.location.search);
-  const prefs = loadPrefs();
-  const p = sp.get("p");
-  const linked = parseDayRange(sp.get("from"), sp.get("to"));
-  const custom = p === "custom" ? linked : prefs.custom;
-  return {
-    custom,
-    period: isPeriod(p, custom) ? p : prefs.period,
-    trader: sp.get("trader") ?? (prefs.trader || me),
-    rules: decodeRules(sp.get("r")),
-  };
+/** The old prefs of the page (read once; the shared analytics scope took over): "__all__" = «Вся команда». */
+function legacyScope() {
+  const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") as { period?: string; trader?: string; from?: string; to?: string } | null;
+  return p ? { period: p.period, from: p.from, to: p.to, trader: p.trader === "__all__" ? TEAM : p.trader } : null;
 }
 
 /** Loading: the page's own order — questions (chips) → result panel (headline, key metrics, equity chart) → suggestion cards. */
@@ -132,44 +96,40 @@ export default function WhatIf() {
   const [, navigate] = useLocation();
   const me = user?.role !== "guest" ? user?.traderName ?? "" : "";
 
-  const [init] = useState(() => initialState(me));
-  const [period, setPeriod] = useState<PeriodKey>(init.period);
-  const [custom, setCustom] = useState<DayRange | null>(init.custom);
-  const [trader, setTrader] = useState<string>(init.trader);
-  const [rules, setRules] = useState<Rule[]>(init.rules);
+  // The group's shared scope (hooks/use-analytics-scope): period + person in the URL (?period=&from=&to=&trader=; old
+  // ?p= links still open), the same on /stats, /analytics, /behavior. The scenario stays in ?r=.
+  const sc = useAnalyticsScope({ legacy: legacyScope, legacyPeriodParams: ["p"], person: isCurator });
+  const { period, custom } = sc;
+  const [initRules] = useState(() => decodeRules(new URLSearchParams(window.location.search).get("r")));
+  const [rules, setRules] = useState<Rule[]>(initRules);
+  // «Вся команда» = TEAM → ""; no pick = the viewer's own book.
+  const trader = sc.trader === TEAM ? "" : sc.trader || me;
 
-  // Persist the viewer's period/trader; mirror everything into the URL (replaceState: no history spam).
-  useEffect(() => {
-    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ period, trader, ...(custom ?? {}) })); } catch { /* storage unavailable */ }
-  }, [period, trader, custom]);
+  // Mirror the scenario into the URL (replaceState: no history spam); the scope writes its own params.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const r = encodeRules(rules);
     if (r) sp.set("r", r); else sp.delete("r");
-    if (period !== "all") sp.set("p", period); else sp.delete("p");
-    if (period === "custom" && custom) { sp.set("from", custom.from); sp.set("to", custom.to); } else { sp.delete("from"); sp.delete("to"); }
-    if (isCurator && trader) sp.set("trader", trader); else sp.delete("trader");
     const q = sp.toString();
     const next = `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, "", next);
-  }, [rules, period, custom, trader, isCurator]);
+  }, [rules]);
 
-  const today = nyDate();
   // Traders see only themselves (the server enforces it anyway); staff pick a trader or the whole team.
-  const scopeTrader = isCurator ? (trader === ALL ? "" : trader) : "";
-  // 30 / 90 days move their start every day: the suggestions take the fast path there (no honest verdict can resolve).
-  const win = period === "custom" && custom ? custom : { from: period === "custom" ? "" : periodFrom(period, today), to: "" };
+  const scopeTrader = isCurator ? trader : "";
+  // Presets end today (the server's default «to»); every preset moves its start daily: the suggestions take the fast
+  // path there (no honest verdict can resolve).
+  const win = period === "custom" && custom ? custom : { from: sc.window?.from ?? "", to: "" };
   // «Разрезы»: x* params on every engine request (base, run, suggestions) — the engine only sees the trades that pass.
   const rf = useRangeFacets({ from: win.from || null, to: win.to || null, trader: scopeTrader || null }, user?.role !== "guest");
   const scope = useMemo<Scope>(
-    () => ({ trader: scopeTrader, from: win.from, to: win.to, rolling: period === "30d" || period === "90d", facets: rf.query || undefined }),
+    () => ({ trader: scopeTrader, from: win.from, to: win.to, rolling: period !== "all" && period !== "custom", facets: rf.query || undefined }),
     [scopeTrader, win.from, win.to, period, rf.query],
   );
   // The honest check runs on «всё время»: a short period's note and a card that outruns the year offer the switch.
-  const showAllTime = period === "all" ? undefined : () => setPeriod("all");
-  const scenarioOwner = isCurator ? (trader === ALL ? "" : trader) : me;
-  const periodPhrase = period === "custom" && custom ? fmtDayRange(custom) : t(`period.${period === "custom" ? "all" : period}.phrase`);
-  const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
+  const showAllTime = period === "all" ? undefined : () => sc.setPreset("all");
+  const scenarioOwner = isCurator ? trader : me;
+  const periodPhrase = period === "custom" ? (custom ? fmtDayRange(custom) : t("period.all")) : t(`period.${period}`);
   // Fee table by trader / account / month / setup / horizon (/api/edge/costs) — same trader and period as the page.
 
   // The page header's assistant question reads the same period and trader.
@@ -209,7 +169,7 @@ export default function WhatIf() {
 
   const run = useWhatIfRun(scope, runRules, hasRules && hasTrades);
   const suggestions = useWhatIfSuggestions(scope, hasTrades);
-  const { isAuto } = useBestRulePrefill({ linked: init.rules.length > 0, suggestions: suggestions.data?.suggestions, supported, rules, setRules });
+  const { isAuto } = useBestRulePrefill({ linked: initRules.length > 0, suggestions: suggestions.data?.suggestions, supported, rules, setRules });
   // «Набор правил» (the best sets + the scenario as a set) and «Мои правила в деле» (the trader's own rules).
   const combos = useWhatIfCombos(scope, useMemo(() => ownSet(runRules), [runRules]), hasTrades);
   const myRules = useMyRules(isCurator ? scopeTrader : "", hasTrades && user?.role !== "guest");
@@ -224,30 +184,11 @@ export default function WhatIf() {
     () => buildQuestions(base.data?.trades ?? [], presets, limits ?? {}).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: t("unsupportedQuestion") } : q)),
     [base.data?.trades, presets, limits, supported, t],
   );
-  const dayTrader = isCurator ? (trader === ALL ? "" : trader) : "";
+  const dayTrader = isCurator ? trader : "";
   const openDay = (day: string) => navigate(`/day-report?date=${day}${dayTrader ? `&trader=${encodeURIComponent(dayTrader)}` : ""}`);
 
   // Also while a period / trader switch loads: the previous base stays on screen (placeholder), dimmed.
   const recalculating = (hasRules && (run.isFetching || pendingRecalc)) || base.isPlaceholderData;
-  const controls = (
-    <>
-      <PeriodPicker<Preset>
-        ariaLabel={t("periodAria")} value={period} custom={custom} presetRange={win.from ? { from: win.from, to: today } : null} today={today} options={periodOptions}
-        onPreset={setPeriod} onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
-      />
-      {isCurator && (
-        <StaffTraderPicker
-          value={!trader || trader === ALL ? TEAM : trader}
-          onChange={(v) => setTrader(v === TEAM ? ALL : v)}
-          me={me}
-          names={traders}
-          teamLabel={t("wholeTeam")}
-          className="h-10 w-auto min-w-[13rem] max-w-[18rem]"
-          ariaLabel={t("traderAria")}
-        />
-      )}
-    </>
-  );
   const header = (<>
     <PageHeader
       title={t("title")}
@@ -261,11 +202,8 @@ export default function WhatIf() {
         ) : null
       }
       actions={<HelpButton id="whatIf" />}
-    >
-      {/* The scope (period, person) in one row under the title: the h1 keeps its width, the header's assistant
-          question keeps its place (design audit wave 2B). */}
-      <div className="flex flex-wrap items-center gap-2">{controls}</div>
-    </PageHeader>
+    />
+    <WhatIfScopeToolbar sc={sc} rf={rf} staff={isCurator} me={me} traders={traders} filters={user?.role !== "guest"} />
     <PageHint id="whatIf" />
   </>);
 
@@ -300,13 +238,12 @@ export default function WhatIf() {
     return (
       <Page>
         {header}
-        <RangeFacetsPanel rf={rf} />
         <Panel>
           <EmptyState
             icon={SearchX}
             title={scopeTrader ? t("empty.titleOf", { trader: personName(scopeTrader), period: periodPhrase }) : t("empty.title", { period: periodPhrase })}
             description={period !== "all" ? (isCurator ? t("empty.longerCurator") : t("empty.longer")) : (isCurator ? t("empty.syncCurator") : t("empty.sync"))}
-            action={period !== "all" ? <Button className="rounded-full" onClick={() => setPeriod("all")}>{t("empty.showAll")}</Button> : <EmptyLink href={links.myPlan()}>{commonI18n.t("emptyActions.toPlan")}</EmptyLink>}
+            action={period !== "all" ? <Button className="rounded-full" onClick={() => sc.setPreset("all")}>{t("empty.showAll")}</Button> : <EmptyLink href={links.myPlan()}>{commonI18n.t("emptyActions.toPlan")}</EmptyLink>}
           />
         </Panel>
       </Page>
@@ -323,7 +260,6 @@ export default function WhatIf() {
   return (
     <Page>
       {header}
-      <RangeFacetsPanel rf={rf} />
 
       {/* Scenarios and the result first, in one panel right under the header (design audit wave 2B). */}
       <Panel title={t("result")} icon={TrendingUp} aria-busy={recalculating || undefined} actions={isAuto ? <Pill tone="neutral" title={t("autoPickedHint")}>{t("autoPicked")}</Pill> : undefined}>

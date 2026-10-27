@@ -2,15 +2,14 @@
  * «Разрезы» on a period page (/stats, /analytics, /behavior, /what-if, /benchmark, /office): the saved panel view
  * (useFacetView — the same exclusions follow the user between sections), the buckets of the page's own window
  * (GET /api/trades/facets with from / to / trader), the x* query of the selection for server-computed numbers and the
- * filter for a page that computes from raw trades (lib/trade-facets tradePassesFacets). The panel and the hidden-value
- * chips are always shown together with the numbers they change (never a hidden filter).
+ * filter for a page that computes from raw trades (lib/trade-facets tradePassesFacets). The grid lives in «Фильтры (n)»
+ * and every hidden value is a chip under the toolbar, next to the numbers it changes (never a hidden filter).
  */
 import { useCallback, useMemo } from "react";
 import type { Trade } from "@workspace/api-client-react";
-import { cn } from "@/lib/utils";
+import type { ActiveFilter } from "@/components/shared/filters/filter-toolbar";
 import { facetQuery, tradePassesFacets, type FacetView } from "@/lib/trade-facets";
-import { FacetPanel } from "./FacetPanel";
-import { FacetSummary } from "./FacetSummary";
+import { FacetFilterSections, facetChips, facetFilterCount, resetFacetFilters } from "./facet-filters";
 import { useFacetView, useTradeFacets } from "./api";
 
 export type RangeFacetsWindow = { from?: string | null; to?: string | null; trader?: string | null };
@@ -54,13 +53,21 @@ export function useRangeFacets(w: RangeFacetsWindow, enabled = true) {
 
 export type RangeFacets = ReturnType<typeof useRangeFacets>;
 
-/** The «Разрезы» panel with its hidden-value chips (nothing when the page does not apply the selection). */
-export function RangeFacetsPanel({ rf, className }: { rf: RangeFacets; className?: string }) {
+/** The «Разрезы» inside the page's «Фильтры (n)» (nothing when the page does not apply the selection). */
+export function RangeFacetSections({ rf }: { rf: RangeFacets }) {
   if (!rf.enabled) return null;
-  return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <FacetPanel view={rf.fv.view} onChange={rf.fv.update} data={rf.q.data} loading={rf.q.isFetching} error={rf.q.isError} />
-      <FacetSummary view={rf.fv.view} onChange={rf.fv.update} data={rf.q.data} />
-    </div>
-  );
+  return <FacetFilterSections view={rf.fv.view} onChange={rf.fv.update} data={rf.q.data} loading={rf.q.isFetching} error={rf.q.isError} />;
+}
+
+/** The chips of the selection for the page's ActiveFilters row. */
+export function rangeFacetChips(rf: RangeFacets): ActiveFilter[] {
+  return rf.enabled ? facetChips(rf.fv.view, rf.fv.update, rf.q.data) : [];
+}
+
+export function rangeFacetCount(rf: RangeFacets): number {
+  return rf.enabled ? facetFilterCount(rf.fv.view) : 0;
+}
+
+export function resetRangeFacets(rf: RangeFacets): void {
+  if (rf.enabled) rf.fv.update(resetFacetFilters(rf.fv.view));
 }

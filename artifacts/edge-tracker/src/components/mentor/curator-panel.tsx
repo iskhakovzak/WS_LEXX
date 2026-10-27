@@ -16,7 +16,8 @@ import { MemoryCard } from "./memory-card";
 
 function escalationText(e: Escalation): string {
   const p = e.params;
-  const params = { days: p.days ?? 0, count: p.count ?? 0, pct: p.pct ?? 0, drawdown: fmtUsd(p.drawdown ?? 0, { decimals: "auto" }) };
+  // Counts drive plural forms (a missing one reads as 0); a missing money / percent reads «—», never a fake $0 / 0 %.
+  const params = { days: p.days ?? 0, count: p.count ?? 0, pct: p.pct ?? "—", drawdown: p.drawdown != null ? fmtUsd(p.drawdown, { decimals: "auto" }) : "—" };
   return mentorI18n.tryT(`curator.rule.${e.rule}`, params) ?? e.rule;
 }
 

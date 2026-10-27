@@ -23,3 +23,8 @@ export function cardSignal(r: Pick<Row, "quote">): { gap: number | null; rvol: n
   const rvol = raw != null && Number.isFinite(raw) ? raw : null;
   return { gap: gapOf(r.quote), rvol, rvolStrong: rvol != null && rvol >= 2 };
 }
+
+/** «×1.8», or «—» when the relative volume rounds to nothing (< 0.05: no volume yet, not a real «×0.0»). */
+export function rvolText(v: number): string {
+  return v < 0.05 ? "—" : `×${v.toFixed(1)}`;
+}

@@ -180,6 +180,7 @@ export default {
     queueDesc: "Qoidalar boʻyicha tavsiyalar va qoʻlda kiritilgan takliflar; tasdiqlash risk limitlarini darhol oʻzgartiradi",
     searchPlaceholder: "Treyderni topish (/)",
     searchAria: "Treyder qidiruvi",
+    filterAria: "Treyderlarni ko'rsatish",
     filterAction: "Qaror kerak",
     filterPending: "Navbatda",
     tableDesc: "Joriy daraja, qoidalar boʻyicha tavsiya va keyingi bosqichgacha progress (20 savdo kunlik oyna)",

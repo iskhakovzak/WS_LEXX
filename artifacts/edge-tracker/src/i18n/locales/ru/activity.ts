@@ -13,7 +13,7 @@ export default {
   unread: { one: "{count} новое", few: "{count} новых", many: "{count} новых", other: "{count} новых" },
   markRead: "Прочитано",
   refresh: "Обновить ленту",
-  searchPlaceholder: "Тикер, сетап, комментарий…  /",
+  searchPlaceholder: "Тикер, сетап, комментарий…",
   searchAria: "Поиск по ленте",
   actionTypeAria: "Тип действия",
   sectionsAria: "Разделы",
@@ -24,7 +24,6 @@ export default {
   emptyHint: "Здесь появятся сделки, сетапы плейбука, идеи, ревью наставников и комментарии команды.",
   loadMore: "Загрузить ещё",
   end: "Это всё — более ранних событий нет",
-  digestDay: "{day} · {date} (NY)",
   /** Sections of the feed (codes from the server's activity_log.section). */
   sections: {
     trades: "Сделки",
@@ -154,8 +153,6 @@ export default {
   },
   digest: {
     title: "Дайджест дня",
-    prevDay: "Предыдущий день",
-    nextDay: "Следующий день",
     unavailable: "Сводка за день пока недоступна — обновите API-сервер.",
     teamActions: "Действий в команде",
     socialHint: { one: "{count} ревью и реакция", few: "{count} ревью и реакции", many: "{count} ревью и реакций", other: "{count} ревью и реакции" },

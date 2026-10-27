@@ -7,8 +7,8 @@
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Briefcase, CalendarRange, ChevronLeft, ChevronRight, ClipboardCopy, FileText, GraduationCap, Lock, Printer, UserRound } from "lucide-react";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, StatGridSkeleton } from "@/components/ds";
+import { Briefcase, ClipboardCheck, ClipboardCopy, GraduationCap, Lock, Printer, UserRound } from "lucide-react";
+import { EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, SectionTabs, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
@@ -18,6 +18,7 @@ import { reviewLastWeek } from "@/components/journal/default-day";
 import { nyDate } from "@/lib/trading-date";
 import { http } from "@/lib/api/http";
 import { ReviewStatusPill } from "@/components/weekly-review/collab";
+import { WeekStepper } from "@/components/weekly-review/week-stepper";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
 import { AiReviewCard } from "@/components/shared/ai-review-card";
@@ -109,7 +110,6 @@ export default function WeeklyReviewPage() {
   const emptyWeek = !!q.data && q.data.kpis.current.trades === 0;
   const doc = q.data;
   const today = currentWeekKey();
-  const isFuture = week >= today;
 
   // The picker: everyone with trades in the viewer's scope (traders, curators, admins) plus active traders without
   // trades yet (a week to review), the own week first.
@@ -148,22 +148,9 @@ export default function WeeklyReviewPage() {
   }, [wardsQ.data, overviewQ.data, trader]);
   const perTrader = effectiveView !== "partners";
 
+  // Wave 3: the same switcher as the day screens (DayStepper look, keys [ ] T), one step = one week.
   const weekNav = (
-    // Phones: the week label shrinks and «К текущей» wraps instead of running off the right edge.
-    <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto" data-print-hide>
-      <Button type="button" variant="outline" size="icon" aria-label={t("page.prevWeek")} title={t("page.prevWeek")} onClick={() => setWeek(shiftWeek(week, -1))}>
-        <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-      </Button>
-      <span className="glass-field inline-flex min-h-9 min-w-0 flex-1 items-center justify-center gap-2 px-3 text-sm font-medium tabular-nums sm:min-w-[13rem] sm:flex-none">
-        <CalendarRange className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        {weekLabel(week)}
-        {week === today && <Pill tone="accent">{t("page.current")}</Pill>}
-      </span>
-      <Button type="button" variant="outline" size="icon" aria-label={t("page.nextWeek")} title={t("page.nextWeek")} disabled={isFuture} onClick={() => setWeek(shiftWeek(week, 1))}>
-        <ChevronRight className="h-4 w-4" aria-hidden="true" />
-      </Button>
-      {week !== today && <Button type="button" variant="ghost" size="sm" onClick={() => setWeek(today)}>{t("page.toCurrent")}</Button>}
-    </div>
+    <WeekStepper value={week} onChange={setWeek} max={today} home={today} className="print:hidden" />
   );
 
   const description = !perTrader
@@ -176,7 +163,7 @@ export default function WeeklyReviewPage() {
     <PageHeader
       title={shellI18n.t("nav.weeklyReview")}
       description={description}
-      icon={FileText}
+      icon={ClipboardCheck}
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           {staff && perTrader && (

@@ -5,7 +5,7 @@ import {
 } from "@workspace/api-client-react";
 import type { DailyFeed, UpdateDailyFeedBody } from "@workspace/api-client-react";
 import {
-  Newspaper, Bot, RefreshCw, Search, X, ChevronLeft, ChevronRight, CalendarDays, PenLine,
+  Newspaper, Bot, RefreshCw, Search, X, CalendarDays, PenLine,
   MoreHorizontal, ClipboardCheck, AlertTriangle, CalendarRange, Sparkles, TrendingUp, Zap, NotebookPen,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -14,7 +14,8 @@ import {
   Page, PageHeader, Panel, Segmented, Toolbar, EmptyState, SkeletonBlock, UpdatedAgo, Pill, toneOf, toneText, usePersistentState,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DayStepper, useClosedDays } from "@/components/shared/day-stepper";
+import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -25,7 +26,7 @@ import { UndoToast } from "@/components/undo-toast";
 import type { PlaybookPayload } from "@/components/add-to-playbook";
 import { useToast } from "@/hooks/use-toast";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { addDays, nyDate, stepSessionDay } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { http, ApiError } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
@@ -57,16 +58,6 @@ const catLabel = (c: Cat) => (c === "all" ? commonI18n.t("states.all") : feedI18
 function isTypingTarget(el: EventTarget | null) {
   if (!(el instanceof HTMLElement)) return false;
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
-}
-
-function stepWeekday(d: string, dir: -1 | 1) {
-  let x = addDays(d, dir);
-  for (let i = 0; i < 3; i++) {
-    const wd = new Date(`${x}T12:00:00`).getDay();
-    if (wd !== 0 && wd !== 6) break;
-    x = addDays(x, dir);
-  }
-  return x;
 }
 
 function buildPlaybookPayload(feed: DailyFeed): PlaybookPayload {
@@ -185,6 +176,15 @@ export default function DailyFeedPage() {
     window.addEventListener("ws-search-navigate", onNav);
     return () => window.removeEventListener("ws-search-navigate", onNav);
   }, []);
+  // The picked day lives in the URL (?date=, wave 3) so a day of the feed can be shared; «все дни» ⇒ no param.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (selectedDay) url.searchParams.set("date", selectedDay);
+      else url.searchParams.delete("date");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch { /* ignore */ }
+  }, [selectedDay]);
   useEffect(() => {
     if (!focusId || !posts.length) return;
     const f = posts.find((x) => x.id === focusId);
@@ -284,14 +284,16 @@ export default function DailyFeedPage() {
   const hasFilters = !!(q || selectedDay || cat !== "all");
   const clearFilters = useCallback(() => { setQuery(""); setSelectedDay(null); setCat("all"); }, [setCat]);
 
+  // J / K (the feed's own keys, kept next to DayStepper's [ ]): from «все дни» J opens the newest day.
+  const closedDays = useClosedDays(selectedDay ?? today);
   const stepDay = useCallback((dir: -1 | 1) => {
     if (!selectedDay) {
       if (dir === -1) setSelectedDay(days[0]?.[0] ?? today);
       return;
     }
-    const next = stepWeekday(selectedDay, dir);
+    const next = stepSessionDay(selectedDay, dir, closedDays);
     if (next <= today) setSelectedDay(next);
-  }, [selectedDay, days, today]);
+  }, [selectedDay, days, today, closedDays]);
 
   const openNew = useCallback(() => {
     if (!canEdit) return;
@@ -300,7 +302,7 @@ export default function DailyFeedPage() {
     setEditorOpen(true);
   }, [canEdit, selectedDay, today]);
 
-  /* ── keyboard: N announcement · / search · J/K day back/forward · Esc reset ── */
+  /* ── keyboard: N announcement · J/K day back/forward · Esc reset («/» is ToolbarSearch's, [ ] T DayStepper's) ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -308,7 +310,6 @@ export default function DailyFeedPage() {
       const k = e.key.toLowerCase();
       // Same physical keys on the Russian layout (Т = N, О = J, Л = K).
       if (k === "n" || k === "т") { if (canEdit) { e.preventDefault(); openNew(); } } // i18n-ignore
-      else if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
       else if (k === "j" || k === "о") { e.preventDefault(); stepDay(-1); } // i18n-ignore
       else if (k === "k" || k === "л") { e.preventDefault(); stepDay(1); } // i18n-ignore
       else if (e.key === "Escape" && hasFilters) { clearFilters(); }
@@ -478,6 +479,13 @@ export default function DailyFeedPage() {
 
   const toolbar = (
     <Toolbar className="sticky-top">
+      <ToolbarSearch
+        value={query}
+        onChange={setQuery}
+        inputRef={searchRef}
+        ariaLabel={t("page.searchAria")}
+        placeholder={t("page.searchPlaceholder")}
+      />
       <Segmented<Cat>
         ariaLabel={t("page.whatToShow")}
         size="sm"
@@ -485,47 +493,21 @@ export default function DailyFeedPage() {
         onChange={setCat}
         options={CAT_VALUES.map((v) => ({ value: v, label: catLabel(v), count: loading ? undefined : catCounts[v] || undefined }))}
       />
-      <div className="relative min-w-[200px] flex-1">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <Input
-          ref={searchRef}
-          aria-label={t("page.searchAria")}
-          title={t("page.searchTitle")}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-          placeholder={t("page.searchPlaceholder")}
-          className="pl-10 pr-9"
-        />
-        {query && (
-          <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-0.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-      {/* The side column (calendar) is hidden below lg — phones / tablets pick a day from this popover. */}
-      <FeedCalendarPopover className="lg:hidden" anchor={today} counts={calCounts} unreadDays={calNewDays} tradeDays={calTradeDays} selected={selectedDay} onSelect={setSelectedDay} today={today} />
+      {/* The side column (calendar) is hidden below lg — phones / tablets pick a day from this popover (it marks the days
+          with posts / unread / trades). Once a day is picked, DayStepper's date button takes over (one calendar). */}
+      {!selectedDay && <FeedCalendarPopover className="lg:hidden" anchor={today} counts={calCounts} unreadDays={calNewDays} tradeDays={calTradeDays} selected={selectedDay} onSelect={setSelectedDay} today={today} />}
     </Toolbar>
   );
 
   const dayNav = selectedDay && (
-    <div className="flex flex-wrap items-center gap-2" aria-label={t("page.selectedDay")}>
-      <div className="glass-field inline-flex items-center gap-1 p-1">
-        <button type="button" aria-label={t("page.prevDay")} title={t("page.prevDayTitle")} onClick={() => stepDay(-1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <span className="px-1 text-sm font-medium text-foreground">{formatDayLong(selectedDay)}</span>
-        <button type="button" aria-label={t("page.nextDay")} title={t("page.nextDayTitle")} disabled={stepWeekday(selectedDay, 1) > today} onClick={() => stepDay(1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-40">
-          <ChevronRight className="h-4 w-4" />
-        </button>
-        <button type="button" aria-label={t("page.allDaysAria")} title={t("page.allDaysTitle")} onClick={() => setSelectedDay(null)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
+    <DayStepper value={selectedDay} onChange={setSelectedDay} max={today} hotkeys={!editorOpen}>
+      <Button variant="ghost" size="sm" className="h-9 gap-1.5" title={t("page.allDaysTitle")} aria-label={t("page.allDaysAria")} onClick={() => setSelectedDay(null)}>
+        <X aria-hidden="true" /> {t("page.allDays")}
+      </Button>
       <Link href={links.dayReport(selectedDay)} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
         <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> {t("page.dayReport")}
       </Link>
-    </div>
+    </DayStepper>
   );
 
   const banner = unavailable ? (

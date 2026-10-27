@@ -32,7 +32,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
   const { t } = ratingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const motion = useChartMotion();
-  const month = useLeaderboard("30", "auto");
+  const month = useLeaderboard({ period: "month", custom: null }, "auto");
   // Shared with /trade-ideas, the stats page and global search (one request).
   const ideasQ = useQuery({ ...tradeIdeasQuery<TradeIdea>(), enabled: !!me });
 

@@ -175,6 +175,7 @@ export default {
     ideaTitle: "Gʻoya yaratish (I)",
     secAria: "{ticker} arizasini SEC da ochish",
     secTitle: "SEC dagi ariza",
+    moreAria: "Boshqa amallar: {ticker}",
     openAria: "{ticker} ni ochish",
     withdrawn: "qaytar.",
     capacityTitle: "Shelf / dastur sigʻimi",

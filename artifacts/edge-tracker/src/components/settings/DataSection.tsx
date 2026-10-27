@@ -412,7 +412,7 @@ export function DataSection() {
 
       <Panel title={t("data.exportCsv")} description={t("data.exportCsvDesc")} icon={Download}
         actions={<Segmented<Period> ariaLabel={t("data.exportPeriod")} size="sm" value={period} onChange={setPeriod}
-          options={[{ value: "all", label: t("data.periodAll") }, { value: "30", label: t("data.period30") }, { value: "90", label: t("data.period90") }, { value: "365", label: t("data.periodYear") }]} />}>
+          options={[{ value: "30", label: commonI18n.t("periodPicker.presets.month"), title: commonI18n.t("periodPicker.hints.month") }, { value: "90", label: commonI18n.t("periodPicker.presets.quarter"), title: commonI18n.t("periodPicker.hints.quarter") }, { value: "365", label: commonI18n.t("periodPicker.presets.year"), title: commonI18n.t("periodPicker.hints.year") }, { value: "all", label: commonI18n.t("periodPicker.presets.all") }]} />}>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {EXPORTS.map((e) => <ExportTile key={e.key} item={e} period={period} count={period === "all" ? counts[e.key] : undefined} />)}
         </div>

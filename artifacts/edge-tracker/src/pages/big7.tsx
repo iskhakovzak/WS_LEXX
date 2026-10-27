@@ -12,15 +12,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useListBig7Tickers } from "@workspace/api-client-react";
 import type { Big7Ticker } from "@workspace/api-client-react";
-import { AlertTriangle, Flame, Layers, Loader2, Plus, RefreshCw, Star } from "lucide-react";
+import { AlertTriangle, Flame, Layers, Loader2, Plus, Radar, RefreshCw, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Page, PageHeader, UpdatedAgo, usePersistentState } from "@/components/ds";
+import { EmptyState, Page, PageHeader, UpdatedAgo } from "@/components/ds";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { TickerTile, TileSkeleton } from "@/components/big7/TickerTile";
 import { ToneBar } from "@/components/big7/ToneBar";
 import { LeadershipTable } from "@/components/big7/LeadershipTable";
-import { MyStatsPanel, type StatsPeriod } from "@/components/big7/MyStatsPanel";
+import { MyStatsPanel, STATS_PRESETS, legacyStatsPeriod } from "@/components/big7/MyStatsPanel";
+import { usePeriodParam } from "@/hooks/use-period-param";
+import { periodWindow } from "@/lib/period-range";
+import { nyDate } from "@/lib/trading-date";
 import { DetailSheet } from "@/components/big7/DetailSheet";
 import { CatalystDialog, CatalystSheet, CatalystWeek, emptyDraft, type CatalystDraft } from "@/components/big7/catalysts";
 import { TickerManagerSheet, useSeedBig7 } from "@/components/big7/TickerManagerSheet";
@@ -152,10 +155,12 @@ export default function Big7() {
   }, [boardSymbols, merged]);
 
   // Own results (the server scopes to the signed-in trader); the all-time query decides whether the block exists.
-  const [period, setPeriod] = usePersistentState<StatsPeriod>("big7.statsPeriod", "90");
-  const myAll = useMyStats(boardSymbols, 0, null);
-  const my90 = useMyStats(boardSymbols, 90, null);
-  const myShown = period === "0" ? myAll.data : my90.data;
+  // The period: the vocabulary in the URL (?period=, design audit wave 3); the old «90 / 0» choice is read once.
+  const statsPeriod = usePeriodParam({ presets: STATS_PRESETS, fallback: "quarter", storageKey: "big7.statsPeriod.v2", legacy: legacyStatsPeriod });
+  const statsWin = statsPeriod.period === "all" ? null : periodWindow(statsPeriod.period, nyDate(), statsPeriod.custom);
+  const myAll = useMyStats(boardSymbols, null, null);
+  const myWin = useMyStats(boardSymbols, statsWin, null);
+  const myShown = statsWin ? myWin.data : myAll.data;
   const hasMyTrades = (myAll.data?.total.n ?? 0) > 0;
   const myBy = useMemo(() => new Map((myAll.data?.tickers ?? []).map((t) => [t.ticker, t])), [myAll.data]);
 
@@ -211,7 +216,7 @@ export default function Big7() {
     <Page>
       <PageHeader
         title="Big 7"
-        icon={Star}
+        icon={Radar}
         description={t("page.description")}
         meta={
           board.length > 0 ? (
@@ -302,7 +307,7 @@ export default function Big7() {
           <LeadershipTable rows={model.rows} loading={tickersLoading} onOpen={setOpenSym} preOpen={phase === "pre"} />
 
           {hasMyTrades && myShown && (
-            <MyStatsPanel stats={myShown} period={period} onPeriod={setPeriod} onOpen={setOpenSym} />
+            <MyStatsPanel stats={myShown} period={statsPeriod} onOpen={setOpenSym} />
           )}
 
           {board.length > 0 && (

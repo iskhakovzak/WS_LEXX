@@ -68,6 +68,8 @@ export default {
     patternsOff: "No patterns",
     cardSortAria: "Card sorting",
     cardSort: { attention: "Attention", pnl: "Week ↑", discipline: "Discipline ↑", name: "Name" },
+    filterSections: { attention: "Attention", activity: "Activity", tier: "Tier", cards: "Cards" },
+    chips: { idle: "No trades ≥ {count} d", tier: "Tier: {name}", sort: "Sort: {value}" },
     filtersAria: "Group filters",
     csvTitle: "Download the visible rows",
     cols: {
@@ -478,6 +480,7 @@ export default {
     emptyHint: "Record the outcome of a talk or an observation: only curators will see it.",
     pinned: "pinned",
     editText: "Edit text",
+    moreActions: "More note actions",
     archive: "Archive",
     archiveFailed: "Couldn't archive",
     textAria: "Note text",

@@ -18,7 +18,8 @@ describe("sanitizeDashboardPrefs", () => {
 
   it("keeps a scope picked by hand and the curve's window / unit (v6 prefs carry over)", () => {
     const p = sanitizeDashboardPrefs({ scope: "team", scopePicked: true, period: "90d", metric: "r", order: ["recent"] }, "me");
-    expect(p).toEqual({ scope: "team", scopePicked: true, period: "90d", metric: "r" });
+    // An old window value is read in the period vocabulary (90d → quarter).
+    expect(p).toEqual({ scope: "team", scopePicked: true, period: "quarter", metric: "r" });
   });
 
   it("garbage window / unit → defaults", () => {

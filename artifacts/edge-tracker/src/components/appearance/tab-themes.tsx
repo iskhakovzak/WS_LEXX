@@ -27,7 +27,7 @@ function MiniPage({ style }: { style: React.CSSProperties }) {
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-lg border border-[hsl(var(--card-border))] bg-card p-2">
           <div className="flex items-center justify-between">
-            <span className="text-[9px] leading-none text-muted-foreground">P&amp;L</span>
+            <span className="text-2xs leading-none text-muted-foreground">P&amp;L</span>
             <span className="h-2.5 w-7 rounded-full bg-primary" />
           </div>
           <span className="text-lg font-semibold leading-none tracking-tight text-up tabular-nums">+$16,480</span>

@@ -2,22 +2,23 @@
  * «Бенчмарк деска» — team comparison for curators / head of desk (GET /api/benchmark, /api/benchmark/same-ticker).
  * Staff: table (sort, sparkline, badges), heatmap of desk percentiles, «один тикер — один день», two-trader compare,
  * 4-weeks trend. Trader: own row vs the anonymised desk median + own trend.
- * URL: ?tab=table|heatmap|same|compare|trend&period=week|month|quarter|all&a=&b=
+ * URL: ?tab=table|heatmap|same|compare|trend&a=&b= and the group's shared period (?period=week|month|quarter|year|all,
+ * custom + &from=&to=; hooks/use-analytics-scope) — rolling windows ending today (old calendar ?period=week links still open).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { Download, Flame, Gauge, GitCompare, Scale, Table2, TrendingUp, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, StatCard, StatGrid, Toolbar, toneOf, type SectionTab, type SegmentOption } from "@/components/ds";
+import { Download, Flame, GitCompare, Scale, Table2, TrendingUp, Users } from "lucide-react";
+import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, StatCard, StatGrid, Toolbar, toneOf, type SectionTab } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { downloadCsv } from "@/components/analytics-page/metrics";
 import { QueryError } from "@/components/query-error";
-import { useBenchmark, useSameTicker, type BenchPeriod, type BenchPeriodKey, type BenchmarkResponse } from "@/components/benchmark/api";
+import { useBenchmark, useSameTicker, type BenchParams, type BenchmarkResponse } from "@/components/benchmark/api";
 import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
-import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
-import { parseDayRange } from "@/lib/period-range";
-import { nyDate } from "@/lib/trading-date";
+import { RangeFacetSections, rangeFacetChips, rangeFacetCount, resetRangeFacets, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { ActiveFilters, FilterSection, FiltersButton } from "@/components/shared/filters/filter-toolbar";
+import { ANALYTICS_PRESETS, useAnalyticsScope, type AnalyticsPreset } from "@/hooks/use-analytics-scope";
 import { BenchmarkTable } from "@/components/benchmark/benchmark-table";
 import { BenchmarkHeatmap } from "@/components/benchmark/heatmap";
 import { SameTickerView } from "@/components/benchmark/same-ticker";
@@ -33,15 +34,13 @@ import { metricLabel } from "@/components/benchmark/format";
 
 type Tab = "table" | "heatmap" | "same" | "compare" | "trend";
 const TABS: Tab[] = ["table", "heatmap", "same", "compare", "trend"];
-const PERIODS: BenchPeriod[] = ["week", "month", "quarter", "all"];
-const periodOptions = (): SegmentOption<BenchPeriod>[] => PERIODS.map((value) => ({ value, label: benchmarkI18n.t(`period.${value}`) }));
-
 const MIN_TRADES_KEY = "ws.benchmark.minTrades.v1";
+const MIN_TRADES_DEFAULT = 5;
 function loadMinTrades(): number {
   try {
     const n = Math.floor(Number(localStorage.getItem(MIN_TRADES_KEY)));
-    return Number.isFinite(n) && n >= 1 && n <= 500 ? n : 5;
-  } catch { return 5; }
+    return Number.isFinite(n) && n >= 1 && n <= 500 ? n : MIN_TRADES_DEFAULT;
+  } catch { return MIN_TRADES_DEFAULT; }
 }
 
 /** The table as a report: raw values (no $ / % formatting) so it opens cleanly in a spreadsheet. */
@@ -82,10 +81,9 @@ export default function BenchmarkPage() {
   const { t } = benchmarkI18n.useT();
   const { q, set } = useUrlState();
   const tab: Tab = TABS.includes(q.get("tab") as Tab) ? (q.get("tab") as Tab) : "table";
-  // ?period=custom&from=&to= — «Свой период»; an invalid range falls back to the quarter.
-  const custom = parseDayRange(q.get("from"), q.get("to"));
-  const periodKey: BenchPeriodKey = q.get("period") === "custom" && custom ? "custom" : PERIODS.includes(q.get("period") as BenchPeriod) ? (q.get("period") as BenchPeriod) : "quarter";
-  const period: BenchPeriod = periodKey === "custom" ? "quarter" : periodKey;
+  // The group's shared period (no person here: the benchmark is the desk). Presets are rolling windows ending today.
+  const sc = useAnalyticsScope();
+  const custom = sc.period === "custom" ? sc.custom : null;
   // The field may be cleared while typing; the query follows the last valid number, 400 ms after typing stops.
   const [minTrades, setMinTrades] = useState(loadMinTrades);
   const [minText, setMinText] = useState(() => String(minTrades));
@@ -101,9 +99,14 @@ export default function BenchmarkPage() {
   const b = q.get("b");
 
   const [win, setWin] = useState<{ from: string; to: string } | null>(null);
-  // «Разрезы» over the benchmark window (the server's answer; the custom range before it arrives), applied to everyone.
-  const rf = useRangeFacets(periodKey === "custom" && custom ? custom : { from: win?.from, to: win?.to });
-  const params = { period, minTrades, ...(periodKey === "custom" && custom ? custom : {}), facets: rf.query || undefined };
+  // «Разрезы» over the benchmark window (the period's own window; the server's answer for «Всё»), applied to everyone.
+  const rf = useRangeFacets(sc.window ?? { from: win?.from, to: win?.to });
+  const facets = rf.query || undefined;
+  const params: BenchParams = custom
+    ? { period: "custom", minTrades, ...custom, facets }
+    : sc.days != null ? { period: "days", days: sc.days, minTrades, facets } : { period: "all", minTrades, facets };
+  const setMin = (n: number) => { setMinTrades(n); setMinText(String(n)); };
+  const resetAll = () => { setMin(MIN_TRADES_DEFAULT); resetRangeFacets(rf); };
   const summary = useBenchmark(params);
   const data = summary.data;
   const dataFrom = data?.period.from, dataTo = data?.period.to;
@@ -154,7 +157,7 @@ export default function BenchmarkPage() {
     <Page>
       <PageHeader
         title={t("title")}
-        icon={Gauge}
+        icon={Scale}
         description={staff === false ? t("descSelf") : t("descDesk")}
         actions={data && (
           <span className="text-xs tabular-nums text-muted-foreground">
@@ -177,24 +180,28 @@ export default function BenchmarkPage() {
         )}
       </PageHeader>
 
+      {/* The period and «Фильтры» in one row right under the header (design audit wave 3, the group's order). */}
       <Toolbar>
-        <PeriodPicker<BenchPeriod>
-          ariaLabel={t("periodAria")} value={periodKey} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()}
-          onPreset={(v) => set({ period: v, from: null, to: null })} onCustom={(r) => set({ period: "custom", from: r.from, to: r.to })}
+        <PeriodPicker<AnalyticsPreset>
+          compact ariaLabel={t("periodAria")} presets={ANALYTICS_PRESETS} value={sc.period} custom={sc.custom} today={sc.today}
+          onPreset={sc.setPreset} onCustom={sc.setCustom}
         />
-        <label className="ml-2 flex items-center gap-2 text-sm text-muted-foreground">
-          {t("minTrades")}
-          <Input
-            type="number" min={1} max={500} value={minText} className="h-8 w-20 tabular-nums"
-            onChange={(e) => setMinText(e.target.value)}
-            onBlur={() => {
-              const n = Math.floor(Number(minText));
-              const v = minText.trim() !== "" && Number.isFinite(n) && n >= 1 ? Math.min(n, 500) : minTrades;
-              setMinTrades(v); setMinText(String(v));
-            }}
-            aria-label={t("minTradesAria")}
-          />
-        </label>
+        <FiltersButton count={(minTrades !== MIN_TRADES_DEFAULT ? 1 : 0) + rangeFacetCount(rf)} onReset={resetAll} width="xl">
+          <FilterSection title={t("minTrades")}>
+            <Input
+              type="number" min={1} max={500} value={minText} className="h-9 w-24 tabular-nums"
+              onChange={(e) => setMinText(e.target.value)}
+              onBlur={() => {
+                const n = Math.floor(Number(minText));
+                const v = minText.trim() !== "" && Number.isFinite(n) && n >= 1 ? Math.min(n, 500) : minTrades;
+                setMin(v);
+              }}
+              aria-label={t("minTradesAria")}
+            />
+            <p className="text-xs text-muted-foreground">{t("minTradesAria")}</p>
+          </FilterSection>
+          <RangeFacetSections rf={rf} />
+        </FiltersButton>
         {summary.isFetching && data && <span className="text-xs text-muted-foreground" role="status">{t("updating")}</span>}
         <span className="ml-auto flex items-center gap-2">
           {data?.viewer.scope === "assigned" && <Pill tone="accent">{t("assigned")}</Pill>}
@@ -206,7 +213,13 @@ export default function BenchmarkPage() {
         </span>
       </Toolbar>
 
-      <RangeFacetsPanel rf={rf} />
+      <ActiveFilters
+        items={[
+          minTrades !== MIN_TRADES_DEFAULT && { key: "minTrades", label: t("minTradesChip", { count: minTrades }), onRemove: () => setMin(MIN_TRADES_DEFAULT) },
+          ...rangeFacetChips(rf),
+        ]}
+        onReset={resetAll}
+      />
 
       {summary.isLoading ? (
         <PageSkeleton />
@@ -223,7 +236,7 @@ export default function BenchmarkPage() {
           <StatGrid>
             <StatCard label={t("stat.traders")} value={`${desk.traders} / ${desk.trades}`} hint={t("stat.tradersHint", { count: data.deskSize, min: data.minTrades })} />
             <StatCard label={t("stat.net")} value={desk.net != null ? fmtUsd(desk.net, { signed: true, decimals: "auto" }) : "—"} tone={toneOf(desk.net)} hint={t("stat.netHint")} />
-            <StatCard label={t("stat.fees")} value={fmtRate(desk.feeShare)} tone={(desk.feeShare ?? 0) > 0.3 ? "down" : "neutral"} hint={t("stat.feesHint")} />
+            <StatCard label={t("stat.fees")} value={fmtRate(desk.feeShare)} tone={(desk.feeShare ?? 0) > 0.3 ? "down" : "neutral"} hint={desk.feeShare == null ? t("stat.feesNone") : t("stat.feesHint")} />
             <StatCard label={t("stat.attention")} value={String(desk.breaches + desk.weaker)}
               tone={desk.breaches + desk.weaker > 0 ? "warn" : "neutral"}
               hint={t("stat.attentionHint", { breaches: desk.breaches, weaker: desk.weaker })} />

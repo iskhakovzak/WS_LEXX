@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LIST_LABELS, rowWritable, type Plan } from "./lib";
+import { LIST_LABELS, fmtRvol, rowWritable, type Plan } from "./lib";
 import { EventMarks, HistoryCell, InlineNote, LevelCell } from "./bits";
 import { RowMenu, type RowActions } from "./WatchlistRow";
 import { Sparkline } from "./visuals";
@@ -264,7 +264,7 @@ const Row = React.memo(function Row({
         {fmtPct(gap, 1)}
       </td>
       <td className={cn("text-right text-xs", cellY, rv != null && rv >= 1.5 ? "font-semibold text-primary" : "text-muted-foreground")}>
-        {rv != null ? `${rv.toFixed(1)}×` : "—"}
+        {fmtRvol(rv)}
       </td>
       <td className={cn("text-right text-xs", cellY)}>
         {q?.atr != null ? (

@@ -2,6 +2,7 @@
 // which tiles, where, how big — moved to the account (./dashboard-layout, 2026-10-25); the v6 prefs still hold the
 // old order / hidden lists it is migrated from, so they are only read here, never rewritten.
 import { useCallback, useEffect, useState } from "react";
+import { normalizePeriod } from "@/lib/period-range";
 import type { EquityMetric, EquityPeriod, Scope } from "./use-dashboard";
 
 export type DashboardPrefs = {
@@ -20,7 +21,13 @@ export function defaultPrefs(scope: Scope): DashboardPrefs {
   return { scope, period: "week", metric: "pnl" };
 }
 
-const PERIODS: EquityPeriod[] = ["week", "30d", "90d", "ytd", "all"];
+const PERIODS: EquityPeriod[] = ["week", "month", "quarter", "year", "all"];
+
+/** A saved window in the period vocabulary: older prefs held 7d / 30d / 90d / ytd (→ week / month / quarter / year). */
+function periodOf(v: unknown): EquityPeriod {
+  const p = normalizePeriod(v, "week");
+  return (PERIODS as string[]).includes(p) ? (p as EquityPeriod) : "week";
+}
 
 /** A scope switched by hand is kept; an auto-saved staff «Команда» becomes «Мои» (owner rule 2026-10-21). */
 export function sanitizeDashboardPrefs(raw: unknown, fallbackScope: Scope): DashboardPrefs {
@@ -30,7 +37,7 @@ export function sanitizeDashboardPrefs(raw: unknown, fallbackScope: Scope): Dash
   return {
     scope: picked ? (r.scope as Scope) : fallbackScope,
     scopePicked: picked,
-    period: PERIODS.includes(r.period as EquityPeriod) ? (r.period as EquityPeriod) : "week",
+    period: periodOf(r.period),
     metric: r.metric === "r" ? "r" : "pnl",
   };
 }

@@ -259,8 +259,7 @@ export default {
     undoDeleted: "deleted",
   },
   stats: {
-    periods: { d30: "30 days", d90: "90 days", year: "Year", all: "All" },
-    periodText: { all: "all time", d30: "last 30 days", d90: "last 90 days", year: "last year" },
+    periodText: { week: "past 7 days", month: "past 30 days", quarter: "past 90 days", year: "past year", all: "all time", custom: "for {range}" },
     cols: {
       ideas: "Ideas",
       conversion: "Conversion",
@@ -310,8 +309,6 @@ export default {
     authorAria: "Idea author",
     you: "(you)",
     youShort: "you",
-    myIdeas: "My ideas",
-    resetAuthor: "Clear author",
     loadingPrices: "loading prices…",
     pricesFailed: "Prices didn’t load.",
     loading: "Loading stats",

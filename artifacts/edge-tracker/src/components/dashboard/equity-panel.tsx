@@ -13,22 +13,19 @@ import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import type { DashboardEquity, EquityMetric, EquityPeriod } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
-import { equityChartI18n } from "@/i18n/ns/equityChart";
 import { DashCard } from "./dash-card";
 
-/** Server windows of the curve; the engine's own zoom / navigator work inside the loaded one. Built in render (UI language). */
+const PERIODS: EquityPeriod[] = ["week", "month", "quarter", "year", "all"];
+/**
+ * Server windows of the curve in the period vocabulary (design audit wave 3: Неделя · Месяц · Квартал · Год · Всё); the
+ * engine's own zoom / navigator work inside the loaded one. Titles name the server window exactly («Эта неделя» is the
+ * calendar week of the week card). Built in render (UI language).
+ */
 function periodOptions(): { value: EquityPeriod; label: string; title: string }[] {
-  const t = dashboardI18n.t, p = equityChartI18n.t;
-  // Short labels are the chart's presets (one vocabulary with EquityChart); titles name the server window exactly.
-  return [
-    { value: "week", label: p("presets.1w"), title: t("equity.period.week") },
-    { value: "30d", label: p("presets.1m"), title: t("equity.period.30d") },
-    { value: "90d", label: p("presets.3m"), title: t("equity.period.90d") },
-    { value: "ytd", label: p("presets.ytd"), title: t("equity.period.ytd") },
-    { value: "all", label: p("presets.all"), title: t("equity.period.all") },
-  ];
+  const t = dashboardI18n.t, c = commonI18n.t;
+  return PERIODS.map((value) => ({ value, label: c(`periodPicker.presets.${value}`), title: t(`equity.period.${value}`) }));
 }
-const LONGER: Partial<Record<EquityPeriod, EquityPeriod>> = { week: "30d", "30d": "90d", "90d": "ytd", ytd: "all" };
+const LONGER: Partial<Record<EquityPeriod, EquityPeriod>> = { week: "month", month: "quarter", quarter: "year", year: "all" };
 
 function Stat({ label, children, title }: { label: string; children: React.ReactNode; title?: string }) {
   return (

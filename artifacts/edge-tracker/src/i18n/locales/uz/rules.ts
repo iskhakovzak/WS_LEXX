@@ -228,6 +228,8 @@ export default {
     avgCompare: "qoidabuzarlikli savdo oʻrtacha {broken}, qoidabuzarliksiz {clean}",
   },
   violations: {
+    ruleTitle: "Qoida",
+    archiveChip: "Arxiv bilan",
     filters: { all: "Hammasi", open: "Yangi", acknowledged: "Qabul qilingan", resolved: "Hal qilingan" },
     showArchive: "Arxivni koʻrsatish",
     archiveEmpty: "Arxiv boʻsh",
@@ -273,6 +275,8 @@ export default {
     reopen: "Qayta ishga qaytarish",
   },
   log: {
+    catsTitle: "Toifa",
+    moreActions: "Yozuv bilan boshqa amallar",
     deleted: "Yozuv oʻchirildi",
     restoreAlt: "Yozuvni qaytarish",
     restoreFailed: "Yozuvni qaytarib boʻlmadi",

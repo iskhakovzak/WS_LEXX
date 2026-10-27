@@ -140,7 +140,7 @@ export function ResearchPreview({
         </div>
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
           <div className="flex items-center gap-1 text-xs text-muted-foreground"><Repeat className="h-3 w-3" aria-hidden="true" /> {t("row.repeats")}</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums">{r.repeatCount ?? 0}</div>
+          <div className={cn("mt-1 text-lg font-semibold tabular-nums", r.repeatCount == null && "text-muted-foreground")}>{r.repeatCount ?? "—"}</div>
         </div>
       </div>
 

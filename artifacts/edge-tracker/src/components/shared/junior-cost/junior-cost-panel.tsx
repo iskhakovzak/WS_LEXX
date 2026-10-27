@@ -44,8 +44,8 @@ function CostCurve({ data }: { data: TraderJuniorCost }) {
             formatter={(v: number) => [usd(v, true), t("panel.cum")]}
           />
           <ReferenceLine {...ZERO_LINE} />
-          {be && <ReferenceLine x={be.day} {...REF_LINE} label={{ value: t("panel.breakevenMark"), position: "insideTopLeft", fill: CHART.axis, fontSize: 11 }} />}
-          {tr && <ReferenceDot x={tr.day} y={tr.cum} r={4} fill={CHART.down} stroke={CHART.surface} strokeWidth={2} label={{ value: t("panel.troughMark"), position: "bottom", fill: CHART.axis, fontSize: 11 }} />}
+          {be && <ReferenceLine x={be.day} {...REF_LINE} label={{ value: t("panel.breakevenMark"), position: "insideTopLeft", fill: CHART.axis, fontSize: 12 }} />}
+          {tr && <ReferenceDot x={tr.day} y={tr.cum} r={4} fill={CHART.down} stroke={CHART.surface} strokeWidth={2} label={{ value: t("panel.troughMark"), position: "bottom", fill: CHART.axis, fontSize: 12 }} />}
           <Area type="monotone" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} fill={paint.fill} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
         </AreaChart>
       </ResponsiveContainer>

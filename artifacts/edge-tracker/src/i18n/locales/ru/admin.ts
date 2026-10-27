@@ -24,6 +24,7 @@ export default {
   you: "(вы)",
   /** «Умид, Ориф и ещё 3». */
   namesMore: "{names} и ещё {count}",
+  shownOf: "показано {shown} из {total}",
   notDeployed: "{what} станет доступно после перезапуска API (новый роутер admin-console).",
   needRestart: "Нужен перезапуск API",
 

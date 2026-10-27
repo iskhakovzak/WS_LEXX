@@ -13,7 +13,7 @@ export function WrapTick(props: { x?: number; y?: number; payload?: { value?: un
   const lines = i > 0 && text.length > 6 ? [text.slice(0, i), text.slice(i + 1)] : [text];
   return (
     <g transform={`translate(${x},${y})`}>
-      <text textAnchor="middle" fontSize={11} fill={CHART.axis} style={{ fontVariantNumeric: "tabular-nums" }}>
+      <text textAnchor="middle" fontSize={12} fill={CHART.axis} style={{ fontVariantNumeric: "tabular-nums" }}>
         {lines.map((l, k) => <tspan key={k} x={0} dy={k === 0 ? 12 : 13}>{l}</tspan>)}
       </text>
     </g>

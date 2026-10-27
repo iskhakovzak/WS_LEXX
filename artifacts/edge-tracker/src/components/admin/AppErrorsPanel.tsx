@@ -1,17 +1,18 @@
 /**
  * Admin console → «Ошибки»: the internal error tracker (API routes/app-errors.ts, lib/errorTracking.ts).
- * Up front: status (open / resolved / all) and a search box; the source filter sits next to them as one select.
+ * Toolbar (BRIEF §1): search + status (open / resolved / all) + «Фильтры» (source, severity, dev noise) + active chips.
  * Details on demand: a row opens a side sheet with the stack, recent occurrences and «mark resolved».
  * `?error=<id>` in the URL (the Telegram alert links here) opens that error directly.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bug, CheckCircle2, Copy, Globe, RotateCcw, Search, Server, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { EmptyState, ListSkeleton, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, FilterChip, ListSkeleton, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { ErrorState, QueryState } from "@/components/ds/states";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -81,6 +82,7 @@ export function AppErrorsPanel() {
   // OWNER-23: hot-reload leftovers hidden by default; severity filter (client-side over the loaded page).
   const [severity, setSeverity] = useState<ErrorSeverity | "all">("all");
   const [showNoise, setShowNoise] = useState(false);
+  const noiseId = useId();
 
   useEffect(() => { setLimit(PAGE); }, [status, source, q]);
 
@@ -95,6 +97,8 @@ export function AppErrorsPanel() {
   const filtered = status !== "open" || source !== "all" || !!q || severity !== "all";
   const counts = list.data?.counts;
   const noise = useMemo(() => (list.data?.items ?? []).filter(isDevNoise).length, [list.data]);
+  const popoverCount = (source !== "all" ? 1 : 0) + (severity !== "all" ? 1 : 0) + (showNoise ? 1 : 0);
+  const resetPopover = () => { setSource("all"); setSeverity("all"); setShowNoise(false); };
   const visible = (items: AppErrorRow[]) => items.filter((r) => (showNoise || !isDevNoise(r)) && (severity === "all" || severityOf(r) === severity));
 
   return (
@@ -105,48 +109,56 @@ export function AppErrorsPanel() {
       actions={counts && counts.last24h > 0 ? <Pill tone="down">{t("last24h", { count: counts.last24h })}</Pill> : undefined}
     >
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <Toolbar>
+          <ToolbarSearch value={qInput} onChange={(v) => setQInput(v.slice(0, 200))} placeholder={t("search")} ariaLabel={t("searchAria")} />
           <Segmented<Status>
             ariaLabel={t("status.aria")}
             value={status}
             onChange={setStatus}
             options={[
-              { value: "open", label: counts ? `${t("status.open")} · ${counts.open}` : t("status.open") },
+              { value: "open", label: t("status.open"), count: counts?.open },
               { value: "resolved", label: t("status.resolved") },
               { value: "all", label: t("status.all") },
             ]}
           />
-          <div className="relative min-w-[12rem] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder={t("search")} aria-label={t("searchAria")} className="h-9 pl-9" maxLength={200} />
-          </div>
-          <Select value={source} onValueChange={(v) => setSource(v as Source | "all")}>
-            <SelectTrigger className="h-9 w-auto min-w-[9rem]" aria-label={t("source.aria")}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("source.all")}</SelectItem>
-              <SelectItem value="server">{t("source.server")}</SelectItem>
-              <SelectItem value="client">{t("source.client")}</SelectItem>
-              <SelectItem value="csp">{t("source.csp")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={severity} onValueChange={(v) => setSeverity(v as ErrorSeverity | "all")}>
-            <SelectTrigger className="h-9 w-auto min-w-[9rem]" aria-label={t("severity.aria")}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("severity.all")}</SelectItem>
-              <SelectItem value="high">{t("severity.high")}</SelectItem>
-              <SelectItem value="medium">{t("severity.medium")}</SelectItem>
-              <SelectItem value="low">{t("severity.low")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {noise > 0 && (
-          <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {showNoise ? null : t("noise.hidden", { count: noise })}
-            <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => setShowNoise((v) => !v)}>
-              {showNoise ? t("noise.hide") : t("noise.show")}
-            </button>
-          </p>
-        )}
+          <FiltersButton count={popoverCount} onReset={resetPopover}>
+            <FilterSection title={t("source.aria")}>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("source.aria")}>
+                {(["all", "server", "client", "csp"] as const).map((v) => (
+                  <FilterChip key={v} active={source === v} onClick={() => setSource(v)}>{t(`source.${v}`)}</FilterChip>
+                ))}
+              </div>
+            </FilterSection>
+            <FilterSection title={t("severity.aria")}>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("severity.aria")}>
+                {(["all", "high", "medium", "low"] as const).map((v) => (
+                  <FilterChip key={v} active={severity === v} onClick={() => setSeverity(v)}>{t(`severity.${v}`)}</FilterChip>
+                ))}
+              </div>
+            </FilterSection>
+            <FilterSection>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor={noiseId} className="text-sm font-normal">{t("noise.toggle")}</Label>
+                <Switch id={noiseId} checked={showNoise} onCheckedChange={setShowNoise} />
+              </div>
+            </FilterSection>
+          </FiltersButton>
+        </Toolbar>
+        <ActiveFilters
+          onReset={popoverCount > 1 ? resetPopover : undefined}
+          items={[
+            source !== "all" && { key: "source", label: t(`source.${source}`), onRemove: () => setSource("all") },
+            severity !== "all" && { key: "severity", label: `${t("severity.aria")}: ${t(`severity.${severity}`)}`, onRemove: () => setSeverity("all") },
+            showNoise && { key: "noise", label: t("noise.chip"), onRemove: () => setShowNoise(false) },
+          ]}
+        >
+          {!showNoise && noise > 0 && (
+            <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {t("noise.hidden", { count: noise })}
+              <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => setShowNoise(true)}>{t("noise.show")}</button>
+            </span>
+          )}
+        </ActiveFilters>
 
         <QueryState
           query={list}

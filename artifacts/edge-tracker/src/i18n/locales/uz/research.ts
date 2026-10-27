@@ -5,8 +5,6 @@ export default {
   page: {
     title: "Tadqiqotlar arxivi",
     description: "Eski qaydlar shu yerda oʻqish uchun qoladi. Yangilari Pleybukda yoziladi, hisobotlar va reaksiyalar — Katalizatorlarda.",
-    merged: "Boʻlim birlashtirildi.",
-    mergedHint: "Agar qayd takrorlanadigan setapni tasvirlasa, uni oʻngdagi kartochkadagi «Pleybukka» tugmasi bilan koʻchiring.",
     catalysts: "Katalizatorlar",
     playbook: "Pleybuk",
     notes: "Qaydlar",
@@ -14,7 +12,7 @@ export default {
     inArchive: "Arxivda {count} ta · J/K — varaqlash",
     csvFound: "Topilgan qaydlarni CSV qilib yuklab olish",
     csvAll: "Arxivni CSV qilib yuklab olish",
-    searchPlaceholder: "Qidiruv: soʻzlar, #teg, $TICKER  ( / )",
+    searchPlaceholder: "Qidiruv: soʻzlar, #teg, $TICKER",
     searchAria: "Arxiv boʻyicha qidiruv",
     loadFailed: "Arxivni yuklab boʻlmadi",
     tryOtherWords: "Boshqa soʻzlarni sinab koʻring.",

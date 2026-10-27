@@ -23,7 +23,7 @@ function PatternRow({ p }: { p: PatternStat }) {
       <span className="text-sm text-foreground">{t(`patterns.${p.pattern}`)}</span>
       {p.costly ? (
         <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span className="tabular-nums text-down">{t("impact.perTrade", { usd: fmtUsd(p.costPerTrade ?? 0, { decimals: 0 }) })}</span>
+          <span className="tabular-nums text-down">{t("impact.perTrade", { usd: fmtUsd(p.costPerTrade, { decimals: 0 }) })}</span>
           <span>{t("impact.samples", { count: p.atRisk })}</span>
           <Pill tone="accent">{t("impact.watched")}</Pill>
         </span>
@@ -71,12 +71,12 @@ function Body({ d }: { d: GuardImpact }) {
       </p>
       {d.patterns.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("impact.patternsTitle")}</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("impact.patternsTitle")}</h3>
           <ul className="divide-y divide-[var(--glass-border)]">{d.patterns.map((p) => <PatternRow key={p.pattern} p={p} />)}</ul>
         </section>
       )}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("impact.recentTitle")}</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">{t("impact.recentTitle")}</h3>
         {shownEvents.length ? (
           <ul className="divide-y divide-[var(--glass-border)]">{shownEvents.slice(0, 8).map((e) => <EventRow key={e.id} e={e} />)}</ul>
         ) : (

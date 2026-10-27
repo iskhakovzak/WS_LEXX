@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler, TrendingUp } from "lucide-react";
+import { BookOpen, BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler, TrendingUp } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyLink, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, SectionTabs, SplitSkeleton, Toolbar } from "@/components/ds";
 import { api, invalidateAcademy, useAcademyMeta, useProgramTree, usePrograms } from "@/components/academy/content/api";
 import { ProgramCard, ProgramOutline } from "@/components/academy/content/program-view";
-import { ReviewQueue } from "@/components/academy/content/review-queue";
+import { ReviewQueue, ReviewStatusSegmented, type ReviewStatus } from "@/components/academy/content/review-queue";
 import { ProgressMatrix } from "@/components/academy/content/progress-matrix";
 import { academyLinks } from "@/components/academy/content/links";
 import { PersonSelect } from "@/components/people/person-select";
@@ -70,6 +70,7 @@ export default function AcademyLearn() {
   // undefined = not chosen yet → default to the viewer's own cohort when they mentor exactly one.
   const [cohortPick, setCohortId] = useState<number | null | undefined>(undefined);
   const [progressProgram, setProgressProgram] = useState<number | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("submitted");
   useEffect(() => { if (!progressProgram && selectedId) setProgressProgram(selectedId); }, [selectedId, progressProgram]);
 
   const traders = useMemo(
@@ -111,7 +112,7 @@ export default function AcademyLearn() {
     <Page>
       <PageHeader
         title={shellI18n.t("nav.academyLearn")}
-        icon={GraduationCap}
+        icon={BookOpen}
         description={t("learn.description")}
         actions={staff ? (
           <>
@@ -183,8 +184,12 @@ export default function AcademyLearn() {
 
       {tab === "review" && staff && (
         <>
-          {cohortSelect && <Toolbar><span className="px-2 text-sm text-muted-foreground">{t("learn.cohort")}</span>{cohortSelect}</Toolbar>}
-          <ReviewQueue cohortId={cohortId} />
+          {/* One Toolbar: the queue status (main mode) + the cohort (scope) (design audit wave 3). */}
+          <Toolbar>
+            <ReviewStatusSegmented value={reviewStatus} onChange={setReviewStatus} />
+            {cohortSelect}
+          </Toolbar>
+          <ReviewQueue cohortId={cohortId} status={reviewStatus} />
         </>
       )}
 

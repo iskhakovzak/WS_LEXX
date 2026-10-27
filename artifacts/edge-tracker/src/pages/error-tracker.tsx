@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, ShieldCheck } from "lucide-react";
+import { ListChecks, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { ErrorState, Page, PageHeader, PanelSkeleton, SectionTabs, Segmented, StatGridSkeleton } from "@/components/ds";
+import { ErrorState, Page, PageHeader, PanelSkeleton, SectionTabs, StatGridSkeleton, Toolbar } from "@/components/ds";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { usePeriodParam } from "@/hooks/use-period-param";
+import { PRESET_DAYS, periodDays, type PeriodPreset } from "@/lib/period-range";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useArchivedViolations, useDiscipline, useInvalidateRules, useMistakes, useRuleKinds, useRulesReport, useViolations } from "@/components/rules/api";
@@ -11,7 +14,7 @@ import { RuleDialog } from "@/components/rules/RuleDialog";
 import { MistakesTab } from "@/components/rules/MistakesTab";
 import { MistakeDialog } from "@/components/rules/MistakeDialog";
 import { ViolationsList } from "@/components/rules/ViolationsList";
-import { LS_KEYS, PERIODS, type PeriodValue, lsGet, lsSet } from "@/components/rules/constants";
+import { LS_KEYS, lsGet, lsSet } from "@/components/rules/constants";
 import type { RuleDraft } from "@/components/rules/templates";
 import type { Mistake, MistakePrefill, Rule, RuleReport } from "@/components/rules/types";
 import { PersonSelect } from "@/components/people/person-select";
@@ -22,6 +25,8 @@ import { personName } from "@/i18n";
 type Tab = "overview" | "mistakes" | "violations";
 const TABS: Tab[] = ["overview", "mistakes", "violations"];
 const EMPTY: never[] = [];
+// /api/rules/report takes days (≤ 730) or from&to: Месяц 30 · Квартал 90 · Год 365 · Период….
+const PERIOD_PRESETS = ["month", "quarter", "year"] as const satisfies readonly PeriodPreset[];
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -58,15 +63,13 @@ export default function RulesTracker() {
     return t && TABS.includes(t) ? t : "overview";
   });
   const setTab = useCallback((t: Tab) => { setTabState(t); lsSet(LS_KEYS.tab, t); }, []);
-  const [period, setPeriodState] = useState<PeriodValue>(() => {
-    const p = lsGet(LS_KEYS.period);
-    return (PERIODS.find((x) => x.value === p)?.value ?? "90") as PeriodValue;
-  });
-  const setPeriod = (p: PeriodValue) => { setPeriodState(p); lsSet(LS_KEYS.period, p); };
-  const days = Number(period);
+  // ?period=month|quarter|year|custom(&from=&to=); the old «30 / 90 / 180 дн.» choice (LS rules.period) still reads.
+  const pp = usePeriodParam({ fallback: "quarter", presets: PERIOD_PRESETS, storageKey: LS_KEYS.period });
+  const range = pp.period === "custom" ? pp.custom : null;
+  const days = periodDays(pp.period, pp.custom) ?? PRESET_DAYS.quarter;
 
   const kindsQ = useRuleKinds();
-  const reportQ = useRulesReport(traderName, days);
+  const reportQ = useRulesReport(traderName, days, range);
   const violationsQ = useViolations(traderName);
   // «Показать архив»: violations of disabled / deleted rules and stale ones with comments (kept, not counted).
   const [showArchive, setShowArchiveState] = useState<boolean>(() => lsGet(LS_KEYS.showArchive) === "1");
@@ -158,40 +161,52 @@ export default function RulesTracker() {
         description={isStaff && traderName && traderName !== self
           ? t("page.descTrader", { name: personName(traderName) })
           : t("page.descSelf")}
-        icon={ShieldCheck}
+        icon={ListChecks}
         actions={
           <>
-            {isStaff && traderOptions.length > 1 && (
-              <PersonSelect
-                value={traderName}
-                onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); }}
-                options={traderOptions}
-                self={self}
-                selfSuffix={t("page.selfSuffix")}
-                ariaLabel={t("page.traderAria")}
-                className="w-full sm:w-auto sm:min-w-[11rem] sm:max-w-[18rem]"
-              />
-            )}
-            <Segmented<PeriodValue> ariaLabel={t("page.periodAria")} value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.value, label: p.label }))} />
             {user?.role !== "guest" && !(tab === "overview" && report && !hasRules) && (
               <Button onClick={() => openRule()} disabled={!traderName}><Plus /> {t("page.addRule")}</Button>
             )}
           </>
         }
-      >
-        {traderName && (
-          <SectionTabs<Tab>
-            ariaLabel={t("page.sectionAria")}
-            value={tab}
-            onChange={setTab}
-            tabs={[
-              { value: "overview", label: t("page.tabs.overview") },
-              { value: "mistakes", label: t("page.tabs.mistakes"), count: mistakes.filter((m) => m.resolved !== "yes").length || undefined },
-              { value: "violations", label: t("page.tabs.violations"), count: openViolations || undefined },
-            ]}
+      />
+
+      {/* Scope of everything below: the period (and, for staff, whose rules) — the first row under the header, above the
+          tabs, as on every analytics screen. */}
+      <Toolbar>
+        <PeriodPicker
+          ariaLabel={t("page.periodAria")}
+          presets={PERIOD_PRESETS}
+          value={pp.period}
+          custom={pp.custom}
+          onPreset={pp.setPreset}
+          onCustom={pp.setCustom}
+          today={pp.today}
+        />
+        {isStaff && traderOptions.length > 1 && (
+          <PersonSelect
+            value={traderName}
+            onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); }}
+            options={traderOptions}
+            self={self}
+            selfSuffix={t("page.selfSuffix")}
+            ariaLabel={t("page.traderAria")}
+            className="h-9 w-full sm:w-auto sm:min-w-[11rem] sm:max-w-[18rem]"
           />
         )}
-      </PageHeader>
+      </Toolbar>
+      {traderName && (
+        <SectionTabs<Tab>
+          ariaLabel={t("page.sectionAria")}
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { value: "overview", label: t("page.tabs.overview") },
+            { value: "mistakes", label: t("page.tabs.mistakes"), count: mistakes.filter((m) => m.resolved !== "yes").length || undefined },
+            { value: "violations", label: t("page.tabs.violations"), count: openViolations || undefined },
+          ]}
+        />
+      )}
 
       {!traderName ? (
         <ErrorState title={isStaff ? t("page.noTraders") : t("page.noTrader")} message={isStaff ? undefined : t("page.signInAgain")} />
@@ -217,6 +232,7 @@ export default function RulesTracker() {
           ref={searchRef}
           trader={traderName}
           days={days}
+          range={range}
           report={report}
           mistakes={mistakes}
           onNewMistake={() => openMistake()}

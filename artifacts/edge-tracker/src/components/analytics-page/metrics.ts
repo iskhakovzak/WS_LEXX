@@ -18,7 +18,7 @@ import { filtersRange, type Period } from "./period";
 
 /** A preset, or «custom» = «Свой период» (AnalyticsFilters from / to). */
 export type { Period, PresetPeriod } from "./period";
-export { PERIODS, periodOptions, isoDay, periodRange, customRangeOf, filtersRange } from "./period";
+export { PERIODS, isoDay, periodRange, customRangeOf, filtersRange } from "./period";
 export type SideFilter = "" | "long" | "short";
 export type { Horizon };
 export type HorizonFilter = "" | Horizon;
@@ -45,9 +45,9 @@ export type AnalyticsFilters = {
   facets?: string;
 };
 
-/** DEV-01: the page opens on 90 days; «Всё время» (the whole book) is loaded on demand only. */
+/** DEV-01: the page opens on «Квартал» (90 days); «Всё время» (the whole book) is loaded on demand only. */
 export const DEFAULT_FILTERS: AnalyticsFilters = {
-  period: "90d", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
+  period: "quarter", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
 };
 
 export const HORIZONS: Horizon[] = ["intraday", "overnight", "swing"];
@@ -107,9 +107,9 @@ export function withHotkeys<T extends object>(items: T[]): (T & { key: string })
   );
 }
 
+/** Filters inside «Фильтры (n)»; the period and the person are the scope (hooks/use-analytics-scope), not filters. */
 export function activeFilterCount(f: AnalyticsFilters): number {
-  return (f.period !== DEFAULT_FILTERS.period ? 1 : 0) + (f.trader ? 1 : 0) + (f.setup ? 1 : 0) + (f.ticker ? 1 : 0) + (f.side ? 1 : 0)
-    + (f.horizon ? 1 : 0) + (f.account ? 1 : 0) + (f.source ? 1 : 0);
+  return (f.setup ? 1 : 0) + (f.ticker ? 1 : 0) + (f.side ? 1 : 0) + (f.horizon ? 1 : 0) + (f.account ? 1 : 0) + (f.source ? 1 : 0);
 }
 
 /* ───────────────────────── Trade-level metrics (thin wrappers over @/lib/trade-math) ───────────────────────── */

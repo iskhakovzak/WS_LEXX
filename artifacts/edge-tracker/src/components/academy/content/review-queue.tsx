@@ -12,30 +12,36 @@ import { cn } from "@/lib/utils";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
 
-type Status = "submitted" | "returned" | "graded" | "all";
+export type ReviewStatus = "submitted" | "returned" | "graded" | "all";
 
 /** «ждёт 3 дня» / «отправлено сегодня» — how long a submission has been waiting. */
 const waiting = (days: number | null) => (days ? academyI18n.t("review.waitingDays", { count: days }) : academyI18n.t("review.sentToday"));
 
-export function ReviewQueue({ cohortId }: { cohortId: number | null }) {
+/** The queue's status filter — the main mode of the review tab's Toolbar (pages/academy/learn.tsx), next to the cohort. */
+export function ReviewStatusSegmented({ value, onChange }: { value: ReviewStatus; onChange: (v: ReviewStatus) => void }) {
   const { t } = academyI18n.useT();
-  const [status, setStatus] = useState<Status>("submitted");
+  return (
+    <Segmented
+      ariaLabel={t("review.statusAria")}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "submitted", label: t("review.tabs.submitted") },
+        { value: "returned", label: t("review.tabs.returned") },
+        { value: "graded", label: t("review.tabs.graded") },
+        { value: "all", label: commonI18n.t("states.all") },
+      ]}
+    />
+  );
+}
+
+export function ReviewQueue({ cohortId, status }: { cohortId: number | null; status: ReviewStatus }) {
+  const { t } = academyI18n.useT();
   const [open, setOpen] = useState<number | null>(null);
   const q = useReviewQueue(status, cohortId);
   const items = q.data?.items ?? [];
   return (
     <div className="flex flex-col gap-3">
-      <Segmented
-        ariaLabel={t("review.statusAria")}
-        value={status}
-        onChange={setStatus}
-        options={[
-          { value: "submitted", label: t("review.tabs.submitted") },
-          { value: "returned", label: t("review.tabs.returned") },
-          { value: "graded", label: t("review.tabs.graded") },
-          { value: "all", label: commonI18n.t("states.all") },
-        ]}
-      />
       {q.isLoading ? (
         <Panel><ListSkeleton rows={3} /></Panel>
       ) : q.isError ? (

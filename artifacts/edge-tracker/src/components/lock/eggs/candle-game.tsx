@@ -118,7 +118,7 @@ export default function CandleGame({ stats, update, sound }: GameProps) {
       <div className="flex items-end justify-between gap-4 px-1">
         <div className="flex items-baseline gap-2">
           <span className="text-5xl italic leading-none tabular-nums" style={{ fontFamily: SERIF }}>{streak.streak}</span>
-          <span className="text-[0.65rem] uppercase tracking-[0.24em] text-white/45">{t("candle.streak")}</span>
+          <span className="text-2xs uppercase tracking-[0.24em] text-white/45">{t("candle.streak")}</span>
         </div>
         <div className="text-right text-xs text-white/55 tabular-nums">
           {t("candle.best")} <span className="text-white">{best}</span>
@@ -152,7 +152,7 @@ export default function CandleGame({ stats, update, sound }: GameProps) {
           {t("candle.lower")}
         </button>
       </div>
-      <p className="text-center text-[0.7rem] text-white/40">{t("candle.keys")} · {t("candle.note")}</p>
+      <p className="text-center text-2xs text-white/40">{t("candle.keys")} · {t("candle.note")}</p>
     </div>
   );
 }

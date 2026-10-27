@@ -1,12 +1,14 @@
 import * as React from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LineChart as LineIcon } from "lucide-react";
-import { EmptyState, ErrorState, Pill, Segmented } from "@/components/ds";
+import { EmptyState, ErrorState, Pill } from "@/components/ds";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { usePeriodParam } from "@/hooks/use-period-param";
+import { PRESET_DAYS, periodDays, type PeriodPreset } from "@/lib/period-range";
 import { humanizeApiError } from "@/lib/api/errors";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { useRiskHistory } from "./use-risk";
-import { useStoredState } from "./primitives";
 import {
   ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, REF_LINE, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
   pnlPaint, tint, tooltipProps, useChartMotion,
@@ -15,8 +17,9 @@ import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
 
-const PERIODS = ["20", "60", "120", "250"] as const;
-type Period = (typeof PERIODS)[number];
+// /api/risk/history takes CALENDAR days ending `date`, so the vocabulary maps 1:1 (week 7 · month 30 · quarter 90 ·
+// year 365) and «Период…» is `date=to&days=<range length>`. The old «20/60/120/250» choice is read via normalizePeriod.
+const PRESETS = ["week", "month", "quarter", "year"] as const satisfies readonly PeriodPreset[];
 
 const shortDate = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 
@@ -24,8 +27,9 @@ const shortDate = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 export function HistoryCharts({ trader, compact = false }: { trader: string; compact?: boolean }) {
   const gid = "eq" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
   const motion = useChartMotion();
-  const [period, setPeriod] = useStoredState<Period>("risk.history.period", "60", PERIODS);
-  const q = useRiskHistory(trader, Number(period));
+  const pp = usePeriodParam({ fallback: "quarter", presets: PRESETS, storageKey: "risk.history.period" });
+  const custom = pp.period === "custom" ? pp.custom : null;
+  const q = useRiskHistory(trader, periodDays(pp.period, pp.custom) ?? PRESET_DAYS.quarter, custom?.to);
   const h = q.data;
   const { t } = riskI18n.useT();
   const c = commonI18n.t;
@@ -62,12 +66,16 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
     <div className="@container flex flex-col gap-4" style={heights}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Segmented
+          <PeriodPicker
             ariaLabel={t("history.periodAria")}
             size="sm"
-            value={period}
-            onChange={setPeriod}
-            options={PERIODS.map((p) => ({ value: p, label: c("time.daysShort", { count: Number(p) }) }))}
+            compact={compact}
+            presets={PRESETS}
+            value={pp.period}
+            custom={pp.custom}
+            onPreset={pp.setPreset}
+            onCustom={pp.setCustom}
+            today={pp.today}
           />
           {h && !usd && <Pill tone="warn">{t("history.inR")}</Pill>}
         </div>

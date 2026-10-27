@@ -95,8 +95,6 @@ export default {
     net: "net",
     noTrades: "No trades in this period",
     periodAria: "Period",
-    days90: "90 days",
-    allTime: "All time",
     tableAria: "My results by ticker",
     ticker: "Ticker",
     trades: "Trades",

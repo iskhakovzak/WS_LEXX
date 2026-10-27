@@ -140,6 +140,12 @@ export default {
     removeView: "Убрать вид «{name}»",
     viewsHint: "Сохраните текущий набор фильтров, чтобы включать его в один клик. Хранится в этом браузере.",
     viewName: "Название вида",
+    showSection: "Что показать",
+    chipTier: "Фирмы: {value}",
+    chipPt: "Таргет ≥ {value}%",
+    chipSector: "Сектор: {name}",
+    chipCap: "Капитализация от ${value}B",
+    chipSort: "Сначала важные",
   },
   firms: {
     reliability: "Надёжность фирм",

@@ -349,7 +349,7 @@ export function EventDetailSheet({
     ["Float", e.float],
     [t("detail.adv"), e.adv],
     ["ATR", e.atr != null ? e.atr.toFixed(2) : null],
-    ["RVOL", e.relativeVolume != null ? `${e.relativeVolume.toFixed(2)}×` : null],
+    ["RVOL", e.relativeVolume != null ? (e.relativeVolume >= 0.05 ? `${e.relativeVolume.toFixed(2)}×` : "—") : null],
     ["Beta", e.beta != null ? e.beta.toFixed(2) : null],
     ["Short interest", e.shortInterest != null ? `${e.shortInterest.toFixed(1)}%` : null],
   ] as const).filter(([, v]) => v != null && v !== "") : [];

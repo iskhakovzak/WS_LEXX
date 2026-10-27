@@ -181,7 +181,7 @@ function TodaySkeleton() {
 function GroupSkeleton() {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <SkeletonBlock className="h-[5.5rem] rounded-2xl" />
+      <SkeletonBlock className="h-[3.25rem] rounded-2xl" />
       <div className="glass-panel overflow-hidden rounded-2xl"><TableSkeleton rows={10} cols={8} /></div>
     </div>
   );

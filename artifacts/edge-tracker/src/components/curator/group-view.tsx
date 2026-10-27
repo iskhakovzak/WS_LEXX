@@ -12,17 +12,13 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { CandlestickChart, ChevronDown, ChevronRight, FileText, MessagesSquare, MoreHorizontal, NotebookPen, StickyNote, UserRound, UserRoundCog, Users, UsersRound } from "lucide-react";
 import {
-  AlertTriangle, BookText, CandlestickChart, ChevronDown, ChevronRight, ClipboardList, Download, LayoutGrid, MessagesSquare,
-  MoreHorizontal, NotebookPen, Rows3, ShieldAlert, UserRound, UserRoundCog, Users, UsersRound,
-} from "lucide-react";
-import {
-  DataTable, EmptyState, FilterChip, Pill, Segmented, SortableTh, Toolbar, toneText, usePersistentState, useTableSort,
+  DataTable, EmptyState, Pill, RowActions, SortableTh, toneText, usePersistentState, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
@@ -32,8 +28,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UndoToast } from "@/components/undo-toast";
 import { downloadCsv } from "@/components/admin/api";
-import { PeopleSearchInput } from "@/components/people/people-search-input";
-import { PersonSelect } from "@/components/people/person-select";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { addDays } from "@/lib/trading-date";
@@ -46,6 +40,7 @@ import {
   type GroupFilters, type GroupKey, type GroupTotals, type SearchMark,
 } from "./group-model";
 import { GroupCards } from "./group-cards";
+import { GroupToolbar } from "./group-toolbar";
 import { VirtualRows } from "@/components/ds/virtual";
 import { StageMedal, medalStageOf } from "@/components/shared/medals";
 import { CuratorNameHL, LatinHintHL, TraderNameHL } from "./name-highlight";
@@ -58,31 +53,13 @@ import { commonI18n } from "@/i18n/ns/common";
 const t = curatorI18n.t;
 const T = {
   get allGroups() { return t("group.allGroups"); },
-  get myGroup() { return t("group.myGroup"); },
   get myGroupBadge() { return t("group.myGroupBadge"); },
-  get mineSuffix() { return t("group.mineSuffix"); },
   get noCurator() { return t("group.noCurator"); },
   groupOf: (c: string) => t("group.groupOf", { name: c }),
   myGroupNamed: (c: string) => t("group.myGroupNamed", { name: personName(c) }),
-  get groupPicker() { return t("group.groupPicker"); },
-  get risk() { return t("group.risk"); },
-  get violations() { return t("group.violations"); },
-  get pending() { return t("group.pending"); },
-  activity: {
-    get all() { return t("group.activity.all"); },
-    get active() { return t("group.activity.active"); },
-    get idle() { return t("group.activity.idle"); },
-  },
   idleDays: (n: number) => t("group.idleDays", { count: n }),
   get idleTitle() { return t("group.idleTitle"); },
-  get tierAny() { return t("group.tierAny"); },
   get reset() { return commonI18n.t("actions.resetFilters"); },
-  get table() { return t("group.table"); },
-  get cards() { return t("group.cards"); },
-  get patternsOn() { return t("group.patternsOn"); },
-  get patternsOff() { return t("group.patternsOff"); },
-  csv: "CSV",
-  get csvTitle() { return t("group.csvTitle"); },
   cols: {
     get trader() { return t("group.cols.trader"); },
     get curator() { return t("group.cols.curator"); },
@@ -142,10 +119,6 @@ const T = {
   get stagePrefix() { return t("group.stagePrefix"); },
   shown: (a: number, b: number) => t("group.shown", { shown: a, total: b }),
 };
-
-const CARD_SORT_KEYS: readonly TraderSort[] = ["attention", "pnl", "discipline", "name"];
-const cardSorts = () => CARD_SORT_KEYS.map((value) => ({ value, label: t(`group.cardSort.${value}`) }));
-const IDLE_OPTIONS = [3, 5, 10, 20] as const;
 
 type Props = {
   traders: TraderSignal[];
@@ -260,75 +233,30 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <Toolbar>
-        <PersonSelect
-          value={group}
-          onValueChange={(v) => onGroupChange(v || ALL_GROUPS)}
-          allValue={ALL_GROUPS}
-          allLabel={`${T.allGroups} · ${traders.length}`}
-          options={groupOptions}
-          placeholder={T.groupPicker}
-          ariaLabel={T.groupPicker}
-          self={me}
-          selfSuffix={T.mineSuffix}
-          icon={UsersRound}
-          className="w-56"
-        />
-        {me && myCount > 0 && group !== me && (
-          <FilterChip active={false} onClick={() => onGroupChange(me)} count={myCount}>{T.myGroup}</FilterChip>
-        )}
-        <PeopleSearchInput value={q} onChange={setQ} className="sm:w-60" />
-        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-          {mode === "cards" && (
-            <>
-              <Segmented size="sm" ariaLabel={t("group.patternsAria")} value={patterns} onChange={setPatterns} options={[{ value: "on", label: T.patternsOn }, { value: "off", label: T.patternsOff }]} />
-              <Segmented size="sm" ariaLabel={t("group.cardSortAria")} value={cardSort} onChange={setCardSort} options={cardSorts()} />
-            </>
-          )}
-          <Segmented
-            size="sm"
-            ariaLabel={t("group.viewAria")}
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "table", label: <span className="inline-flex items-center gap-1.5"><Rows3 aria-hidden="true" />{T.table}</span> },
-              { value: "cards", label: <span className="inline-flex items-center gap-1.5"><LayoutGrid aria-hidden="true" />{T.cards}</span> },
-            ]}
-          />
-          {shown.length > 0 && <Button type="button" variant="outline" size="sm" onClick={exportCsv} title={T.csvTitle}><Download /> {T.csv}</Button>}
-        </div>
-        <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label={t("group.filtersAria")}>
-          <FilterChip size="sm" active={f.risk} onClick={() => patch({ risk: !f.risk })} count={counts.risk}><ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />{T.risk}</FilterChip>
-          <FilterChip size="sm" active={f.violations} onClick={() => patch({ violations: !f.violations })} count={counts.violations}><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{T.violations}</FilterChip>
-          <FilterChip size="sm" active={f.pending} onClick={() => patch({ pending: !f.pending })} count={counts.pending}><ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />{T.pending}</FilterChip>
-          <Segmented
-            size="sm"
-            ariaLabel={t("group.activityAria")}
-            value={f.activity}
-            onChange={(v) => patch({ activity: v })}
-            options={[
-              { value: "all", label: T.activity.all },
-              { value: "active", label: T.activity.active },
-              { value: "idle", label: T.activity.idle, count: counts.idle },
-            ]}
-          />
-          <Select value={String(f.idleDays)} onValueChange={(v) => patch({ idleDays: Number(v) })}>
-            <SelectTrigger className="h-8 w-[5.5rem] px-3 text-xs" aria-label={T.idleTitle} title={T.idleTitle}><SelectValue /></SelectTrigger>
-            <SelectContent>{IDLE_OPTIONS.map((n) => <SelectItem key={n} value={String(n)}>{T.idleDays(n)}</SelectItem>)}</SelectContent>
-          </Select>
-          {tiers.length > 0 && (
-            <Select value={f.tier || "__any"} onValueChange={(v) => patch({ tier: v === "__any" ? "" : v })}>
-              <SelectTrigger className="h-8 w-36 px-3 text-xs" aria-label={t("group.tierAria")}><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__any">{T.tierAny}</SelectItem>
-                {tiers.map(([k, n]) => <SelectItem key={k} value={k}>{n}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          )}
-          {activeFilterCount(f) > 0 && <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setFilters(DEFAULT_FILTERS)}>{T.reset}</Button>}
-          {narrowed && <span className="ml-auto text-xs tabular-nums text-muted-foreground">{T.shown(shown.length, inGroup.length)}</span>}
-        </div>
-      </Toolbar>
+      <GroupToolbar
+        group={group}
+        groupOptions={groupOptions}
+        total={traders.length}
+        me={me}
+        onGroupChange={onGroupChange}
+        q={q}
+        onQ={setQ}
+        mode={mode}
+        onMode={setMode}
+        cardSort={cardSort}
+        onCardSort={setCardSort}
+        patterns={patterns}
+        onPatterns={setPatterns}
+        filters={f}
+        onPatch={patch}
+        onResetFilters={() => setFilters(DEFAULT_FILTERS)}
+        counts={counts}
+        tiers={tiers}
+        shown={shown.length}
+        inGroup={inGroup.length}
+        narrowed={narrowed}
+        onCsv={shown.length > 0 ? exportCsv : null}
+      />
 
       {traders.length === 0 ? (
         <EmptyState icon={Users} title={T.noTraders} description={T.noTradersHint} />
@@ -604,15 +532,12 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
         <span title={s.risk.message || undefined}><Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : T.noLimits}</Pill></span>
       </td>
       <td className="whitespace-nowrap text-right">
-        <span className="inline-flex items-center gap-0.5">
-          <Button asChild variant="ghost" size="icon" className="h-8 w-8" title={T.actions.journal}>
-            <Link href={`/journal?trader=${enc}`} aria-label={T.actions.withName(T.actions.journal, s.trader)}><BookText /></Link>
-          </Button>
-          <Button asChild variant="ghost" size="icon" className="h-8 w-8" title={T.actions.day}>
-            <Link href={`/day-report?trader=${enc}`} aria-label={T.actions.withName(T.actions.day, s.trader)}><ClipboardList /></Link>
+        <RowActions>
+          <Button asChild variant="ghost" size="icon-sm" title={T.actions.journal}>
+            <Link href={`/journal?trader=${enc}`} aria-label={T.actions.withName(T.actions.journal, s.trader)}><NotebookPen /></Link>
           </Button>
           <RowMenu s={s} row={row} />
-        </span>
+        </RowActions>
       </td>
     </tr>
   );
@@ -624,16 +549,16 @@ function RowMenu({ s, row }: { s: TraderSignal; row: RowCommon }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={T.actions.menu(s.trader)}><MoreHorizontal /></Button>
+        <Button variant="ghost" size="icon-sm" aria-label={T.actions.menu(s.trader)} title={T.actions.menu(s.trader)}><MoreHorizontal /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel className="text-xs text-muted-foreground">{personName(s.trader)}</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => row.onOpenTrader(s.trader)}><UserRound /> {T.actions.profile}</DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`/journal?trader=${enc}`}><BookText /> {T.actions.journal}</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`/day-report?trader=${enc}`}><ClipboardList /> {T.actions.day}</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link href={`/journal?trader=${enc}`}><NotebookPen /> {T.actions.journal}</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link href={`/day-report?trader=${enc}`}><FileText /> {T.actions.day}</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link href={`/trades?trader=${enc}`}><CandlestickChart /> {T.actions.trades}</Link></DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => row.onOpenTrader(s.trader, "notes")}><NotebookPen /> {T.actions.notes}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => row.onOpenTrader(s.trader, "notes")}><StickyNote /> {T.actions.notes}</DropdownMenuItem>
         <DropdownMenuItem asChild><Link href={`/discussions?q=${enc}`}><MessagesSquare /> {T.actions.discussions}</Link></DropdownMenuItem>
         {row.canMove && (
           <>

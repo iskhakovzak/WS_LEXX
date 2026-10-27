@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { Download, ScrollText, Search } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Download, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
-import { EmptyState, ListSkeleton, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, ListSkeleton, Panel, Pill, Toolbar } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { periodWindow, type PeriodPreset } from "@/lib/period-range";
+import { usePeriodParam } from "@/hooks/use-period-param";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { downloadCsv, type AuditEntry } from "./api";
 import { actorName, auditSentence, describeAudit, objectLabel, objectTypeLabel } from "./audit-text";
@@ -14,20 +19,14 @@ import { commonI18n } from "@/i18n/ns/common";
 import { adminAuditI18n } from "@/i18n/ns/adminAudit";
 
 const ALL = "__all";
-type Quick = "1" | "7" | "30" | "all" | "custom";
+/** The log's period (BRIEF §2): today · week · month · all + «Период…»; from/to are inclusive NY days. ?period=&from=&to= */
+const PRESETS: readonly PeriodPreset[] = ["today", "week", "month", "all"];
+const DEFAULT_PERIOD: PeriodPreset = "month";
 
 /** Action groups for the «Что» filter («user.*» matches every user action). */
 const ACTION_GROUPS = ["user", "propreports", "scaling", "report", "academy"] as const;
 /** The API returns up to 1000 rows; render them a page at a time (a long DOM list made the tab sluggish). */
 const PAGE = 100;
-
-function rangeFor(q: Quick): { from?: string; to?: string } {
-  const today = nyDate();
-  if (q === "1") return { from: addDays(today, -1), to: today };
-  if (q === "7") return { from: addDays(today, -7), to: today };
-  if (q === "30") return { from: addDays(today, -30), to: today };
-  return {};
-}
 
 function dayHeading(ymd: string) {
   const today = nyDate();
@@ -66,26 +65,21 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
   const { t: tc } = commonI18n.useT();
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
-  const [quick, setQuick] = useState<Quick>("30");
-  const [from, setFrom] = useState<string>(() => rangeFor("30").from ?? "");
-  const [to, setTo] = useState<string>(() => rangeFor("30").to ?? "");
+  const per = usePeriodParam({ fallback: DEFAULT_PERIOD, presets: PRESETS, storageKey: "admin.audit.period" });
+  const win = periodWindow(per.period, per.today, per.custom);
+  const from = win?.from ?? "";
+  const to = win?.to ?? "";
   const [who, setWho] = useState(ALL);
   const [what, setWhat] = useState(ALL);
   const [objType, setObjType] = useState(ALL);
   const [objIdInput, setObjIdInput] = useState("");
   const [objId, setObjId] = useState("");
+  const objIdField = useId();
 
   useEffect(() => {
     const t = setTimeout(() => { setQ(qInput.trim()); setObjId(objIdInput.trim()); }, 300);
     return () => clearTimeout(t);
   }, [qInput, objIdInput]);
-
-  const pickQuick = (v: Quick) => {
-    setQuick(v);
-    const r = rangeFor(v);
-    setFrom(r.from ?? "");
-    setTo(r.to ?? "");
-  };
 
   const query: AuditQuery = {
     actor: who === ALL ? undefined : who,
@@ -131,8 +125,11 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
     return out;
   }, [visible]);
 
-  const filtersActive = !!q || who !== ALL || what !== ALL || objType !== ALL || !!objId || quick !== "30";
-  const reset = () => { setQInput(""); setQ(""); setWho(ALL); setWhat(ALL); setObjType(ALL); setObjIdInput(""); setObjId(""); pickQuick("30"); };
+  const popoverCount = (who !== ALL ? 1 : 0) + (what !== ALL ? 1 : 0) + (objType !== ALL ? 1 : 0) + (objId ? 1 : 0);
+  const filtersActive = !!q || popoverCount > 0 || per.period !== DEFAULT_PERIOD;
+  const resetPopover = () => { setWho(ALL); setWhat(ALL); setObjType(ALL); setObjIdInput(""); setObjId(""); };
+  const reset = () => { setQInput(""); setQ(""); resetPopover(); per.setPreset(DEFAULT_PERIOD); };
+  const whatLabel = what === ALL ? "" : what.endsWith(".*") ? ta(`log.groups.${what.slice(0, -2) as (typeof ACTION_GROUPS)[number]}`) : actions.find(([v]) => v === what)?.[1] ?? what;
 
   const exportCsv = () => downloadCsv(
     (["time", "who", "what", "details", "object", "action", "targetType", "targetId", "raw"] as const).map((k) => ta(`log.csv.${k}`)),
@@ -148,68 +145,60 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
       title={ta("log.title")}
       description={ta("log.description")}
       icon={ScrollText}
-      actions={entries.length > 0 ? <Button variant="outline" size="sm" onClick={exportCsv}><Download /> CSV</Button> : undefined}
     >
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") setQInput(""); }}
-              placeholder={ta("log.searchPlaceholder")}
-              aria-label={ta("log.searchAria")}
-              className="pl-9"
-            />
-          </div>
-          <Select value={who} onValueChange={setWho}>
-            <SelectTrigger aria-label={ta("log.who")}><SelectValue placeholder={ta("log.whoAll")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>{ta("log.whoAll")}</SelectItem>
-              {actors.map((a) => <SelectItem key={a} value={a}>{actorName(a)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={what} onValueChange={setWhat}>
-            <SelectTrigger aria-label={ta("log.what")}><SelectValue placeholder={ta("log.whatAll")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>{ta("log.whatAll")}</SelectItem>
-              {ACTION_GROUPS.map((g) => <SelectItem key={g} value={`${g}.*`}>{ta(`log.groups.${g}`)}</SelectItem>)}
-              {actions.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <div className="flex gap-2">
-            <Select value={objType} onValueChange={setObjType}>
-              <SelectTrigger aria-label={ta("log.object")} className="min-w-0 flex-1"><SelectValue placeholder={ta("log.objectAny")} /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>{ta("log.objectAny")}</SelectItem>
-                {objTypes.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Input value={objIdInput} onChange={(e) => setObjIdInput(e.target.value)} placeholder={ta("log.objectId")} aria-label={ta("log.objectIdAria")} className="w-28" />
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented<Quick>
-            ariaLabel={ta("log.period")}
-            size="sm"
-            value={quick}
-            onChange={pickQuick}
-            options={[{ value: "1", label: ta("log.quick.day") }, { value: "7", label: ta("log.quick.week") }, { value: "30", label: ta("log.quick.month") }, { value: "all", label: ta("log.quick.all") }, { value: "custom", label: ta("log.quick.custom") }]}
-          />
-          {quick === "custom" && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              {ta("log.from")} <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label={ta("log.fromAria")} className="h-8 w-[150px]" />
-              {ta("log.to")} <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label={ta("log.toAria")} className="h-8 w-[150px]" />
-            </span>
-          )}
-          {filtersActive && <Button variant="ghost" size="sm" onClick={reset}>{tc("actions.reset")}</Button>}
+        <Toolbar>
+          <ToolbarSearch value={qInput} onChange={setQInput} placeholder={ta("log.searchPlaceholder")} ariaLabel={ta("log.searchAria")} />
+          <PeriodPicker compact presets={PRESETS} value={per.period} custom={per.custom} onPreset={per.setPreset} onCustom={per.setCustom} today={per.today} ariaLabel={ta("log.period")} />
+          <FiltersButton count={popoverCount} onReset={resetPopover} resultCount={data ? entries.length : undefined}>
+            <FilterSection title={ta("log.who")}>
+              <Select value={who} onValueChange={setWho}>
+                <SelectTrigger aria-label={ta("log.who")}><SelectValue placeholder={ta("log.whoAll")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{ta("log.whoAll")}</SelectItem>
+                  {actors.map((a) => <SelectItem key={a} value={a}>{actorName(a)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FilterSection>
+            <FilterSection title={ta("log.what")}>
+              <Select value={what} onValueChange={setWhat}>
+                <SelectTrigger aria-label={ta("log.what")}><SelectValue placeholder={ta("log.whatAll")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{ta("log.whatAll")}</SelectItem>
+                  {ACTION_GROUPS.map((g) => <SelectItem key={g} value={`${g}.*`}>{ta(`log.groups.${g}`)}</SelectItem>)}
+                  {actions.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FilterSection>
+            <FilterSection title={ta("log.object")}>
+              <Select value={objType} onValueChange={setObjType}>
+                <SelectTrigger aria-label={ta("log.object")}><SelectValue placeholder={ta("log.objectAny")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{ta("log.objectAny")}</SelectItem>
+                  {objTypes.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Label htmlFor={objIdField} className="text-xs text-muted-foreground">{ta("log.objectIdAria")}</Label>
+              <Input id={objIdField} value={objIdInput} onChange={(e) => setObjIdInput(e.target.value)} placeholder={ta("log.objectId")} />
+            </FilterSection>
+          </FiltersButton>
+          <span className="ml-auto" />
           {data && (
-            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {data.total > visible.length ? ta("log.shown", { shown: visible.length, total: data.total }) : tc("units.entries", { count: entries.length })}
             </span>
           )}
-        </div>
+          {entries.length > 0 && <Button variant="ghost" size="sm" onClick={exportCsv}><Download /> CSV</Button>}
+        </Toolbar>
+        <ActiveFilters
+          onReset={popoverCount > 1 ? resetPopover : undefined}
+          items={[
+            who !== ALL && { key: "who", label: `${ta("log.who")}: ${actorName(who)}`, onRemove: () => setWho(ALL) },
+            what !== ALL && { key: "what", label: `${ta("log.what")}: ${whatLabel}`, onRemove: () => setWhat(ALL) },
+            objType !== ALL && { key: "obj", label: `${ta("log.object")}: ${objectTypeLabel(objType)}`, onRemove: () => setObjType(ALL) },
+            !!objId && { key: "objId", label: `${ta("log.objectIdAria")}: ${objId}`, onRemove: () => { setObjIdInput(""); setObjId(""); } },
+          ]}
+        />
 
         {isError ? (
           <QueryError error={error} onRetry={() => refetch()} />

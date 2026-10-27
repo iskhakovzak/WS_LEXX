@@ -139,6 +139,12 @@ export default {
     removeView: "Remove view “{name}”",
     viewsHint: "Save the current filters to turn them on in one click. Stored in this browser.",
     viewName: "View name",
+    showSection: "Show",
+    chipTier: "Firms: {value}",
+    chipPt: "Target ≥ {value}%",
+    chipSector: "Sector: {name}",
+    chipCap: "Market cap from ${value}B",
+    chipSort: "Important first",
   },
   firms: {
     reliability: "Firm reliability",

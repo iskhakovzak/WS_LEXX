@@ -3,8 +3,8 @@ import type ru from "../ru/myReview";
 
 export default {
   title: "Mening tahlilim",
-  description: "Soʻnggi {days} kundagi savdolaringiz: qayerda topasiz, qayerda yoʻqotasiz va ertaga uchun bitta qoida.",
-  period: { aria: "Tahlil davri", d30: "30 kun", d90: "90 kun" },
+  description: "Savdolaringiz (soʻnggi {days}): qayerda topasiz, qayerda yoʻqotasiz va ertaga uchun bitta qoida.",
+  period: { aria: "Tahlil davri" },
   totals: "{trades} · {net} · {winRate} yutuq",
   totalsR: "{trades} · {net} · {r} · {winRate} yutuq",
   more: "Batafsil",
@@ -24,7 +24,7 @@ export default {
   openTrades: "Savdolarni ochish: {label}",
   openBehavior: "Xulq-atvorni ochish",
   empty: {
-    title: "{days} kun ichida savdo yoʻq",
+    title: "{days} ichida savdo yoʻq",
     description: "Tahlil PropReports'dan birinchi savdolar kelgach paydo boʻladi.",
   },
   loadFailed: "Tahlilni yuklab boʻlmadi",

@@ -5,9 +5,9 @@
  */
 import * as React from "react";
 import { useSearch } from "wouter";
-import { Flag, Plus, RefreshCw } from "lucide-react";
+import { Flag, Plus, RefreshCw, Target } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Segmented, SplitSkeleton } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Segmented, SplitSkeleton, Toolbar } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
@@ -56,7 +56,7 @@ export default function AcademyChallengesPage() {
     <Page>
       <PageHeader
         title={shellI18n.t("nav.academyChallenges")}
-        icon={Flag}
+        icon={Target}
         description={t("page.challengesDescription")}
         actions={
           <>
@@ -66,9 +66,12 @@ export default function AcademyChallengesPage() {
             )}
           </>
         }
-      >
-        {/* No exams at all yet: the empty state alone, no filters over nothing (design audit wave 2). */}
-        {!noExams && <div className="flex flex-wrap items-center gap-2">
+      />
+
+      {/* No exams at all yet: the empty state alone, no filters over nothing (design audit wave 2). The mode and the
+          student (scope) sit in the Toolbar under the header, not in it (design audit wave 3). */}
+      {!noExams && (
+        <Toolbar>
           <Segmented<Filter>
             ariaLabel={t("page.filterAria")}
             value={filter}
@@ -81,13 +84,10 @@ export default function AcademyChallengesPage() {
             ]}
           />
           {isCurator && (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{t("page.student")}</span>
-              <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={personOptions} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
-            </label>
+            <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={personOptions} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
           )}
-        </div>}
-      </PageHeader>
+        </Toolbar>
+      )}
 
       {list.isLoading ? (
         <SplitSkeleton side="340px" rows={5} />

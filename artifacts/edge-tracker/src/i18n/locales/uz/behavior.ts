@@ -4,7 +4,6 @@ import type ru from "../ru/behavior";
 export default {
   title: "Xulq va setaplar",
   description: "Xulq qayerda pul yoʻqotadi, bunga nima qilish kerak va savdo ortida qaysi setap turibdi. Qoidalar AI siz, pul — sof.",
-  period: { "30d": "30 kun", "90d": "90 kun", ytd: "Yil boshidan", all: "Butun davr" },
   periodAria: "Davr",
   traderAria: "Treyder",
   sectionsAria: "Boʻlimlar",
@@ -302,7 +301,7 @@ export default {
     fromPatternTitle: "Pattern kartasidagi «Qoidaga aylantirish» tugmasi bilan yaratilgan",
     fromPattern: "«{pattern}» patternidan",
     editAria: "«{name}» chegarasini oʻzgartirish",
-    deleteAria: "«{name}» triggerini oʻchirish",
+    moreAria: "Boshqa amallar: {name}",
     save: "Saqlash",
     fires: { one: "Davr ichida {days} davomida {count} marta ishga tushgan boʻlardi;", other: "Davr ichida {days} davomida {count} marta ishga tushgan boʻlardi;" },
     under: "trigger ostida {trades}, sofi",

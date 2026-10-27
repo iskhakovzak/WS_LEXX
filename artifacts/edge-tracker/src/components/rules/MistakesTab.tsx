@@ -1,4 +1,5 @@
 import { forwardRef, useMemo, useState } from "react";
+import type { DayRange } from "@/lib/period-range";
 import { Link } from "wouter";
 import { ArrowRight, Check, NotebookPen, Plus, Tags } from "lucide-react";
 import { BentoGrid, EmptyState, Panel, Pill } from "@/components/ds";
@@ -31,15 +32,17 @@ import type { Mistake, RulesReportResponse } from "./types";
 export const MistakesTab = forwardRef<HTMLInputElement, {
   trader: string;
   days: number;
+  /** «Период…»: the summary covers exactly this range. */
+  range?: DayRange | null;
   report: RulesReportResponse | undefined;
   mistakes: Mistake[];
   onNewMistake: () => void;
   onEditMistake: (m: Mistake) => void;
   onCreateRule: (d: RuleDraft) => void;
   onChanged: () => void;
-}>(function MistakesTab({ trader, days, report, mistakes, onNewMistake, onEditMistake, onCreateRule, onChanged }, searchRef) {
+}>(function MistakesTab({ trader, days, range, report, mistakes, onNewMistake, onEditMistake, onCreateRule, onChanged }, searchRef) {
   const { t } = rulesI18n.useT();
-  const summaryQ = useMistakesSummary(trader, days);
+  const summaryQ = useMistakesSummary(trader, days, range);
   const s = summaryQ.data;
   const behQ = useBehaviorPatterns(trader, s?.from, s?.to);
   const [showAllTypes, setShowAllTypes] = useState(false);

@@ -47,12 +47,12 @@ describe("viewport", () => {
 
   it("presets look from their start to now; useless ones are detected", () => {
     const today = "2026-09-26";
-    expect(presetStart("1m", today)).toBe("2026-08-26");
+    expect(presetStart("1m", today)).toBe("2026-08-28");
     expect(presetStart("1w", today)).toBe("2026-09-20");
-    expect(presetStart("ytd", today)).toBe("2026-01-01");
+    expect(presetStart("ytd", today)).toBe("2025-09-27");
     expect(presetStart("all", today)).toBeNull();
     const v = presetView(tos, "1m", today);
-    expect(Math.round(v.from)).toBe(indexFrom(tos, "2026-08-26"));
+    expect(Math.round(v.from)).toBe(indexFrom(tos, "2026-08-28"));
     expect(v.to).toBe(fullView(300).to);
     expect(presetView(tos, "all", today)).toEqual(fullView(300));
     expect(presetUseful(tos, "1m", today)).toBe(true);

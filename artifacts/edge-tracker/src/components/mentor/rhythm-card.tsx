@@ -17,7 +17,7 @@ const KINDS: readonly RhythmKind[] = ["brief", "debrief", "weekly"];
 function Block({ label, children, tone }: { label: string; children: React.ReactNode; tone?: "accent" }) {
   return (
     <div className={tone === "accent" ? "rounded-xl border border-primary/30 bg-primary/5 px-3 py-2" : ""}>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className="mt-0.5 text-sm text-foreground">{children}</div>
     </div>
   );

@@ -7,7 +7,7 @@ import type * as React from "react";
 import { useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, Archive, ArchiveRestore, CalendarClock, Clock, Copy, Crosshair, Download, Eye, Flame, Keyboard,
-  MoreHorizontal, MoveVertical, Radar, Rows3, Rows4, Search, Trash2, Volume2, X,
+  MoreHorizontal, MoveVertical, Radar, Rows3, Rows4, Trash2, Volume2, X,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -18,7 +18,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FilterChip, Kbd } from "@/components/ds";
+import { FilterChip, Kbd, Toolbar } from "@/components/ds";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { cn } from "@/lib/utils";
 import { fmtUsd } from "@/lib/format";
 import { LISTS, LIST_HINT, LIST_LABELS, type ListName, type WatchlistItem } from "./lib";
@@ -217,42 +218,49 @@ export function WatchlistTabs({ view, onView, counts, canEdit, dragging, dropOve
   );
 }
 
-/** Search box + quick filter chips. */
-export function WatchlistSearch({ inputRef, query, onQuery, filters, onToggleFilter, filterCounts }: {
+/**
+ * The add field + the one filter row (design audit wave 3): [ + add tickers ] [ search ] [ Фильтры (n) ], then the
+ * active signal chips. The add field is not a search — it adds tickers; the search is the screen's only search box.
+ */
+export function WatchlistFilterBar({ add, inputRef, query, onQuery, filters, onToggleFilter, onClearFilters, onReset, filterCounts, resultCount }: {
+  /** The add field (AddTickerBar) for editors; first in the row. */
+  add?: React.ReactNode;
   inputRef: React.RefObject<HTMLInputElement | null>;
   query: string;
   onQuery: (v: string) => void;
   filters: Set<Filter>;
   onToggleFilter: (f: Filter) => void;
+  onClearFilters: () => void;
+  /** Search + signals (the chips' «Сбросить»). */
+  onReset: () => void;
   filterCounts: Record<Filter, number>;
+  resultCount: number;
 }) {
   const { t } = watchlistI18n.useT();
   return (
     <>
-      <div className="relative w-full sm:w-44 2xl:w-52">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-          placeholder={t("search.placeholder")}
-          aria-label={t("search.aria")}
-          className="glass-field h-10 w-full pl-9 pr-8 text-sm outline-none placeholder:text-muted-foreground"
-        />
-        {query ? (
-          <button type="button" onClick={() => onQuery("")} aria-label={commonI18n.t("actions.clearSearch")} className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : <Kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>}
-      </div>
-      {/* Phones: one scrollable row of chips instead of two wrapped rows; from sm up they flow inline. */}
-      <div className="-mx-1 flex w-[calc(100%+0.5rem)] gap-2 overflow-x-auto px-1 sm:contents">
-        {FILTERS.map((f) => (
-          <FilterChip key={f.key} active={filters.has(f.key)} onClick={() => onToggleFilter(f.key)} count={filterCounts[f.key] || undefined} className="min-h-10 shrink-0">
-            <f.icon className="h-3.5 w-3.5" aria-hidden="true" /><span title={f.hint}>{f.label}</span>
-          </FilterChip>
-        ))}
-      </div>
+      <Toolbar>
+        {add}
+        <ToolbarSearch value={query} onChange={onQuery} inputRef={inputRef} placeholder={t("search.placeholder")} ariaLabel={t("search.aria")} className="basis-40" />
+        <FiltersButton count={filters.size} onReset={onClearFilters} resultCount={resultCount}>
+          <FilterSection title={t("filters.section")}>
+            <ul className="flex flex-col gap-2">
+              {FILTERS.map((f) => (
+                <li key={f.key} className="flex flex-col items-start gap-1">
+                  <FilterChip size="sm" active={filters.has(f.key)} onClick={() => onToggleFilter(f.key)} count={filterCounts[f.key] || undefined}>
+                    <f.icon aria-hidden="true" />{f.label}
+                  </FilterChip>
+                  <span className="text-xs text-muted-foreground">{f.hint}</span>
+                </li>
+              ))}
+            </ul>
+          </FilterSection>
+        </FiltersButton>
+      </Toolbar>
+      <ActiveFilters
+        onReset={onReset}
+        items={FILTERS.filter((f) => filters.has(f.key)).map((f) => ({ key: f.key, label: f.label, onRemove: () => onToggleFilter(f.key) }))}
+      />
     </>
   );
 }

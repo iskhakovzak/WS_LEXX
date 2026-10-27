@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Archive, BookOpen, CalendarDays, Check, ShieldAlert, ShieldCheck, Undo2, X } from "lucide-react";
-import { EmptyState, FilterChip, Panel, Pill } from "@/components/ds";
+import { EmptyState, Panel, Pill } from "@/components/ds";
+import { ViolationsToolbar, type StatusFilter } from "./violations-toolbar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,16 +15,12 @@ import { RULE_PREFIX, VIOLATION_ARCHIVE, VIOLATION_RESOLUTION, VIOLATION_STATUS,
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
 import { personName } from "@/i18n";
-import { rich } from "./rich";
 import { fmtDate, fmtDateCustom, fmtR, fmtUsd } from "@/lib/format";
 import { countedViolations, violationDay, withArchive } from "./discipline";
 import { useViolationTotal } from "./api";
-import type { MistakePrefill, Severity, Violation, ViolationStatus } from "./types";
+import type { MistakePrefill, Severity, Violation } from "./types";
 
-type StatusFilter = "all" | ViolationStatus;
 const NO_VIOLATIONS: Violation[] = [];
-
-const STATUS_FILTERS: StatusFilter[] = ["all", "open", "acknowledged", "resolved"];
 /** Up to 500 active + 500 archived rows: render a page of cards at a time (whole days, so a day is never split). */
 const PAGE = 60;
 
@@ -92,11 +89,16 @@ export function ViolationsList({
   const violations = useMemo(() => withArchive(activeViolations, archived, showArchive), [activeViolations, archived, showArchive]);
   const openCount = countedViolations(activeViolations).filter((v) => v.status === "open").length;
   const archiveToggle = onToggleArchive ? (
-    <label className="ml-auto inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
       <Switch checked={showArchive} onCheckedChange={onToggleArchive} aria-label={t("violations.showArchive")} className="scale-90" />
       <span>{t("violations.showArchive")}{showArchive && !archiveLoading ? <span className="tabular-nums"> · {archived.length}</span> : null}</span>
     </label>
   ) : null;
+
+  const resetFilters = () => {
+    setRuleFilter(null);
+    if (showArchive) onToggleArchive?.(false);
+  };
 
   const byRule = useMemo(() => {
     const m = new Map<number, { name: string; count: number }>();
@@ -145,8 +147,8 @@ export function ViolationsList({
     return (
       <div className="flex flex-col gap-3">
       {archiveToggle && (
-        <div className="flex items-center">
-          {showArchive && !archiveLoading && <span className="text-xs text-muted-foreground">{t("violations.archiveEmpty")}</span>}
+        <div className="flex items-center justify-between gap-2">
+          {showArchive && !archiveLoading ? <span className="text-xs text-muted-foreground">{t("violations.archiveEmpty")}</span> : <span />}
           {archiveToggle}
         </div>
       )}
@@ -164,40 +166,20 @@ export function ViolationsList({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("violations.statusAria")}>
-          {STATUS_FILTERS.map((f) => {
-            const n = f === "all" ? violations.length : violations.filter((v) => v.status === f).length;
-            if (f !== "all" && n === 0 && statusFilter !== f) return null;
-            return (
-              <FilterChip key={f} active={statusFilter === f} onClick={() => setStatusFilter(f)} count={n} className="min-h-7 px-2.5 text-xs">
-                {t(`violations.filters.${f}`)}
-              </FilterChip>
-            );
-          })}
-        </div>
-        {capped && <span className="text-xs tabular-nums text-muted-foreground">{t("violations.shownOf", { shown: activeViolations.length, total })}</span>}
-        {isOwner && openCount > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-warn">
-            <ShieldAlert className="size-3.5 shrink-0" aria-hidden="true" />
-            <span>{rich(t("violations.newCount", { count: "{count}" }), { count: <span className="font-semibold tabular-nums">{openCount}</span> })}</span>
-          </span>
-        )}
-        {archiveToggle}
-      </div>
-
-      {byRule.length > 1 && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("violations.ruleAria")}>
-          <FilterChip active={ruleFilter == null} onClick={() => setRuleFilter(null)} count={violations.length} className="min-h-7 px-2.5 text-xs">
-            {t("violations.allRules")}
-          </FilterChip>
-          {byRule.map(([id, r]) => (
-            <FilterChip key={id} active={ruleFilter === id} onClick={() => setRuleFilter(ruleFilter === id ? null : id)} count={r.count} className="min-h-7 px-2.5 text-xs">
-              {r.name}
-            </FilterChip>
-          ))}
-        </div>
-      )}
+      <ViolationsToolbar
+        violations={violations}
+        statusFilter={statusFilter}
+        onStatus={setStatusFilter}
+        byRule={byRule}
+        ruleFilter={ruleFilter}
+        onRule={setRuleFilter}
+        showArchive={showArchive}
+        onToggleArchive={onToggleArchive}
+        archiveToggle={archiveToggle}
+        onReset={resetFilters}
+        shownOf={capped ? { shown: activeViolations.length, total: total! } : null}
+        openCount={isOwner ? openCount : 0}
+      />
 
       {groups.length === 0 && (
         <Panel>

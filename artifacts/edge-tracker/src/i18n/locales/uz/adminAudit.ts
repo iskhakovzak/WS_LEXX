@@ -354,11 +354,6 @@ export default {
     objectId: "ID / ism",
     objectIdAria: "Obyekt ID",
     period: "Davr",
-    quick: { day: "24 s", week: "7 k", month: "30 k", all: "Hammasi", custom: "Sanalar" },
-    from: "Boshi",
-    to: "oxiri",
-    fromAria: "Boshlanish sanasi",
-    toAria: "Tugash sanasi",
     shown: "{total} tadan {shown} tasi koʻrsatilgan",
     timeTitle: "{ny} NY · sizda {local}",
     groups: {

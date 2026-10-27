@@ -385,11 +385,6 @@ export default {
     objectId: "ID / имя",
     objectIdAria: "ID объекта",
     period: "Период",
-    quick: { day: "24ч", week: "7д", month: "30д", all: "Всё", custom: "Даты" },
-    from: "с",
-    to: "по",
-    fromAria: "С даты",
-    toAria: "По дату",
     shown: "показано {shown} из {total}",
     timeTitle: "{ny} NY · у вас {local}",
     groups: {

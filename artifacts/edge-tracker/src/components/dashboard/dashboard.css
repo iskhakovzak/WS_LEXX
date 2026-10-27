@@ -146,7 +146,7 @@
   padding: 0 0.625rem;
   border: 1px solid var(--glass-border);
   border-radius: 999px;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   color: hsl(var(--muted-foreground));
 }
 .dash-note { padding-inline: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
@@ -257,7 +257,7 @@ body.dash-dragging * { cursor: grabbing !important; user-select: none; }
   padding: 0 0.4rem;
   border-radius: 999px;
   font-family: var(--app-font-code);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: hsl(var(--muted-foreground));

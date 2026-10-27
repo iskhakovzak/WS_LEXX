@@ -78,7 +78,7 @@ export function AiBatchStats() {
                           {open(b.status) ? t("aiBatchStats.estimate", { units: fmtCount(b.estUnits) }) : fmtCount(b.units)}
                         </td>
                         <td className="py-1.5 text-right">
-                          <div>{b.costUsd ? fmtUsd(b.costUsd, { decimals: 3 }) : "—"}</div>
+                          <div>{b.costUsd != null ? fmtUsd(b.costUsd, { decimals: 3 }) : <span className="text-muted-foreground">—</span>}</div>
                           {b.costUsd ? <div className="text-2xs text-muted-foreground">{t("aiBatchStats.fullPrice", { usd: fmtUsd(b.costUsd * 2, { decimals: 3 }) })}</div> : null}
                         </td>
                       </tr>

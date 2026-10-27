@@ -318,7 +318,7 @@ export function OfferingDetailSheet({
                 <Num label={t("sheet.gap")} value={<SignedPct value={o.reaction.gapPct} />} />
                 <Num label={t("sheet.openToClose")} value={<SignedPct value={o.reaction.o2cPct} />} />
                 <Num label={t("sheet.lowFromOpen")} value={<SignedPct value={o.reaction.lowFromOpenPct} />} />
-                <Num label="RelVol" value={o.reaction.relVol != null ? `${o.reaction.relVol.toFixed(1)}×` : "—"} />
+                <Num label="RelVol" value={o.reaction.relVol != null && o.reaction.relVol >= 0.05 ? `${o.reaction.relVol.toFixed(1)}×` : "—"} />
               </div>
             </Section>
           )}

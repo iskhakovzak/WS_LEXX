@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearch } from "wouter";
-import { AlertTriangle, CalendarClock, ClipboardCheck, Eye, ListChecks, MessagesSquare, MoreHorizontal, Plus, Target, UserCog, Users, X } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, ClipboardCheck, Eye, ListChecks, MessagesSquare, MoreHorizontal, Plus, Target, UserCheck, UserCog, Users, X } from "lucide-react";
 import {
-  DataTable, EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, useTableSort, type Tone,
+  DataTable, EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, Toolbar, useTableSort, type Tone,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +34,7 @@ export default function AcademyMentorPage() {
   const { isCurator, user } = useAuth();
   const search = useSearch();
   const [all, setAll] = useState(false);
+  const [filter, setFilter] = useState<StudentFilter>("all");
   const q = useMentorDashboard(all, isCurator);
   const d = q.data;
   const [selected, setSelected] = useState<string | null>(() => new URLSearchParams(search).get("student"));
@@ -49,7 +50,7 @@ export default function AcademyMentorPage() {
   if (!isCurator) {
     return (
       <Page>
-        <PageHeader icon={UserCog} title={title} />
+        <PageHeader icon={UserCheck} title={title} />
         <Panel><EmptyState art="laurel" icon={UserCog} title={t("mentorPage.staffOnly")}
           description={withNodes(t("mentorPage.staffOnlyDesc", { link: "{link}" }), {
             link: <Link className="text-primary hover:underline" href="/academy/my">{t("mentorPage.staffOnlyLink")}</Link>,
@@ -65,15 +66,22 @@ export default function AcademyMentorPage() {
         icon={UserCog}
         title={title}
         description={t("mentorPage.description")}
-        actions={<>
-          {d?.hasOwnCohorts && (
+        actions={!!d?.students.length && (
+          // No students → no 1:1 to plan: the button appears with the first student (design audit wave 2).
+          <Button onClick={() => setMeetingFor(selected)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("mentorPage.newMeeting")}</Button>
+        )}
+      />
+      {/* One Toolbar under the header (design audit wave 3): the students mode (all / lagging) + the scope (mine / all). */}
+      {d && d.cohorts.length > 0 && (
+        <Toolbar>
+          <Segmented ariaLabel={t("mentorPage.students.filterAria")} value={filter} onChange={setFilter}
+            options={[{ value: "all", label: t("mentorPage.students.all"), count: d.students.length }, { value: "lagging", label: t("mentorPage.students.lagging"), count: d.lagging }]} />
+          {d.hasOwnCohorts && (
             <Segmented ariaLabel={t("mentorPage.scopeAria")} value={all ? "all" : "mine"} onChange={(v) => setAll(v === "all")}
               options={[{ value: "mine", label: t("mentorPage.mine") }, { value: "all", label: t("mentorPage.all") }]} />
           )}
-          {/* No students → no 1:1 to plan: the button appears with the first student (design audit wave 2). */}
-          {!!d?.students.length && <Button onClick={() => setMeetingFor(selected)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("mentorPage.newMeeting")}</Button>}
-        </>}
-      />
+        </Toolbar>
+      )}
       {q.isLoading && <><StatGridSkeleton count={4} /><PanelSkeleton height={280} /></>}
       {q.isError && <ErrorState error={q.error} onRetry={() => q.refetch()} title={t("mentorPage.loadFailed")} />}
       {d && d.cohorts.length === 0 && (
@@ -85,7 +93,7 @@ export default function AcademyMentorPage() {
           <Kpis d={d} />
           {/* Side-by-side only on wide screens: at 1280–1440 px the students table needs the full width («Почему отстаёт»). */}
           <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-            <Students d={d} selected={selected} onSelect={setSelected} onMeeting={(s) => setMeetingFor(s)} />
+            <Students d={d} filter={filter} selected={selected} onSelect={setSelected} onMeeting={(s) => setMeetingFor(s)} />
             <Today sessions={d.today} />
           </div>
           {selected && d.students.some((s) => s.enrollment.userName === selected) && (
@@ -135,15 +143,14 @@ const STUDENT_ACCESSORS = {
   score: (s: StudentRow) => s.score,
 };
 
-function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; selected: string | null; onSelect: (s: string | null) => void; onMeeting: (s: string) => void }) {
+type StudentFilter = "all" | "lagging";
+
+function Students({ d, filter, selected, onSelect, onMeeting }: { d: MentorDashboard; filter: StudentFilter; selected: string | null; onSelect: (s: string | null) => void; onMeeting: (s: string) => void }) {
   const { t } = academyCohortsI18n.useT();
-  const [filter, setFilter] = useState<"all" | "lagging">("all");
   const filtered = useMemo(() => (filter === "lagging" ? d.students.filter((s) => s.score > 0) : d.students), [d.students, filter]);
   const { rows, thProps } = useTableSort(filtered, STUDENT_ACCESSORS, "score");
   return (
-    <Panel title={t("mentorPage.students.title")} icon={Users} description={t("mentorPage.students.description")}
-      actions={<Segmented ariaLabel={t("mentorPage.students.filterAria")} size="sm" value={filter} onChange={setFilter}
-        options={[{ value: "all", label: t("mentorPage.students.all"), count: d.students.length }, { value: "lagging", label: t("mentorPage.students.lagging"), count: d.lagging }]} />}>
+    <Panel title={t("mentorPage.students.title")} icon={Users} description={t("mentorPage.students.description")}>
       {rows.length === 0 ? <p className="text-sm text-muted-foreground">{filter === "lagging" ? t("mentorPage.students.noLagging") : t("mentorPage.students.noActive")}</p> : (
         <DataTable ariaLabel={t("mentorPage.students.tableAria")} maxHeight="60vh">
           <table>
@@ -308,11 +315,15 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           {idp.data && idp.data.goals.length === 0 && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.noGoals")}</p>}
           <div className="flex flex-col gap-2">
             {idp.data?.goals.map((g) => (
-              <GoalCard key={g.id} goal={g} compact actions={<>
-                {g.status === "active" && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "cancelled" }, { onError: err })} disabled={updGoal.isPending}>{t("mentorPage.detail.cancel")}</Button>}
-                {(g.status === "cancelled" || g.status === "missed") && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "active" }, { onError: err })} disabled={updGoal.isPending}>{t("mentorPage.detail.reopen")}</Button>}
-                <Button size="sm" variant="ghost" onClick={() => archiveGoal(g.id, g.title)} disabled={archive.isPending}>{ct("actions.archive")}</Button>
-              </>} />
+              // The status change stays the one visible action; the rare, destructive archive folds into «…».
+              <div key={g.id} data-row>
+                <GoalCard goal={g} compact actions={
+                  <RowActions more={[{ label: ct("actions.archive"), icon: Archive, onSelect: () => archiveGoal(g.id, g.title), disabled: archive.isPending }]}>
+                    {g.status === "active" && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "cancelled" }, { onError: err })} disabled={updGoal.isPending}>{t("mentorPage.detail.cancel")}</Button>}
+                    {(g.status === "cancelled" || g.status === "missed") && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "active" }, { onError: err })} disabled={updGoal.isPending}>{t("mentorPage.detail.reopen")}</Button>}
+                  </RowActions>
+                } />
+              </div>
             ))}
           </div>
         </section>

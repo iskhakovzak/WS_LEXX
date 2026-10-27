@@ -1,19 +1,16 @@
 /**
- * The period of /analytics: the presets and «Свой период» (AnalyticsFilters period «custom» + from / to,
- * lib/period-range) with the equally long previous window of the comparison. Re-exported by ./metrics.
+ * The period of /analytics: the analytics group's shared scope (hooks/use-analytics-scope — the vocabulary
+ * week · month · quarter · year · all, windows ending today, and «Период…» = AnalyticsFilters period «custom» + from / to)
+ * with the equally long previous window of the comparison. Re-exported by ./metrics.
  */
-import { parseDayRange, prevDayRange, type DayRange } from "@/lib/period-range";
-import { analyticsI18n } from "@/i18n/ns/analytics";
+import { parseDayRange, presetRange, prevDayRange, type DayRange } from "@/lib/period-range";
+import { ANALYTICS_PRESETS, DEFAULT_ANALYTICS_PERIOD, type AnalyticsPeriod, type AnalyticsPreset } from "@/hooks/use-analytics-scope";
 
 /** A preset, or «custom» = «Свой период» (AnalyticsFilters from / to). */
-export type Period = "7d" | "30d" | "90d" | "ytd" | "all" | "custom";
-export type PresetPeriod = Exclude<Period, "custom">;
+export type Period = AnalyticsPeriod;
+export type PresetPeriod = AnalyticsPreset;
 
-export const PERIODS: PresetPeriod[] = ["7d", "30d", "90d", "ytd", "all"];
-/** Period options for a Segmented — call in render (labels follow the UI language). */
-export function periodOptions(): { value: PresetPeriod; label: string }[] {
-  return PERIODS.map((value) => ({ value, label: analyticsI18n.t(`period.${value}`) }));
-}
+export const PERIODS: readonly PresetPeriod[] = ANALYTICS_PRESETS;
 
 export function isoDay(d: Date): string {
   const y = d.getFullYear();
@@ -25,19 +22,10 @@ export function isoDay(d: Date): string {
 /** Inclusive [from, to] range for a period, plus the equal-length previous range for comparison. */
 export function periodRange(period: Period, now = new Date(), custom: DayRange | null = null): { from: string; to: string; prevFrom: string; prevTo: string } | null {
   if (period === "all") return null;
-  if (period === "custom") {
-    if (!custom) return periodRange("90d", now);
-    const prev = prevDayRange(custom);
-    return { from: custom.from, to: custom.to, prevFrom: prev.from, prevTo: prev.to };
-  }
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let start: Date;
-  if (period === "ytd") start = new Date(end.getFullYear(), 0, 1);
-  else start = new Date(end.getTime() - ((period === "7d" ? 7 : period === "30d" ? 30 : 90) - 1) * 86400000);
-  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
-  const prevEnd = new Date(start.getTime() - 86400000);
-  const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
-  return { from: isoDay(start), to: isoDay(end), prevFrom: isoDay(prevStart), prevTo: isoDay(prevEnd) };
+  const win = period === "custom" ? custom ?? presetRange(DEFAULT_ANALYTICS_PERIOD, isoDay(now)) : presetRange(period, isoDay(now));
+  if (!win) return null;
+  const prev = prevDayRange(win);
+  return { from: win.from, to: win.to, prevFrom: prev.from, prevTo: prev.to };
 }
 
 /** The custom range of the filters (null when not set / invalid). */

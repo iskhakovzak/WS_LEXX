@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import { AlertTriangle, BadgeCheck, Building2, CalendarDays, Clock, GraduationCap, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
-import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
+import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/http";
@@ -30,12 +30,14 @@ import { officeI18n } from "@/i18n/ns/officeStats";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { useAuth } from "@/contexts/auth-context";
-import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
-import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
+import { rangeFacetChips, resetRangeFacets, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { OfficeScopeBar } from "@/components/office-stats/office-scope-bar";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { readOfficeUrl, useStoredState, writeOfficeUrl, type OfficeMode as PeriodMode } from "@/components/office-stats/office-period";
 
-type Preset = "ytd" | "quarter" | "month";
-type PeriodMode = Preset | "custom";
+const MODES: PeriodMode[] = ["ytd", "quarter", "month", "custom"];
 
 const nyToday = (): string => nyDate();
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -87,19 +89,23 @@ export default function OfficeStatsPage() {
   // Years with desk trades (from the last answer): no chips for empty years (OWNER-13: 2023 / 2024 before the data starts).
   const [dataYears, setDataYears] = React.useState<number[] | null>(null);
   const yearChoices = React.useMemo(() => [ty - 3, ty - 2, ty - 1, ty].filter((y) => y === ty || !dataYears || dataYears.includes(y)), [ty, dataYears]);
-  const [years, setYears] = usePersistentState<number[]>("office-stats.years", [ty - 1, ty]);
+  // The period lives in the URL (?period=&q=&m=&years=, components/office-stats/office-period); the device keys are
+  // the fallback for a bare /office.
+  const [url] = React.useState(() => readOfficeUrl(typeof window === "undefined" ? "" : window.location.search));
+  const [years, setYears] = useStoredState<number[]>("office-stats.years", url.years, [ty - 1, ty]);
   const selYears = React.useMemo(() => {
     const ok = years.filter((y) => yearChoices.includes(y)).sort((a, b) => a - b);
     return ok.length ? ok : [ty];
   }, [years, ty, yearChoices]);
   const focusYear = selYears[selYears.length - 1];
 
-  const [mode, setMode] = usePersistentState<PeriodMode>("office-stats.period", "ytd");
+  const [storedMode, setMode] = useStoredState<PeriodMode>("office-stats.period", url.mode, "ytd");
   const curQ = Math.floor((Number(today.slice(5, 7)) - 1) / 3) + 1;
-  const [quarter, setQuarter] = React.useState<number>(focusYear === ty ? curQ : 4);
-  const [month, setMonth] = React.useState<number>(focusYear === ty ? Number(today.slice(5, 7)) : 12);
-  const [storedCustom, setCustom] = usePersistentState<DayRange | null>("office-stats.custom", null);
+  const [quarter, setQuarter] = React.useState<number>(url.q ?? (focusYear === ty ? curQ : 4));
+  const [month, setMonth] = React.useState<number>(url.m ?? (focusYear === ty ? Number(today.slice(5, 7)) : 12));
+  const [storedCustom, setCustom] = useStoredState<DayRange | null>("office-stats.custom", url.mode === "custom" ? url.custom : null, null);
   const custom = parseDayRange(storedCustom?.from, storedCustom?.to);
+  const mode: PeriodMode = MODES.includes(storedMode) && (storedMode !== "custom" || custom) ? storedMode : "ytd";
 
   // A month / quarter picked for an earlier year can lie in the future of the current one (December → 2026 in
   // October): clamp it to today, otherwise the period would start after it ends.
@@ -117,6 +123,10 @@ export default function OfficeStatsPage() {
     if (mode === "custom" && custom) return custom;
     return { from: `${y}-01-01`, to: cap(`${y}-12-31`) };
   }, [mode, effQuarter, effMonth, custom?.from, custom?.to, focusYear, today]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    writeOfficeUrl({ mode, custom, q: effQuarter, m: effMonth, years: selYears });
+  }, [mode, custom?.from, custom?.to, effQuarter, effMonth, selYears]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const periodLabel = mode === "quarter"
     ? t("period.quarterOfYear", { q: effQuarter, year: focusYear })
@@ -193,68 +203,14 @@ export default function OfficeStatsPage() {
         )}
       </PageHeader>
 
-      {/* Filters: one row above everything (wraps on phones). */}
-      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.yearsAria")}>
-          <span className="mr-1 text-xs text-muted-foreground">{t("filters.years")}</span>
-          {yearChoices.map((y) => {
-            const on = selYears.includes(y);
-            return (
-              <button
-                key={y}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggleYear(y)}
-                className={cn(
-                  "min-h-8 rounded-full border px-3 text-sm font-medium tabular-nums transition-colors",
-                  on ? "border-primary/40 bg-primary/12 text-foreground" : "border-[var(--glass-border)] text-muted-foreground hover:text-foreground",
-                  on && y === focusYear && "border-primary bg-primary/20",
-                )}
-                title={on && y === focusYear ? t("filters.yearFocus") : on ? t("filters.yearRemove") : t("filters.yearAdd")}
-              >
-                {y}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker<Preset>
-            ariaLabel={t("period.label")} value={mode} custom={custom} presetRange={period} today={today} size="sm"
-            onPreset={setMode} onCustom={(r) => { setCustom(r); setMode("custom"); }}
-            options={[{ value: "ytd", label: t("period.ytd") }, { value: "quarter", label: t("period.quarter") }, { value: "month", label: t("period.month") }]}
-          />
-          {mode === "quarter" && (
-            <Segmented<string> ariaLabel={t("period.quarter")} size="sm" value={String(effQuarter)} onChange={(v) => setQuarter(Number(v))}
-              options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: t("period.quarterShort", { q: n }), disabled: focusYear === ty && n > curQ }))} />
-          )}
-          {mode === "month" && (
-            <select
-              aria-label={t("period.month")}
-              value={effMonth}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              className="glass-field h-8 rounded-full bg-transparent px-3 text-sm text-foreground"
-            >
-              {Array.from({ length: 12 }, (_, i) => monthLong(i)).map((m, i) => (
-                <option key={i} value={i + 1} disabled={focusYear === ty && i + 1 > Number(today.slice(5, 7))}>{m}</option>
-              ))}
-            </select>
-          )}
-        </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2 lg:ml-auto">
-            <span className="text-xs text-muted-foreground">{t("filters.units")}</span>
-            <Segmented<Unit>
-              ariaLabel={t("filters.units")}
-              size="sm"
-              value={unit}
-              onChange={setUnitPref}
-              options={[{ value: "pct", label: t("filters.pctOfCapital"), disabled: !capitalSet, title: capitalSet ? undefined : t("filters.needCapital") }, { value: "usd", label: "$" }]}
-            />
-          </div>
-        )}
-      </div>
-
-      <RangeFacetsPanel rf={rf} />
+      <OfficeScopeBar
+        yearChoices={yearChoices} selYears={selYears} focusYear={focusYear} onToggleYear={toggleYear}
+        mode={mode} custom={custom} period={period} today={today} onMode={setMode} onCustom={(r) => { setCustom(r); setMode("custom"); }}
+        quarter={effQuarter} onQuarter={setQuarter} maxQuarter={focusYear === ty ? curQ : 4}
+        month={effMonth} onMonth={setMonth} maxMonth={focusYear === ty ? Number(today.slice(5, 7)) : 12}
+        unit={isAdmin ? { value: unit, onChange: setUnitPref, capitalSet } : null} rf={rf}
+      />
+      <ActiveFilters items={rangeFacetChips(rf)} onReset={() => resetRangeFacets(rf)} />
 
       {/* Section anchors (sticky). */}
       {ctx && !memberNoCapital && (

@@ -4,14 +4,10 @@ import {
   useListDiscussions, useDeleteDiscussion, getListDiscussionsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
-import {
-  MessagesSquare, Plus, Search, X, Bell, AtSign, Activity, Briefcase, ArrowDownUp, SearchX, Keyboard, Lock,
-} from "lucide-react";
+import { Activity, AtSign, Bell, Briefcase, Keyboard, MessageSquare, MessagesSquare, Plus, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Page, PageHeader, StatCard, StatGrid, Segmented, FilterChip, EmptyState, Pill } from "@/components/ds";
+import { Page, PageHeader, StatCard, StatGrid, EmptyState } from "@/components/ds";
 import { QueryError } from "@/components/query-error";
 import { UndoToast } from "@/components/undo-toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -24,12 +20,13 @@ import { ThreadListItem } from "@/components/discussions/ThreadList";
 import { ThreadView } from "@/components/discussions/ThreadView";
 import { ThreadFormDialog } from "@/components/discussions/ThreadFormDialog";
 import { ReportDialog, type ReportTarget } from "@/components/discussions/ReportDialog";
-import { addressedToMe, audienceText, isRestricted, sortTokens, tokenLabel, useAudienceOptions } from "@/components/discussions/audience";
+import { addressedToMe, audienceText, isRestricted, sortTokens, useAudienceOptions } from "@/components/discussions/audience";
+import { DiscussionsToolbar } from "@/components/discussions/DiscussionsToolbar";
 import { useMentionSync } from "@/components/discussions/use-mention-sync";
 import {
-  type Thread, type VoteMap, type VoteAgg, type TickerStat, type SortKey, type ViewKey,
+  type Thread, type VoteMap, type VoteAgg, type TickerStat,
   type ThreadContext,
-  SORT_LABELS, TYPES, TYPE_LABELS, sortThreads, threadMatches, threadMentions, isResolved, isUnread,
+  sortThreads, threadMatches, threadMentions, isResolved, isUnread,
   loadSeen, saveSeen, seenAt, lastActivity, loadPrefs, savePrefs, participants, teamPositions, isTypingTarget,
   isFreshThread, isActiveToday,
 } from "@/components/discussions/lib";
@@ -353,7 +350,7 @@ export default function Discussions() {
     setTypeFilter("all");
     setAudience("all");
     setTicker(null);
-    setPrefs((p) => ({ ...p, view: "all" }));
+    setPrefs((p) => ({ ...p, view: "all", sort: "active" }));
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────
@@ -365,7 +362,6 @@ export default function Discussions() {
       if (isTypingTarget(e.target)) return;
       if (document.querySelector("[role=dialog],[role=alertdialog],[role=menu]")) return;
       const list = filteredRef.current;
-      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       // Russian keyboard layout aliases (т = n, о/л = j/k, к = r): input, not text. i18n-ignore
       if ((e.key === "n" || e.key === "т") && canEdit) { e.preventDefault(); openCreate(false); return; }
       if (e.key === "j" || e.key === "k" || e.key === "о" || e.key === "л") { // i18n-ignore
@@ -389,15 +385,13 @@ export default function Discussions() {
     return () => window.removeEventListener("keydown", onKey);
   }); // re-bind every render: cheap, always sees fresh state
 
-  const extraView = prefs.view === "mentions" || prefs.view === "positions" || prefs.view === "live";
-  const hasFilters = !!q.trim() || typeFilter !== "all" || !!tickerFilter || prefs.view !== "all" || audienceFilter !== "all";
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <Page>
       <PageHeader
         title={t("title")}
-        icon={MessagesSquare}
+        icon={MessageSquare}
         description={t("description")}
         actions={
           canEdit ? (
@@ -422,6 +416,18 @@ export default function Discussions() {
 
       {isError && <QueryError error={error} onRetry={() => refetch()} />}
 
+      {threads.length > 0 && (
+        <DiscussionsToolbar
+          className={cn(selected && "hidden lg:block")}
+          q={q} setQ={setQ} searchRef={searchRef}
+          view={prefs.view} setView={(v) => setPrefs((p) => ({ ...p, view: v }))}
+          sort={prefs.sort} setSort={(v) => setPrefs((p) => ({ ...p, sort: v }))}
+          audience={audienceFilter} setAudience={setAudience} audienceTabs={audienceTabs} audienceOpts={audienceOpts} showAudience={showAudienceTabs} total={threads.length}
+          type={typeFilter} setType={setTypeFilter} ticker={tickerFilter} setTicker={setTicker} tickerStats={tickerStats}
+          unreadCount={unreadIds.size} found={filtered.length} onReset={resetFilters}
+        />
+      )}
+
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] xl:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]">
         {/* ── Thread list ── */}
         <section
@@ -431,96 +437,6 @@ export default function Discussions() {
             selected && "hidden lg:flex",
           )}
         >
-          <div className="space-y-2 border-b border-[var(--field-border)] p-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input
-                ref={searchRef}
-                type="search"
-                aria-label={t("page.searchAria")}
-                placeholder={t("page.searchPlaceholder")}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setQ(""); (e.target as HTMLInputElement).blur(); } }}
-                className="pl-10 pr-10"
-              />
-              {q ? (
-                <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]">
-                  <X className="h-4 w-4" aria-hidden="true" />
-                </button>
-              ) : (
-                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Segmented<ViewKey>
-                ariaLabel={t("page.viewAria")}
-                size="sm"
-                className="min-w-0 flex-1"
-                value={extraView ? "all" : prefs.view}
-                onChange={(v) => setPrefs((p) => ({ ...p, view: v }))}
-                options={[
-                  { value: "all", label: t("view.all") },
-                  { value: "unread", label: t("view.unread"), count: unreadIds.size || undefined },
-                  { value: "mine", label: t("view.mine") },
-                  { value: "open", label: t("view.open") },
-                ]}
-              />
-              <Select value={prefs.sort} onValueChange={(v) => setPrefs((p) => ({ ...p, sort: v as SortKey }))}>
-                <SelectTrigger aria-label={tc("actions.sort")} className="h-8 w-[124px] shrink-0 gap-1 px-3 text-xs">
-                  <ArrowDownUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {showAudienceTabs && (
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label={t("page.audienceAria")}>
-                <FilterChip active={audienceFilter === "all"} onClick={() => setAudience("all")} count={threads.length} className="min-h-8 shrink-0 px-2.5 text-xs">{t("page.allThreads")}</FilterChip>
-                {(audienceOpts?.viewer.tokens.length ?? 0) > 0 && (
-                  <FilterChip active={audienceFilter === "me"} onClick={() => setAudience(audienceFilter === "me" ? "all" : "me")} count={audienceTabs.forMe} className="min-h-8 shrink-0 px-2.5 text-xs">{t("page.forMe")}</FilterChip>
-                )}
-                <FilterChip active={audienceFilter === "public"} onClick={() => setAudience(audienceFilter === "public" ? "all" : "public")} count={audienceTabs.publicCount} className="min-h-8 shrink-0 px-2.5 text-xs">{t("audience.everyone")}</FilterChip>
-                {audienceTabs.tokens.map(({ token, count }) => (
-                  <FilterChip key={token} active={audienceFilter === token} onClick={() => setAudience(audienceFilter === token ? "all" : token)} count={count} className="min-h-8 shrink-0 px-2.5 text-xs">
-                    <Lock className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />{tokenLabel(token, audienceOpts)}
-                  </FilterChip>
-                ))}
-                {!["all", "me", "public"].includes(audienceFilter) && !audienceTabs.tokens.some((x) => x.token === audienceFilter) && (
-                  <FilterChip active onClick={() => setAudience("all")} className="min-h-8 shrink-0 px-2.5 text-xs">{tokenLabel(audienceFilter, audienceOpts)}</FilterChip>
-                )}
-              </div>
-            )}
-            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label={t("page.typeTickerAria")}>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger aria-label={t("page.typeAria")} className={cn("h-8 w-auto shrink-0 gap-1 px-3 text-xs", typeFilter !== "all" && "text-primary")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("page.allTypes")}</SelectItem>
-                  {TYPES.map((ty) => <SelectItem key={ty} value={ty}>{TYPE_LABELS[ty]}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {tickerStats.slice(0, 12).map((s) => (
-                <FilterChip key={s.ticker} active={tickerFilter === s.ticker} onClick={() => setTicker(tickerFilter === s.ticker ? null : s.ticker)} count={s.count} className="min-h-8 shrink-0 px-2.5 text-xs tabular-nums">
-                  ${s.ticker}
-                </FilterChip>
-              ))}
-              {tickerFilter && !tickerStats.some((s) => s.ticker === tickerFilter) && (
-                <FilterChip active onClick={() => setTicker(null)} className="min-h-8 shrink-0 px-2.5 text-xs">${tickerFilter}</FilterChip>
-              )}
-            </div>
-            {hasFilters && (
-              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="tabular-nums">{t("page.found", { count: filtered.length })}</span>
-                {extraView && <Pill tone="accent">{t(`view.${prefs.view}`)}</Pill>}
-                <button type="button" onClick={resetFilters} className="ml-auto inline-flex min-h-8 items-center rounded-full px-2 text-primary hover:bg-primary/10">{tc("actions.resetFilters")}</button>
-              </div>
-            )}
-          </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {isLoading ? (
               <ul className="space-y-1" aria-busy="true" aria-label={t("page.loadingAria")}>

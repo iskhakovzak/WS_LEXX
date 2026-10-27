@@ -19,6 +19,7 @@ export default {
   never: "never",
   you: "(you)",
   namesMore: "{names} and {count} more",
+  shownOf: "{shown} of {total} shown",
   notDeployed: "{what} will be available after the API restarts (new admin-console router).",
   needRestart: "API restart needed",
 

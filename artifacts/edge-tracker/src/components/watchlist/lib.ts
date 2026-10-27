@@ -302,3 +302,8 @@ export async function copyText(text: string): Promise<boolean> {
     }
   }
 }
+
+/** «1.8×», or «—» when there is no relative volume or it rounds to nothing (< 0.05: no volume yet, not a real «0.0×»). */
+export function fmtRvol(v: number | null | undefined, decimals = 1): string {
+  return v == null || !Number.isFinite(v) || v < 0.05 ? "—" : `${v.toFixed(decimals)}×`;
+}
