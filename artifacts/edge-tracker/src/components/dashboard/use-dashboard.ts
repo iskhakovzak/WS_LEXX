@@ -461,7 +461,7 @@ export function useEodDay(date: string | null, trader: string | null, enabled = 
 /* ───────────── Dashboard tiles ───────────── */
 
 const SECTION_IDS = [
-  "regime", "attention", "equity", "recent", "desk", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees",
+  "regime", "mentor", "attention", "equity", "recent", "desk", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees",
   "positions", "checkin", "brief", "quote", "sectors", "macro", "dna", "psychology",
 ] as const;
 /** A dashboard tile («План на день», a «Ваш edge» insight, «Последние сделки», an extra …). */

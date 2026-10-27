@@ -72,6 +72,20 @@ export default {
     lineCost: "{n}. {trader} — {reason}, {cost}",
     reason: { breach_review: "breach to review", stopped: "on stop", near_stop: "close to stop", eod_review: "closed day waits for review", weekly_review: "weekly report", overdue_action: "1:1 agreements overdue", no_limits: "no limits", template_drift: "limits off the template", missing_plan: "no plan", missing_eod: "day not closed", one_on_one: "no 1:1 for long", plateau_review: "pace below the stage target", at_stake: "red and leaks", dropout_risk: "dropout risk", trial_review: "rule trial ending", stop_breach: "limit breach", focus_broken: "focus broken", disputed: "“not a mistake” on the focus", fees: "fees", loss_streak: "losing streak", giveback: "profit given back", rule: "rule violations", other: "needs a look" },
   },
+  mentor_escalation: {
+    title: "AI mentor: {trader} needs your eye",
+    body: "The mentor sees a pattern better handled together. Open the mentor's notes.",
+    tilt_streak: { title: "AI mentor: {trader} — tilt {days} days in a row", body: "{days} trading days in a row with tilt, revenge or averaging down. Talk today; the mentor's notes are on the trader's card." },
+    rule_breaks: { title: "AI mentor: {trader} keeps breaking commitments", body: "{count} commitment breaks in {days} trading days. The mentor needs your support." },
+    drawdown_near_limit: { title: "AI mentor: {trader} — drawdown near the limit", body: "Drawdown {drawdown} — {pct}% of the {limit} limit. Worth discussing size and the plan before the next session." },
+    silence: { title: "AI mentor: {trader} silent for {days} days", body: "{days} trading days without trades, a check-in or a word to the mentor. Maybe reach out first." },
+  },
+  mentor_ready: {
+    title: "Mentor: ready",
+    body: "Open the mentor.",
+    brief: { title: "Mentor: today's brief is ready", body: "The market regime, your edge in it and one rule for today." },
+    debrief: { title: "Mentor: session debrief is ready", body: "What happened against the plan, one lesson and the rule for tomorrow." },
+  },
   ai_review_ready: {
     title: "AI review ready",
     body: "Your review is ready — open it to see.",
@@ -80,6 +94,8 @@ export default {
     month: { title: "Month review ready", body: "AI review of the month from {period}: the result, the month's habits and one focus for the next one." },
   },
   types: {
+    mentor_escalation: { label: "Mentor: curator needed", description: "The AI mentor sees a pattern better handled by a person: tilt for several days, commitment breaks, drawdown near the limit, silence" },
+    mentor_ready: { label: "Mentor: brief or debrief ready", description: "The pre-session brief or the post-session debrief was prepared ahead (when the admin turned scheduled pushes on)" },
     ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },
     mention: { label: "Mention", description: "Someone mentioned you with @name in a discussion, idea or note" },
     reply: { label: "Reply", description: "A reply to your post or in your discussion, or a “solution” mark" },

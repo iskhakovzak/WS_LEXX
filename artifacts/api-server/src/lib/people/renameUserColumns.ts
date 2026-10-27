@@ -96,6 +96,12 @@ const TEXT: Record<string, readonly string[]> = {
   junior_notes: ["reviewed_by", "trader"],
   market_events: ["created_by"],
   market_themes: ["updated_by"],
+  mentor_commitments: ["created_by", "trader"],
+  mentor_digests: ["trader"],
+  mentor_escalations: ["ack_by", "trader"],
+  mentor_messages: ["trader"],
+  mentor_notes: ["author", "trader"],
+  mentor_profile: ["trader"],
   notification_batch_items: ["user_name"],
   notification_prefs: ["user_name"],
   notifications: ["actor", "user_name"],
@@ -206,8 +212,10 @@ const JSON_COLS: Record<string, readonly string[]> = {
   weekly_reviews: ["curator_review", "goals", "self_review"],
 };
 
-/** text[] columns holding names. None today (discussions.audience holds stage / cohort tokens, not names). */
-const ARRAY_COLS: Record<string, readonly string[]> = {};
+/** text[] columns holding names (discussions.audience holds stage / cohort tokens, not names). */
+const ARRAY_COLS: Record<string, readonly string[]> = {
+  mentor_escalations: ["notified"], // the staff who got the escalation notice
+};
 
 const SPECIAL: readonly RenameTarget[] = [
   { table: "notifications", column: "entity_id", kind: "segments" }, // «<name>:<day>», «<name>:<day>:repeat», «<name>»
@@ -262,6 +270,10 @@ export const KEPT: Readonly<Record<string, string>> = {
   "desk_regime_days.suggestion": "the engine's suggestion: a regime key, reason codes and numbers, no names",
   "regime_reflections.answers": "the trader's own free text per regime and question (free prose is never rewritten)",
   "playbook.regimes": "market regime keys (theme_bull, macro, …), not names",
+  "mentor_commitments.params": "commitment parameters: minutes, counts, dollars, HH:MM — no names",
+  "mentor_digests.content": "model-written mentor brief / debrief / weekly (validated JSON), no structured person fields",
+  "mentor_escalations.params": "escalation numbers (days, counts, $, %) — no names",
+  "mentor_profile.hidden_facts": "keys of data facts the trader hid from the mentor (stage, leak:<slice> …), not names",
   "ai_batches.created_by": "who started the batch: «system» (the nightly job) or «manual» (the admin's run), never a person name",
   // json: market data, caches, content without people
   ...Object.fromEntries([

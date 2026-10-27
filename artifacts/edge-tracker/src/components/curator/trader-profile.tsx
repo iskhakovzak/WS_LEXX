@@ -57,9 +57,10 @@ const WEEK_ACCESSORS = {
 
 /**
  * Trader profile inside the cabinet: header with actions + tabs overview / risk / journal / weekly / academy / notes.
- * `quests` — the quests & achievements block, composed by the page (components/quests is another feature).
+ * `quests` — the quests & achievements block, `mentor` — the AI mentor's notes, signals and commitments; both composed by
+ * the page (components/quests and components/mentor are other features).
  */
-export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void; quests?: React.ReactNode }) {
+export function TraderProfile({ trader, tab, onTab, onBack, quests, mentor }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void; quests?: React.ReactNode; mentor?: React.ReactNode }) {
   const q = useCuratorProfile(trader);
   const { t } = curatorI18n.useT();
   const [goalOpen, setGoalOpen] = React.useState(false);
@@ -84,7 +85,7 @@ export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: 
                 { value: "notes", label: t("profile.tab.notes"), icon: NotebookPen, count: p.notes.length || undefined },
               ]}
             />
-            {tab === "overview" && <OverviewTab p={p} onTab={onTab} onGoal={() => setGoalOpen(true)} quests={quests} />}
+            {tab === "overview" && <OverviewTab p={p} onTab={onTab} onGoal={() => setGoalOpen(true)} quests={quests} mentor={mentor} />}
             {tab === "risk" && <RiskTab p={p} onTemplate={() => setTplOpen(true)} />}
             {tab === "journal" && <JournalTab p={p} />}
             {tab === "weekly" && <WeeklyTab p={p} />}
@@ -162,7 +163,7 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
   );
 }
 
-function OverviewTab({ p, onTab, onGoal, quests }: { p: ProfilePayload; onTab: (t: ProfileTab) => void; onGoal: () => void; quests?: React.ReactNode }) {
+function OverviewTab({ p, onTab, onGoal, quests, mentor }: { p: ProfilePayload; onTab: (t: ProfileTab) => void; onGoal: () => void; quests?: React.ReactNode; mentor?: React.ReactNode }) {
   const s = p.signal;
   const fourWeekNet = s.trend.reduce((a, w) => a + (w.net ?? 0), 0);
   const unreviewed = p.breaches.filter((b) => !b.review);
@@ -203,6 +204,7 @@ function OverviewTab({ p, onTab, onGoal, quests }: { p: ProfilePayload; onTab: (
           </Panel>
           <EdgeMapPanel trader={p.trader} />
           <InterventionsPanel trader={p.trader} />
+          {mentor}
         </div>
         <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">
           {p.focus && <FocusPanel trader={p.trader} focus={p.focus} />}

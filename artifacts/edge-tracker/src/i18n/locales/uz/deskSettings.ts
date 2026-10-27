@@ -27,6 +27,7 @@ export default {
     assistant: { title: "WS Yordamchi", description: "Sayt boʻyicha AI yordamchi (sarlavhadagi ✦ tugmasi, Ctrl+J). Kalit — serverdagi AI_INTEGRATIONS_ANTHROPIC_API_KEY oʻzgaruvchisi; usiz yordamchi uni qanday yoqishni koʻrsatadi. Kim foydalana oladi: «Rollar va huquqlar», «WS Yordamchi» huquqi." },
     aiBatch: { title: "Tungi AI-tahlillar", description: "Kechasi, bitta paketda va yarim narxda (Message Batches API): kun yopilganda — savdo qilganlarning hammasi EOD ni yopgan, lekin belgilangan vaqtdan kechikmay — har kim kunning AI-tahlilini oladi, ertalab «Kun tahlili tayyor» bildirishnomasi keladi. Treyderlarning shaxsiy yordamchi limiti sarflanmaydi — faqat deskning tungi limiti." },
     regime: { title: "Bozor rejimi va limitlar", description: "Deskning har bir bozor rejimida kunlik zarar limiti koeffitsiyenti. Standart holatda bu maslahat: risk ekrani va treyder kunida «asos × koeffitsiyent» koʻrinadi. «Avtomatik qoʻllash» stoplarni shu boʻyicha hisoblaydi; saqlangan limitlar oʻzgarmaydi, oʻchirish asosiylarini darhol qaytaradi." },
+    mentor: { title: "AI-mentor", description: "Treyderning shaxsiy AI-mentori («Mentor» sahifasi): sessiyadan oldin brif, keyin tahlil, savdolar boʻyicha hisoblanadigan majburiyatlar, xotira. Assistent modellarida ishlaydi va shaxsiy kunlik AI limitini sarflaydi. Kuratorga signallar AIsiz va bepul. Oldindan tayyorlangan brif va tahlil — paketda yarim narxda, sukut boʻyicha oʻchirilgan." },
     access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
@@ -104,6 +105,16 @@ export default {
     estimateHint: "Paket hali jarayonda: natijagacha taxmin",
     fullPrice: "oddiy narxda {usd}",
   },
+  mentorCost: {
+    title: "AI-mentor sarfi",
+    hint: "{days} kundagi mentor chaqiruvlari: brif, tahlil, hafta va suhbat (jonli) hamda paketda oldindan tayyorlanganlar.",
+    total: "{calls} ta chaqiruv · {users} kishi · {usd}",
+    split: "jonli {live} · paketda {batch}",
+    errors: "xatolar: {count}",
+    empty: "Mentordan hali hech kim foydalanmagan.",
+    loadFailed: "Mentor sarfini yuklab boʻlmadi",
+    off: "Mentor oʻchirilgan.",
+  },
   assistantUsage: {
     title: "Yordamchi sarfi, oxirgi {days} kun",
     hint: "Butun desk: tokenlar, narx, limit birliklari va kesh ulushi. Texnik boʻlim — modellar nomi bilan.",
@@ -129,6 +140,18 @@ export default {
     unknown: "Bunday treyder yoʻq — olib tashlang yoki ismni tuzating",
   },
   settings: {
+    mentor: {
+      enabled: { label: "AI-mentor", help: "Oʻchirilgan — «Mentor» sahifasi majburiyatlar va qaydlarni koʻrsatadi, lekin mentor yozmaydi." },
+      escalationsEnabled: { label: "Kuratorga signallar", help: "Kuniga bir marta (18:50 NY) va mentor ochilganda: bir necha kun ketma-ket tilt, majburiyatlarning takroriy buzilishi, limitga yaqin drawdown, jimlik. Kuratorga ilovada bitta bildirishnoma, Telegramsiz." },
+      escTiltDays: { label: "Tilt: ketma-ket kunlar", help: "Tilt, qasos yoki zararga qoʻshish bilan ketma-ket shuncha savdo kuni — kuratorni chaqirish uchun sabab." },
+      escBreakCount: { label: "5 kunda majburiyat buzilishi", help: "Soʻnggi 5 savdo kunida faol majburiyatlarning shuncha buzilishi — kuratorga signal." },
+      escDrawdownShare: { label: "Drawdown: limit ulushi", help: "Choʻqqidan drawdown treyderning maksimal drawdownining shu ulushiga yetganda signal." },
+      escSilenceDays: { label: "Jimlik: kunlar", help: "Oxirgi oyda savdo qilgan treyder shuncha savdo kuni savdosiz, chek-insiz va mentor bilan suhbatsiz." },
+      pushesEnabled: { label: "Brif va tahlil oldindan", help: "Sukut boʻyicha oʻchirilgan. Yoqilgan — belgilangan vaqtga mentor brif (sessiyadan oldin) va tahlilni (keyin) paketda yarim narxda tayyorlaydi va bildirishnoma yuboradi. Shaxsiy limitlar sarflanmaydi — faqat yuborish limiti." },
+      briefTime: { label: "Brif vaqti", help: "Soʻnggi ikki haftada savdo qilganlar uchun brif tayyorlanadigan Nyu-York vaqti." },
+      debriefTime: { label: "Tahlil vaqti", help: "Bugun savdo qilganlar uchun tahlil tayyorlanadigan Nyu-York vaqti." },
+      pushDailyUnits: { label: "Kunlik yuborish limiti", help: "Desk uchun kunda oldindan tayyorlanadigan barcha brif va tahlillar birliklari (har bir kishiga taxminan 8 000)." },
+    },
     regime: {
       mult: {
         theme_bull: { label: "Tematik buqa", help: "«Tematik buqa» rejimida kunlik limit koeffitsiyenti." },

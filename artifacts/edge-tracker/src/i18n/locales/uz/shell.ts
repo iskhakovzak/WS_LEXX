@@ -13,6 +13,7 @@ export default {
     weeklyReview: "Haftalik hisobot",
     dayReport: "Kun tahlili",
     myReview: "Mening tahlilim",
+    coach: "Mentor",
     behavior: "Xulq va setaplar",
     trainer: "Trenajyor",
     whatIf: "Agar shunday boʻlsa",

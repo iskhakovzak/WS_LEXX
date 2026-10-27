@@ -30,6 +30,7 @@ import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
 import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
+import { registerMentorJobs } from "../lib/mentor/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -342,4 +343,5 @@ function registerModuleJobs(): void {
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
   registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
+  registerMentorJobs(registerJob); // AI mentor: escalation check, optional scheduled brief / debrief (lib/mentor/jobDefs.ts)
 }

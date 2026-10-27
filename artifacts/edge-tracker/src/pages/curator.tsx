@@ -18,6 +18,7 @@ import { GroupView } from "@/components/curator/group-view";
 import { TraderProfile, PROFILE_TABS, type ProfileTab } from "@/components/curator/trader-profile";
 import { RiskProcessesView } from "@/components/curator/risk-processes-view";
 import { CuratorQuestsPanel } from "@/components/quests/curator-panel";
+import { MentorCuratorPanel } from "@/components/mentor/curator-panel";
 import { RewardQueueItems } from "@/components/gamification/reward-queue";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -150,7 +151,7 @@ function CuratorCabinet() {
         </QueryState>
       ) : view === "traders" ? (
         trader ? (
-          <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} />
+          <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} mentor={<MentorCuratorPanel trader={trader} />} />
         ) : (
           <QueryState query={traders} skeleton={<GroupSkeleton />} errorTitle={t("page.tradersFailed")}>
             {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}

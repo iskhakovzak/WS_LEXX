@@ -64,6 +64,7 @@ export default {
     edgemap: { nightly: "«Qayerda topaman / yoʻqotaman» xaritasi: tungi hisob" },
     whatif: { honesty: "«Agar shunday boʻlsa» maslahatlarini halol tekshirish" },
     ai: { "batch-reviews": "Tungi AI-tahlillar (bitta paketda, yarim narxda)" },
+    mentor: { escalations: "AI-mentor: kuratorga signallar (tilt, buzilishlar, drawdown, jimlik)", pushes: "AI-mentor: brif va tahlil oldindan (paketda)" },
   },
   backups: {
     description: "pg_dump har kuni Nyu-York vaqti bilan 03:15 da (kesh jadvallari maʼlumotlarisiz). 14 kunlik va 8 haftalik nusxa saqlanadi.",

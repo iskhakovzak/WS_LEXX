@@ -4,6 +4,7 @@ import type ru from "../ru/dashboard";
 export default {
   sections: {
     regime: { label: "Bozor rejimi", hint: "Deskning bugungi rejimi: nima savdo qilish, qancha risk va kunlik limit" },
+    mentor: { label: "Mentor", hint: "AI-mentor bir qatorda: bugungi qoida, majburiyat hisobi yoki ritmning keyingi qadami" },
     attention: { label: "Kun rejasi", hint: "Keyingi qadam, fokus va shartnoma, kun vazifalari, progress" },
     equity: { label: "Kapital egri chizigʻi", hint: "Haftadan butun davrgacha, sof yoki R" },
     recent: { label: "Oxirgi savdolar", hint: "Qisqa lenta → savdo kartasi" },
