@@ -12,7 +12,7 @@ import { fmtNum, fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { myEdgeI18n } from "@/i18n/ns/myEdge";
 import type { AnalyticsFilters } from "../metrics";
-import { whatIfHref } from "../WhatIfTab";
+import { whatIfHref } from "../links";
 import type { MeRow, MeStatus } from "./api";
 import { bucketLabel, dimLabel, money, pctOn, tradesHref, whatIfRule } from "./model";
 

@@ -29,7 +29,10 @@ import {
   type ScreenerPreset, type ScreenerRow, type ScreenerSortKey,
 } from "./model";
 
-const SHOW = 8;
+/** Rows before «Показать все»: the screener is a side block of the morning, not the plan (design audit wave 2B). */
+const SHOW = 5;
+/** Older than this the table is yesterday's gap list: dimmed, with a «устарело» mark next to its time. */
+const STALE_MS = 18 * 60 * 60 * 1000;
 
 type RowActions = {
   inPlan: (ticker: string) => boolean;
@@ -265,6 +268,7 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   const shown = all ? rows : rows.slice(0, SHOW);
   const actions: RowActions = { inPlan: (x) => inPlanSet.has(x.toUpperCase()), canPlan, adding, onAdd: (r) => onAdd(r, preset), planDate };
   const updated = q.data?.asOf ? t("screener.updated", { ago: fmtRelative(q.data.asOf) }) : t("screener.notYet");
+  const stale = !!q.data?.asOf && now.getTime() - new Date(q.data.asOf).getTime() > STALE_MS;
   const onSort = (k: ScreenerSortKey) =>
     setSort((s) => {
       const cur = s ?? sort;
@@ -307,7 +311,9 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
   } else {
     body = (
       <>
-        {isMobile ? <PhoneList rows={shown} preset={preset} a={actions} day={planDate} /> : <DeskTable rows={shown} preset={preset} a={actions} day={planDate} sort={sort} onSort={onSort} />}
+        <div className={cn(stale && "opacity-60")}>
+          {isMobile ? <PhoneList rows={shown} preset={preset} a={actions} day={planDate} /> : <DeskTable rows={shown} preset={preset} a={actions} day={planDate} sort={sort} onSort={onSort} />}
+        </div>
         {rows.length > SHOW && (
           <Button type="button" variant="ghost" size="sm" className="mt-1 self-start" onClick={() => setAll((v) => !v)}>
             {all ? t("screener.showLess") : t("screener.showAll", { n: rows.length })}
@@ -321,7 +327,7 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
     <Panel
       aria-label={t("screener.aria")}
       title={t("screener.title")}
-      description={`${t(`screener.presetHint.${preset}`)} · ${updated}`}
+      description={<>{t(`screener.presetHint.${preset}`)} · {stale ? <span className="font-medium text-warn">{t("screener.stale", { ago: fmtRelative(q.data!.asOf!) })}</span> : updated}</>}
       icon={ScanSearch}
       className={className}
       actions={

@@ -3,6 +3,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import { BookOpenCheck, CalendarDays, ChevronLeft, ChevronRight, CloudUpload, History, Users } from "lucide-react";
 import { Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -81,6 +82,7 @@ export default function JournalPage() {
   // «Разбор по сделкам» (optional per-trade review) replaces the reflection column for the trader's own day.
   const [eodMode, setEodMode] = useState<boolean>(url.eod);
   const [view, setView] = useState<View>(isCurator ? url.view : "day");
+  const isMobile = useIsMobile();
   // Staff: their own day by default, "" = the whole team, or another person (components/journal/journal-account).
   const [account, setAccount] = useState<string>(() =>
     initialJournalAccount({ staff: isCurator, me: traderName, urlTrader: url.trader, stored: readLS(ACCOUNT_KEY) }));
@@ -292,42 +294,9 @@ export default function JournalPage() {
 
   const emptyDay = <EmptyDayNote date={activeDate} today={today} own={editable} opened={dayStats.opened} />;
 
-  return (
-    <Page>
-      <PageHeader
-        title={shellI18n.t("nav.journal")}
-        icon={BookOpenCheck}
-        description={view === "queue" ? t("page.descQueue") : t("page.descDay")}
-        actions={
-          isCurator ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Segmented<View>
-                size="sm"
-                ariaLabel={t("page.sectionAria")}
-                value={view}
-                onChange={setView}
-                options={[
-                  { value: "day", label: tc("time.day") },
-                  { value: "queue", label: overdueCount ? t("page.queueOverdue", { count: overdueCount }) : t("page.queue"), count: pendingCount || undefined },
-                ]}
-              />
-              {view === "day" && (
-                <StaffTraderPicker
-                  value={accountToPick(effectiveAccount)}
-                  onChange={(v) => changeAccount(pickToAccount(v))}
-                  me={traderName}
-                  names={allTraders}
-                  teamLabel={t("page.wholeTeam")}
-                  icon={Users}
-                  ariaLabel={tc("fields.trader")}
-                  className="w-full sm:w-auto sm:min-w-[13rem] sm:max-w-[18rem]"
-                />
-              )}
-            </div>
-          ) : null
-        }
-      >
-        {view === "day" && (
+  // The day switcher: under the title on desktop; on phones under the day's P&L (design audit wave 2B: the number
+  // first, the controls after it).
+  const dateNav = (
           <Toolbar className="justify-between">
             <div className="flex min-w-0 items-center gap-1">
               <Button
@@ -395,7 +364,44 @@ export default function JournalPage() {
               {dayTrades.length === 0 && !isFuture && jumpLatest}
             </div>
           </Toolbar>
-        )}
+  );
+
+  return (
+    <Page>
+      <PageHeader
+        title={shellI18n.t("nav.journal")}
+        icon={BookOpenCheck}
+        description={view === "queue" ? t("page.descQueue") : t("page.descDay")}
+        actions={
+          isCurator ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented<View>
+                size="sm"
+                ariaLabel={t("page.sectionAria")}
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "day", label: tc("time.day") },
+                  { value: "queue", label: overdueCount ? t("page.queueOverdue", { count: overdueCount }) : t("page.queue"), count: pendingCount || undefined },
+                ]}
+              />
+              {view === "day" && (
+                <StaffTraderPicker
+                  value={accountToPick(effectiveAccount)}
+                  onChange={(v) => changeAccount(pickToAccount(v))}
+                  me={traderName}
+                  names={allTraders}
+                  teamLabel={t("page.wholeTeam")}
+                  icon={Users}
+                  ariaLabel={tc("fields.trader")}
+                  className="w-full sm:w-auto sm:min-w-[13rem] sm:max-w-[18rem]"
+                />
+              )}
+            </div>
+          ) : null
+        }
+      >
+        {view === "day" && !isMobile && dateNav}
       </PageHeader>
 
       {isError && <QueryError error={error} onRetry={() => refetch()} />}
@@ -431,6 +437,7 @@ export default function JournalPage() {
               }
               empty={emptyDay}
             />
+            {isMobile && view === "day" && dateNav}
 
             {showTradeReview ? (
               <EodFlow trader={effectiveAccount} date={activeDate} today={today} onExit={() => setEodMode(false)} />

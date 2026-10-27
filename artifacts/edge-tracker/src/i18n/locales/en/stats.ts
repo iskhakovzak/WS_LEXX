@@ -45,6 +45,24 @@ export default {
   showAll: "Show all time",
   allHorizons: "All horizons",
 
+  verdict: {
+    head: "{value} {metric} {period}",
+    noValue: "{trades} {period}",
+    metric: { r: "R", net: "net", usd: "gross" },
+    period: { "7d": "in 7 days", "30d": "in 30 days", "90d": "in 90 days", ytd: "year to date", all: "all time", custom: "for {range}" },
+    prev: { "7d": "the previous 7 days", "30d": "the previous 30 days", "90d": "the previous 90 days" },
+    better: "{amount} better than {prev}",
+    worse: "{amount} worse than {prev}",
+    betterRange: "{amount} better than {prev}",
+    worseRange: "{amount} worse than {prev}",
+    same: "level with {prev}",
+    sameRange: "level with {prev}",
+    prevEmpty: "no trades before — nothing to compare with",
+  },
+  broker: {
+    title: "Broker report",
+    scope: "The whole PropReports report — not the period window above",
+  },
   kpi: {
     vsPrev: "Change vs the previous period",
     pf: "Profit factor",

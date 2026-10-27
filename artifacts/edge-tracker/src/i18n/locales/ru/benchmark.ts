@@ -20,6 +20,12 @@ export default {
   emptyHint: "Выберите период длиннее — сделки появятся здесь автоматически после закрытия.",
   tabsAria: "Виды бенчмарка",
   tab: { table: "Таблица", heatmap: "Тепловая карта", same: "Один тикер — один день", compare: "Сравнение двух", trend: "Тренд 4 нед." },
+  verdict: {
+    net: "Нетто деска {net}",
+    best: "лучший — {name} ({net})",
+    attention: "внимания требуют: {names}",
+    allClear: "внимания никто не требует",
+  },
   stat: {
     traders: "Трейдеров / сделок",
     tradersHint: "в перцентилях: {count} (≥ {min} сд.)",
@@ -39,7 +45,7 @@ export default {
   metric: {
     net: { label: "Нетто", hint: "Σ (pnl − |комиссии|)" },
     expectancy: { label: "Ожидание $", hint: "Нетто / сделки с $" },
-    winRate: { label: "Win rate", hint: "W / (W + L), безубыток исключён" },
+    winRate: { label: "Винрейт", hint: "W / (W + L), безубыток исключён" },
     profitFactor: { label: "PF", hint: "Σ нетто⁺ / |Σ нетто⁻|; нет убытков → —" },
     payoff: { label: "Плюс / минус", hint: "Средний плюс / |средний минус|" },
     sharpe: { label: "Sharpe", hint: "Среднее / σ дневного нетто × √252 (≥ 5 дней)" },
@@ -81,7 +87,7 @@ export default {
     notRecovered: "не восстановлен",
     greenRedTitle: "{green} зелёных / {red} красных",
     holdTitle: "Плюсовые {win}, минусовые {loss}",
-    footnote: "Деньги — нетто (pnl − |комиссии|). Win rate = W/(W+L). PF = Σ⁺/|Σ⁻|, «—» если нет убытков. Sharpe/Sortino — по дневному нетто × √252, от 5 дней. R — только по сделкам со стопом/риском. Бледные строки — меньше минимума сделок.",
+    footnote: "Деньги — нетто (pnl − |комиссии|). Винрейт = W/(W+L). PF = Σ⁺/|Σ⁻|, «—» если нет убытков. Sharpe/Sortino — по дневному нетто × √252, от 5 дней. R — только по сделкам со стопом/риском. Бледные строки — меньше минимума сделок.",
   },
 
   heatmap: {
@@ -176,7 +182,7 @@ export default {
 
   trend: {
     verdict: { better: "Лучше", worse: "Хуже", flat: "Без изменений", nodata: "Мало данных" },
-    col: { trades: "Сделки", net: "Нетто", winRate: "Win rate", profitFactor: "PF", expectancy: "Ожидание", greenShare: "Зел. дни", maxDd: "Макс. DD", feeShare: "Комиссии", totalR: "Σ R" },
+    col: { trades: "Сделки", net: "Нетто", winRate: "Винрейт", profitFactor: "PF", expectancy: "Ожидание", greenShare: "Зел. дни", maxDd: "Макс. DD", feeShare: "Комиссии", totalR: "Σ R" },
     weeksAria: "{trader}, недели: {list}",
     barTitle: "{week}: {value} · {trades} — {hint}",
     empty: "Нет сделок за последние 8 недель",

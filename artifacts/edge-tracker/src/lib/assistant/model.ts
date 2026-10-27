@@ -141,6 +141,30 @@ export function suggestionFor(page: PageKey, ctx: PageContext | null | undefined
   }
 }
 
+/** Screens whose header asks their own question (i18n assistant.headerAsk.<key>), by route prefix. */
+const HEADER_ASK_ROUTES = [["/stats", "stats"], ["/behavior", "behavior"], ["/office", "office"], ["/benchmark", "benchmark"]] as const;
+export type HeaderAskKey = (typeof HEADER_ASK_ROUTES)[number][1];
+
+/**
+ * The page header's assistant question (components/assistant/page-ask.tsx): a screen with its own header question,
+ * else the page's suggestion (trade, day, what-if, analytics, playbook entry), else the page's first starter
+ * (dashboard, trades, plan), else none («Спросить WS»).
+ */
+export type HeaderQuestion =
+  | { kind: "header"; key: HeaderAskKey }
+  | { kind: "chip"; key: Suggestion["key"]; intent: Suggestion["intent"] }
+  | { kind: "starter"; key: "dashboard" | "trades" | "plan"; intent?: Starter["intent"] }
+  | { kind: "none" };
+
+export function headerQuestionOf(route: string | undefined, page: PageKey, suggestion: Suggestion | null): HeaderQuestion {
+  const path = (route ?? "/").split("?")[0]!.replace(/\/+$/, "") || "/";
+  const hit = page === "trade" ? undefined : HEADER_ASK_ROUTES.find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`));
+  if (hit) return { kind: "header", key: hit[1] };
+  if (suggestion) return { kind: "chip", key: suggestion.key, intent: suggestion.intent };
+  if (page === "dashboard" || page === "trades" || page === "plan") return { kind: "starter", key: page, intent: STARTERS[page][0]?.intent };
+  return { kind: "none" };
+}
+
 /** Merge what the page published with the current location (the location wins for the route). */
 export function contextFor(location: string, published: PageContext | null): PageContext {
   return { ...(published ?? {}), route: location.slice(0, 300) };

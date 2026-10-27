@@ -1,28 +1,29 @@
-import { useId, useMemo } from "react";
+import { useId, useMemo, type ReactNode } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, X_AXIS, Y_AXIS, barGradients, tooltipProps, useBarFocus, useChartMotion } from "@/components/shared/charts";
-import { TrendingUp, TrendingDown, LineChart as LineIcon, BarChart3, ArrowRight, Clock, CandlestickChart } from "lucide-react";
-import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-chart";
+import { TrendingUp, TrendingDown, BarChart3, ArrowRight } from "lucide-react";
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
-import { type Unit, type DimensionKey, computeStats, equitySeries, valueIn, rHistogram, streaks, realizedR, median, edgeLeaders, breakdown, reliability, horizonLabel, HORIZONS } from "./metrics";
+import { type Unit, type DimensionKey, computeStats, rHistogram, realizedR, median, edgeLeaders, reliability } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
-import { maxDrawdownByDay } from "@/lib/trade-math";
 
 export function OverviewTab({
   trades,
   previous,
   unit,
   onOpenDimension,
+  reportLink,
 }: {
   trades: Trade[];
   previous: Trade[] | null;
   unit: Unit | null;
   onOpenDimension: (d: DimensionKey) => void;
+  /** The link card to /stats with the same slice (total, curve, calendar live there). */
+  reportLink?: ReactNode;
 }) {
   const { t } = analyticsI18n.useT();
   const motion = useChartMotion();
@@ -30,11 +31,6 @@ export function OverviewTab({
   const gid = `ovh${useId().replace(/:/g, "")}`;
   const s = useMemo(() => computeStats(trades), [trades]);
   const p = useMemo(() => (previous && previous.length ? computeStats(previous) : null), [previous]);
-  const series = useMemo(() => (unit ? equitySeries(trades, unit) : []), [trades, unit]);
-  const equityDays = useMemo(() => (unit ? buildDayCandles(trades, unit === "r" ? "r" : "net") : []), [trades, unit]);
-  // Canonical max DD (lib/trade-math): end-of-day closes — the same number the equity chart below shows (MAKSIM-08).
-  const dd = useMemo(() => (unit ? maxDrawdownByDay(trades, (tr) => valueIn(tr, unit)) ?? 0 : 0), [trades, unit]);
-  const st = useMemo(() => streaks(trades), [trades]);
   const hist = useMemo(() => rHistogram(trades), [trades]);
   const rValues = useMemo(() => trades.map(realizedR).filter((v): v is number => v != null), [trades]);
   const leaders = useMemo(() => edgeLeaders(trades, s.rN >= Math.max(3, s.n * 0.5)), [trades, s]);
@@ -42,7 +38,6 @@ export function OverviewTab({
   const isR = unit === "r";
   const fmt = (v: number | null | undefined) => (isR ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const expectancy = isR ? s.avgR : s.avgPnl;
-  const total = isR ? (s.rN ? s.totalR : null) : (s.pnlN ? s.totalPnl : null);
   const pf = isR ? s.pfR : s.pfPnl;
   const prevExp = p ? (isR ? p.avgR : p.avgPnl) : null;
   const rel = reliability(s.n);
@@ -60,11 +55,9 @@ export function OverviewTab({
   const rMed = median(rValues);
   const bigWins = rValues.filter((v) => v >= 2).length;
   const be = s.be;
-  const showGross = unit === "usd" && s.totalFees > 0;
   const avgWin = isR ? s.avgWinR : s.avgWinPnl;
   const avgLoss = isR ? s.avgLossR : s.avgLossPnl;
   const payoffUnit = avgWin != null && avgLoss != null && avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : payoff;
-  const horizons = useMemo(() => breakdown(trades, "horizon"), [trades]);
   const unitText = isR ? t("unit.r") : t("unit.usd");
   const tradesHint = [
     t("overview.tradesHint", { wins: s.wins, losses: s.losses }),
@@ -74,7 +67,8 @@ export function OverviewTab({
 
   return (
     <div className="flex flex-col gap-section">
-      <StatGrid>
+      {/* Edge quality only: the period's total, curve, drawdown and streaks are the /stats report (the link below). */}
+      <StatGrid className="grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4">
         <StatCard
           label={t("overview.trades")}
           value={fmtCount(s.n)}
@@ -84,7 +78,6 @@ export function OverviewTab({
         <StatCard
           label={commonI18n.t("trading.winRate")}
           value={s.decided ? fmtRate(s.winRate) : "—"}
-          tone={s.decided ? (s.winRate >= 0.5 ? "up" : "down") : "neutral"}
           hint={s.decided ? t("overview.winRateHint", { lo: fmtRate(s.wrLow), hi: fmtRate(s.wrHigh) }) : t("overview.noClosed")}
           {...delta(s.decided ? s.winRate : null, p?.decided ? p.winRate : null, "pp")}
         />
@@ -99,71 +92,30 @@ export function OverviewTab({
           label={t("overview.pf")}
           value={unit ? fmtRatio(pf) : "—"}
           tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
-          hint={pf != null ? (pf >= 1.5 ? t("overview.pfStrong") : pf >= 1 ? t("overview.pfPositive") : t("overview.pfNegative")) : unit ? t("overview.pfUndefined") : undefined}
-        />
-        <StatCard
-          label={t("overview.avgWinLoss")}
-          value={
-            // Wraps between the two amounts in a narrow card instead of «+$42.93 / −$60.…»
-            <span className="whitespace-normal">
-              <span className="whitespace-nowrap text-up">{avgWin != null ? (isR ? fmtNum(avgWin, { decimals: 1, signed: true }) : fmtUsd(avgWin, { signed: true, decimals: "auto" })) : "—"}</span>
-              <span className="text-muted-foreground"> / </span>
-              <span className="whitespace-nowrap text-down">{avgLoss != null ? (isR ? fmtNum(avgLoss, { decimals: 1, signed: true }) : fmtUsd(avgLoss, { signed: true, decimals: "auto" })) : "—"}</span>
-            </span>
-          }
-          hint={payoffUnit != null ? t("overview.payoff", { unit: unitText, value: fmtNum(payoffUnit) }) : unitText}
-        />
-        <StatCard
-          label={isR ? t("overview.totalR") : t("overview.totalUsd")}
-          value={unit ? fmt(total) : "—"}
-          tone={toneOf(total)}
-          hint={unit ? (isR ? t("overview.baseR", { n: s.rN, m: s.n - s.open }) : t("overview.overTrades", { count: s.pnlN })) : undefined}
-        />
-        <StatCard
-          label={t("overview.maxDd")}
-          value={series.length ? fmt(dd) : "—"}
-          tone={dd < 0 ? "down" : "neutral"}
-          hint={t("overview.fromPeak")}
-        />
-        <StatCard
-          label={t("overview.streaks")}
-          value={
-            <span>
-              <span className="text-up">{st.maxWin}</span>
-              <span className="text-muted-foreground"> / </span>
-              <span className="text-down">{st.maxLoss}</span>
-            </span>
-          }
-          hint={st.current === 0 ? t("overview.streaksHint") : st.current > 0 ? t("overview.streakNowWin", { count: st.current }) : t("overview.streakNowLoss", { count: Math.abs(st.current) })}
+          hint={payoffUnit != null ? t("overview.payoff", { unit: unitText, value: fmtNum(payoffUnit) }) : pf != null ? (pf >= 1.5 ? t("overview.pfStrong") : pf >= 1 ? t("overview.pfPositive") : t("overview.pfNegative")) : unit ? t("overview.pfUndefined") : undefined}
         />
       </StatGrid>
 
-      <Panel
-        icon={CandlestickChart}
-        title={t("overview.equity")}
-        description={unit ? t("overview.equityHint", { unit: unitText }) : undefined}
-      >
-        {unit ? (
-          <div className="flex flex-col gap-2">
-            <EquityChart days={equityDays} unit={isR ? "r" : "net"} trader={soleTrader(trades)} storageKey="analytics.equity" height={440} />
-            {showGross && (
-              <p className="px-1 text-xs text-muted-foreground tabular-nums">
-                {t("overview.beforeFees", { gross: fmtUsd(s.grossPnl, { signed: true, decimals: "auto" }) })} <span className="text-down">{fmtUsd(-Math.abs(s.totalFees), { decimals: Math.abs(s.totalFees) >= 100 ? 0 : 2 })}</span>
-                {s.grossPnl > 0 && ` ${t("overview.feesShareOfGross", { share: fmtRate(s.totalFees / s.grossPnl) })}`} {t("overview.afterFees", { net: fmtUsd(s.totalPnl, { signed: true, decimals: "auto" }) })}
-              </p>
-            )}
-          </div>
-        ) : (
-          <EmptyState
-            icon={LineIcon}
-            title={t("overview.nothingToDraw")}
-            description={t("overview.nothingToDrawHint")}
-          />
-        )}
-      </Panel>
-
-      <div className="grid grid-cols-1 gap-grid lg:grid-cols-3">
-        <Panel icon={BarChart3} title={t("overview.rDist")} description={t("overview.rDistHint")}>
+      <div className="grid grid-cols-1 items-start gap-grid md:grid-cols-2 xl:grid-cols-3">
+        <LeaderPanel
+          title={t("overview.edgeTitle")}
+          description={t("overview.edgeHint")}
+          icon={TrendingUp}
+          items={leaders.best}
+          useR={s.rN >= Math.max(3, s.n * 0.5)}
+          onOpenDimension={onOpenDimension}
+          empty={t("overview.edgeEmpty")}
+        />
+        <LeaderPanel
+          title={t("overview.weakTitle")}
+          description={t("overview.weakHint")}
+          icon={TrendingDown}
+          items={leaders.worst}
+          useR={s.rN >= Math.max(3, s.n * 0.5)}
+          onOpenDimension={onOpenDimension}
+          empty={t("overview.weakEmpty")}
+        />
+        <Panel icon={BarChart3} title={t("overview.rDist")} description={t("overview.rDistHint")} className="md:col-span-2 xl:col-span-1">
           {rValues.length > 0 ? (
             <div className="flex flex-col gap-3">
               <div className="h-[190px]">
@@ -191,84 +143,11 @@ export function OverviewTab({
           )}
           <OutcomeBar wins={s.wins} losses={s.losses} be={be} />
         </Panel>
-        <Panel
-          className="lg:col-span-2"
-          icon={Clock}
-          title={t("overview.byHorizon")}
-          description={t("overview.byHorizonHint")}
-          actions={
-            <button type="button" onClick={() => onOpenDimension("horizon")} className="text-xs text-primary hover:underline">
-              {t("overview.more")}
-            </button>
-          }
-        >
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {HORIZONS.map((h) => {
-              const r = horizons.find((x) => x.key === h);
-              const rel = reliability(r?.n ?? 0);
-              return (
-                <div key={h} className="rounded-xl bg-[var(--glass-bg)] p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-foreground">{horizonLabel(h)}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{r ? commonI18n.t("units.trades", { count: r.n }) : t("overview.noTrades")}</span>
-                  </div>
-                  {r ? (
-                    <>
-                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
-                        <div>
-                          <div className="text-muted-foreground">{commonI18n.t("trading.winRate")}</div>
-                          <div className={`text-sm font-semibold ${r.winRate >= 0.5 ? "text-up" : "text-down"}`}>{fmtRate(r.winRate)}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">{t("overview.expectancy")}</div>
-                          <div className={`text-sm font-semibold ${toneCls(r.avgR)}`}>{fmtR(r.avgR)}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">{t("overview.netPnl")}</div>
-                          <div className={`text-sm font-semibold ${toneCls(r.pnlN ? r.totalPnl : null)}`} title={r.totalFees ? t("overview.feesTitle", { value: fmtUsd(-Math.abs(r.totalFees)) }) : undefined}>
-                            {r.pnlN ? fmtUsd(r.totalPnl, { signed: true, decimals: "auto" }) : "—"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-2xs text-muted-foreground">{rel.label}{r.totalFees ? ` · ${t("overview.feesLower", { value: fmtUsd(-Math.abs(r.totalFees), { decimals: Math.abs(r.totalFees) >= 100 ? 0 : 2 }) })}` : ""}</div>
-                    </>
-                  ) : (
-                    <p className="mt-2 text-xs text-muted-foreground">{t("overview.markHorizon")}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
       </div>
 
-      <div className="grid grid-cols-1 gap-grid md:grid-cols-2">
-        <LeaderPanel
-          title={t("overview.edgeTitle")}
-          description={t("overview.edgeHint")}
-          icon={TrendingUp}
-          items={leaders.best}
-          useR={s.rN >= Math.max(3, s.n * 0.5)}
-          onOpenDimension={onOpenDimension}
-          empty={t("overview.edgeEmpty")}
-        />
-        <LeaderPanel
-          title={t("overview.weakTitle")}
-          description={t("overview.weakHint")}
-          icon={TrendingDown}
-          items={leaders.worst}
-          useR={s.rN >= Math.max(3, s.n * 0.5)}
-          onOpenDimension={onOpenDimension}
-          empty={t("overview.weakEmpty")}
-        />
-      </div>
+      {reportLink}
     </div>
   );
-}
-
-function toneCls(v: number | null | undefined) {
-  const t = toneOf(v ?? null);
-  return t === "up" ? "text-up" : t === "down" ? "text-down" : "text-muted-foreground";
 }
 
 function MiniStat({ label, value, tone = "neutral" }: { label: string; value: string; tone?: Tone }) {

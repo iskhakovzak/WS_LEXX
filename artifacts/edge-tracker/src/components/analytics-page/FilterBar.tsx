@@ -17,10 +17,8 @@ export type FilterOptions = {
   setups: string[];
   hasNoSetup: boolean;
   tickers: string[];
-  /** Broker accounts seen in the data (PropReports); empty when everything is manual. */
+  /** Broker accounts seen in the data (PropReports). Trades come only from PropReports: no source switch. */
   accounts: string[];
-  /** True when both manual and PropReports trades exist, so the source switch is meaningful. */
-  hasMixedSources: boolean;
 };
 
 export function FilterBar({
@@ -32,7 +30,6 @@ export function FilterBar({
   hasPnl,
   hasR,
   traderPicker,
-  showSource = false,
   className,
 }: {
   filters: AnalyticsFilters;
@@ -44,8 +41,6 @@ export function FilterBar({
   hasR: boolean;
   /** Staff: the trader picker (own book · whole team · a person), always shown — it decides what every tab reads. */
   traderPicker?: ReactNode;
-  /** Staff only: trades come from PropReports automatically, the manual/broker split is a staff concern. */
-  showSource?: boolean;
   className?: string;
 }) {
   const { t } = analyticsI18n.useT();
@@ -120,20 +115,6 @@ export function FilterBar({
             {filters.account && !options.accounts.includes(filters.account) && <SelectItem value={filters.account}>{filters.account}</SelectItem>}
           </SelectContent>
         </Select>
-      )}
-
-      {showSource && (options.hasMixedSources || filters.source) && (
-        <Segmented<"all" | "manual" | "propreports">
-          ariaLabel={t("filters.source")}
-          size="sm"
-          options={[
-            { value: "all", label: t("filters.allSources") },
-            { value: "manual", label: t("filters.manual") },
-            { value: "propreports", label: "PropReports" },
-          ]}
-          value={filters.source || "all"}
-          onChange={(v) => set("source", v === "all" ? "" : v)}
-        />
       )}
 
       <form

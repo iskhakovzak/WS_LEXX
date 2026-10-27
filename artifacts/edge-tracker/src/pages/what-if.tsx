@@ -23,6 +23,7 @@ import { ComboPanel, ownSet } from "@/components/what-if/combo-panel";
 import { MyRulesPanel } from "@/components/what-if/my-rules-panel";
 import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, mergeRule, removeRule, subtractRule } from "@/components/what-if/rules";
 import { SuggestionCards, SuggestionsNote } from "@/components/what-if/suggestions-panel";
+import { useBestRulePrefill } from "@/components/what-if/best-rule";
 import { ScenarioBar } from "@/components/what-if/scenario-bar";
 import { BootstrapDetails, DeltaHeadline, KeyMetrics, MetricsTable } from "@/components/what-if/compare-panel";
 import { DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
@@ -35,7 +36,7 @@ import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM } from "@/components/people/staff-scope";
 import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
-import { AskAssistantButton } from "@/components/shared/ask-assistant";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
@@ -171,6 +172,9 @@ export default function WhatIf() {
   const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
   // Fee table by trader / account / month / setup / horizon (/api/edge/costs) — same trader and period as the page.
 
+  // The page header's assistant question reads the same period and trader.
+  useAssistantContext({ ...(win.from ? { from: win.from } : {}), ...(win.to ? { to: win.to } : {}), ...(scopeTrader ? { trader: scopeTrader } : {}) });
+
   const traders = useMemo(
     () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
     [dbUsers],
@@ -205,6 +209,7 @@ export default function WhatIf() {
 
   const run = useWhatIfRun(scope, runRules, hasRules && hasTrades);
   const suggestions = useWhatIfSuggestions(scope, hasTrades);
+  const { isAuto } = useBestRulePrefill({ linked: init.rules.length > 0, suggestions: suggestions.data?.suggestions, supported, rules, setRules });
   // «Набор правил» (the best sets + the scenario as a set) and «Мои правила в деле» (the trader's own rules).
   const combos = useWhatIfCombos(scope, useMemo(() => ownSet(runRules), [runRules]), hasTrades);
   const myRules = useMyRules(isCurator ? scopeTrader : "", hasTrades && user?.role !== "guest");
@@ -255,8 +260,12 @@ export default function WhatIf() {
           <span className="tabular-nums">{t("meta", { trades: commonI18n.t("units.trades", { count: base.data.trades.length }), days: t("tradingDays", { count: base.data.baseline.days }), period: periodPhrase })}</span>
         ) : null
       }
-      actions={<>{controls}<AskAssistantButton context={{ ...(win.from ? { from: win.from } : {}), ...(win.to ? { to: win.to } : {}), ...(scopeTrader ? { trader: scopeTrader } : {}) }} /><HelpButton id="whatIf" /></>}
-    />
+      actions={<HelpButton id="whatIf" />}
+    >
+      {/* The scope (period, person) in one row under the title: the h1 keeps its width, the header's assistant
+          question keeps its place (design audit wave 2B). */}
+      <div className="flex flex-wrap items-center gap-2">{controls}</div>
+    </PageHeader>
     <PageHint id="whatIf" />
   </>);
 
@@ -316,11 +325,10 @@ export default function WhatIf() {
       {header}
       <RangeFacetsPanel rf={rf} />
 
-      <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
-
-
-      <Panel title={t("result")} icon={TrendingUp} aria-busy={recalculating || undefined}>
+      {/* Scenarios and the result first, in one panel right under the header (design audit wave 2B). */}
+      <Panel title={t("result")} icon={TrendingUp} aria-busy={recalculating || undefined} actions={isAuto ? <Pill tone="neutral" title={t("autoPickedHint")}>{t("autoPicked")}</Pill> : undefined}>
         <div className="flex flex-col gap-4">
+          <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
           <ScenarioBar
             rules={rules}
             skipped={skipped}
@@ -349,8 +357,11 @@ export default function WhatIf() {
               {t("runError", { message: (run.error as Error | null)?.message ?? t("serverError") })}
             </p>
           )}
-          <div className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none", recalculating && "opacity-60")}>
+          {/* Phones: the answer (before → after) is the first number on the screen, above the question chips. */}
+          <div className={cn("transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none max-sm:order-first", recalculating && "opacity-60")}>
             <DeltaHeadline baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} bootstrap={r?.bootstrap ?? null} />
+          </div>
+          <div className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none", recalculating && "opacity-60")}>
             {hasRules && !r ? (
               <ChartSkeleton bare title={false} height={340} />
             ) : (

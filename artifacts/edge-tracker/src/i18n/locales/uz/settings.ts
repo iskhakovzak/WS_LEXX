@@ -4,7 +4,7 @@ import type ru from "../ru/settings";
 export default {
   page: {
     title: "Sozlamalar",
-    description: "Profil, savdo parametrlari, bildirishnomalar va jamoa",
+    description: "Shaxsiy sozlamalaringiz: profil, koʻrinish, savdo, bildirishnomalar, xavfsizlik",
     telegramNotLinked: "Telegram ulanmagan",
   },
   sections: {
@@ -12,11 +12,8 @@ export default {
     appearance: { label: "Koʻrinish", description: "Interfeys mavzusi" },
     trading: { label: "Savdo", description: "Hisob, risk, komissiyalar, leverej" },
     notifications: { label: "Bildirishnomalar", description: "Dayjest va Telegram xabarnomalari" },
-    team: { label: "Jamoa", description: "Foydalanuvchilar, rollar, biriktirishlar" },
-    permissions: { label: "Kirish huquqlari", description: "Rollar boʻyicha huquqlar matritsasi" },
-    data: { label: "Maʼlumotlar va zaxira", description: "CSV eksport, maʼlumotlar bazasi zaxirasi" },
-    integrations: { label: "Integratsiyalar", description: "Telegram bot, ommaviy xabarlar" },
     security: { label: "Xavfsizlik", description: "Ekran qulfi va tezkor kirish kodi" },
+    desk: { label: "Desk pulti", description: "Jamoa, huquqlar, zaxiralar, integratsiyalar" },
   },
   nav: {
     aria: "Sozlamalar boʻlimlari",
@@ -35,16 +32,14 @@ export default {
     overYear: "bir yildan koʻp oldin",
   },
   profile: {
+    statsLink: "Statistika va broker hisoboti — profilda",
+    statsLinkHint: "Savdolar, natijalar va PropReports broker statistikasi",
     guest: "Siz mehmon rejimidasiz. Profil, bildirishnomalar va savdo parametrlarini sozlash uchun oʻz ismingiz bilan kiring.",
     memberSince: "{date}dan beri jamoada",
     member: "WS_Desk jamoasi aʼzosi",
     telegramLinked: "Telegram ulangan",
     connectTelegram: "Telegramni ulash",
     theme: "Mavzu: {name}",
-    tradesInJournal: "Jurnaldagi savdolar",
-    since: "{date}dan",
-    last30: "Soʻnggi 30 kun",
-    lastTrade: "Oxirgi savdo",
     myTeam: "Mening jamoam",
     myTeamStaff: "Biriktirishlar va biriktirilgan treyderlar",
     myTeamTrader: "Deskda sizni kim olib boradi",

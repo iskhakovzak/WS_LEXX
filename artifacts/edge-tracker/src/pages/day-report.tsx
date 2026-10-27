@@ -34,7 +34,7 @@ import { DeskDayChips } from "@/components/shared/desk-day-link";
 import { TickerContextList } from "@/components/shared/finviz/ticker-context";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
-import { AskAssistantButton, useAssistantContext } from "@/components/shared/ask-assistant";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
 import { AiReviewCard } from "@/components/shared/ai-review-card";
 
 const PRINT_CSS = `
@@ -164,7 +164,6 @@ export default function DayReportPage() {
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />
-          <AskAssistantButton context={{ date, ...(trader ? { trader } : {}) }} />
           {isCurator && (
             <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders} self={me} className="w-44" ariaLabel={commonI18n.t("fields.trader")} />
           )}

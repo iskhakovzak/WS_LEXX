@@ -14,6 +14,7 @@ import { ClampedText } from "@/components/ds/clamped-text";
 import { StatStripContext, isZeroValue } from "@/components/ds/stat-strip";
 import { useEdgeFade } from "@/components/ds/edge-fade";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
+import { PageAskSlot } from "@/components/ds/page-ask-slot";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtRelative } from "@/i18n/format";
 
@@ -147,6 +148,7 @@ export function PageHeader({
   className,
   meta,
   size = "default",
+  ask = true,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
@@ -158,13 +160,16 @@ export function PageHeader({
   /** Small line under the description: «обновлено …», counters, status pills. */
   meta?: React.ReactNode;
   size?: "default" | "compact";
+  /** The assistant's one desktop entry (this screen's question, Ctrl+J) at the end of the actions; false = none. */
+  ask?: boolean;
 }) {
   const compact = size === "compact";
   return (
     <header className={cn("flex flex-col", compact ? "gap-3" : "gap-4", className)}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        {/* The title block keeps at least 20rem (or the full width): actions wrap below it rather than squeezing it. */}
-        <div className="fade-in-quick min-w-[min(100%,20rem)] flex-1">
+        {/* The title block keeps at least 20rem (or the full width): actions wrap below it rather than squeezing it. On
+            phones 14rem, so one small action (help «?») sits beside the title instead of taking a row of its own. */}
+        <div className="fade-in-quick min-w-[min(100%,14rem)] flex-1 sm:min-w-[min(100%,20rem)]">
           <h1
             className={cn(
               "text-balance break-words text-foreground",
@@ -178,7 +183,12 @@ export function PageHeader({
             : <ClampedText className="mt-1">{description}</ClampedText>)}
           {meta && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
         </div>
-        {actions && <div className={cn("flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2", compact ? "min-h-8" : "min-h-9")}>{actions}</div>}
+        {(actions || ask) && (
+          <div className={cn("flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2 empty:hidden", compact ? "min-h-8" : "min-h-9")}>
+            {actions}
+            {ask && <PageAskSlot />}
+          </div>
+        )}
       </div>
       {children}
     </header>
@@ -285,7 +295,7 @@ export function StatCard({
   showIcon?: boolean;
   className?: string;
   onClick?: () => void;
-  /** Optional inline trend (e.g. last 20 sessions of net P&L) drawn under the value. */
+  /** Optional inline trend (e.g. last 20 sessions of net P&L) drawn under the value; coloured like `tone`. */
   spark?: ReadonlyArray<number | null | undefined>;
   sparkTone?: Tone | "auto";
   /** Glossary term: adds an (i) with the explanation next to the label (see TermTooltip). */
@@ -363,7 +373,9 @@ export function StatCard({
       {spark && spark.length > 1 && (
         <Sparkline
           data={spark}
-          tone={sparkTone ?? "auto"}
+          // Colour says good / bad (design audit): the card's own verdict (the sign of its total), never the window's
+          // direction — a curve that ends +$7,107 is not red because its last week dipped. No verdict = neutral.
+          tone={sparkTone ?? (tone === "up" || tone === "down" ? tone : "neutral")}
           width={160}
           height={28}
           className={cn("w-full pt-1", !(delta || hint) && "mt-auto")}

@@ -15,7 +15,12 @@ export default {
     whatIf: { label: "Which rule would help most?", prompt: "Which single rule would have helped me most on my trades? How far can I trust that?" },
     analytics: { label: "Where is my edge, where are my leaks?", prompt: "Where is my edge and where do I lose, by my edge map and patterns? What of it is still a hypothesis?" },
     playbook: { label: "What is this setup missing?", prompt: "Which sections and conditions is this setup missing? Check it against my trades in it." },
-    dismiss: "Hide the suggestion",
+  },
+  headerAsk: {
+    stats: { label: "How did this period go?", prompt: "Sum up this period: the result against the previous one of the same length, what made money, where it leaked, and one focus going forward." },
+    behavior: { label: "Which habit costs most?", prompt: "Which of my habits cost me the most in this period, and which single rule would fix it?" },
+    office: { label: "What is dragging the office down?", prompt: "From the office stats: what is dragging the result down, what is making money, and one recommendation for next month." },
+    benchmark: { label: "Who needs attention?", prompt: "Which traders on the benchmark need attention and why? One reason and one action per person." },
   },
   boost: {
     label: "Deeper",

@@ -45,10 +45,10 @@ export function BrokerStatsCard({ trader, title, className }: { trader: string |
     >
       <StatGrid className="md:grid-cols-3 xl:grid-cols-6">
         <StatCard label={commonI18n.t("trading.netPnl")} value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} hint={t("broker.grossHint", { value: fmtUsd(s.gross, { signed: true }) })} />
-        <StatCard label={commonI18n.t("trading.fees")} value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"}
+        <StatCard label={commonI18n.t("trading.fees")} value={fmtUsd(s.fees)}
           hint={s.feesPctOfGross != null ? t("broker.feesShare", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }) }) : undefined} />
         <StatCard label={t("broker.trades")} value={fmtCount(s.trades)} hint={`${s.wins} W / ${s.losses} L`} />
-        <StatCard label="Win rate" value={fmtPct(s.winRate, { decimals: 1, signed: false })} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
+        <StatCard label={commonI18n.t("trading.winRate")} value={fmtPct(s.winRate, { decimals: 1, signed: false })} />
         <StatCard label={t("broker.longNet")} value={fmtUsd(longNet, { signed: true })} tone={toneOf(longNet)} />
         <StatCard label={t("broker.shortNet")} value={fmtUsd(shortNet, { signed: true })} tone={toneOf(shortNet)} />
       </StatGrid>

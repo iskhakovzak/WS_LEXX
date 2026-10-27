@@ -62,11 +62,11 @@ function SideCard({ title, row }: { title: string; row: PerfRow | null }) {
         <Pill tone={toneOf(row.totals.net)}>{t("perf.netPill", { value: fmtUsd(row.totals.net, { signed: true }) })}</Pill>
       </div>
       <StatRow label={t("perf.trades")} value={t("perf.tradesWL", { count: row.trades, wins: row.wins.count, losses: row.losses.count })} />
-      <StatRow label="Win rate" value={pct(row.totals.winRate)} tone={row.totals.winRate != null && row.totals.winRate >= 50 ? "up" : "neutral"} />
-      <StatRow label="Gross" value={fmtUsd(row.totals.gross, { signed: true })} tone={toneOf(row.totals.gross)} />
+      <StatRow label={commonI18n.t("trading.winRate")} value={pct(row.totals.winRate)} />
+      <StatRow label={commonI18n.t("trading.gross")} value={fmtUsd(row.totals.gross, { signed: true })} tone={toneOf(row.totals.gross)} />
       <StatRow label={t("perf.fees")} value={fmtUsd(row.totals.fees)} />
       <StatRow label={t("perf.avgWinLoss")} value={`${fmtUsd(row.wins.avgGross)} / ${fmtUsd(row.losses.avgGross)}`} />
-      <StatRow label="W/L ratio" value={fmtNum(row.totals.wlRatio)} />
+      <StatRow label={propreportsI18n.t("perf.wlRatio")} value={fmtNum(row.totals.wlRatio)} />
       <StatRow label={t("perf.avgHold")} value={fmtHold(row.totals.avgHoldSeconds, row.totals.avgHold)} />
     </div>
   );
@@ -119,7 +119,7 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
             <tr>
               <SortableTh {...sorted.thProps("label")}>{t("perf.col.ticker")}</SortableTh>
               <SortableTh {...sorted.thProps("trades")} align="right">{t("perf.col.trades")}</SortableTh>
-              <SortableTh {...sorted.thProps("winRate")} align="right">Win rate</SortableTh>
+              <SortableTh {...sorted.thProps("winRate")} align="right">{commonI18n.t("trading.winRate")}</SortableTh>
               <SortableTh {...sorted.thProps("gross")} align="right">Gross</SortableTh>
               <SortableTh {...sorted.thProps("fees")} align="right">{t("perf.col.fees")}</SortableTh>
               <SortableTh {...sorted.thProps("net")} align="right">Net</SortableTh>
@@ -166,11 +166,11 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
       {/* Seven cards in one row from 1600 px (tighter padding); below that 4 + 3, so long EN/UZ values («20 daq 12 s») never truncate. */}
       <StatGrid className="md:grid-cols-4 min-[1600px]:grid-cols-7">
         <StatCard className={TIGHT} label={t("perf.trades")} value={s.trades} hint={`${s.wins} W / ${s.losses} L`} />
-        <StatCard className={TIGHT} label="Win rate" value={pct(s.winRate)} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
-        <StatCard className={TIGHT} label="Gross P&L" value={fmtUsd(s.gross, { signed: true })} tone={toneOf(s.gross)} />
-        <StatCard className={TIGHT} label={t("perf.fees")} value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"} hint={s.feesPctOfGross != null ? t("perf.feesHint", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }) }) : undefined} />
-        <StatCard className={TIGHT} label="Net P&L" value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} />
-        <StatCard className={TIGHT} label="W/L ratio" value={fmtNum(s.wlRatio)} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
+        <StatCard className={TIGHT} label={commonI18n.t("trading.winRate")} value={pct(s.winRate)} />
+        <StatCard className={TIGHT} label={commonI18n.t("trading.gross")} value={fmtUsd(s.gross, { signed: true })} tone={toneOf(s.gross)} />
+        <StatCard className={TIGHT} label={t("perf.fees")} value={fmtUsd(s.fees)} hint={s.feesPctOfGross != null ? t("perf.feesHint", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }) }) : undefined} />
+        <StatCard className={TIGHT} label={commonI18n.t("trading.net")} value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} />
+        <StatCard className={TIGHT} label={t("perf.wlRatio")} value={fmtNum(s.wlRatio)} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
         <StatCard className={TIGHT} label={t("perf.avgHoldShort")} value={fmtHold(s.avgHoldSeconds, s.avgHold)} />
       </StatGrid>
 
@@ -181,8 +181,8 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
       )}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <SideCard title="Long" row={data.bySide.long} />
-        <SideCard title="Short" row={data.bySide.short} />
+        <SideCard title={commonI18n.t("trading.long")} row={data.bySide.long} />
+        <SideCard title={commonI18n.t("trading.short")} row={data.bySide.short} />
       </div>
 
       {!compact && (

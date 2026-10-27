@@ -7,11 +7,12 @@ import { ACTIVE_DOT, CHART, DRAW_MS, GlassTooltip, STROKE, ZERO_LINE, pnlPaint, 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { links } from "@/lib/links";
 import { useDayReport, type DayReport } from "@/components/day-report/api";
 import { dayHints, type DayHint, type HintTone } from "./day-hints";
 import { netPnl, type DayStats } from "./utils";
-import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
 import { dayHref } from "@/lib/period-links";
@@ -62,24 +63,29 @@ export function DaySummary({
   const net = stats.pnl;
   const best = stats.best ? netPnl(stats.best) : null;
   const worst = stats.worst && stats.worst !== stats.best ? netPnl(stats.worst) : null;
+  // Phones (design audit wave 2B): the day's P&L is the first thing read — the status / IMX / «Разбор дня» controls
+  // move under the number, and the panel names its day (the date switcher sits below it there).
+  const isMobile = useIsMobile();
+  const controls = (
+    <div className="flex flex-wrap items-center gap-2">
+      {status}
+      {hasTrades && <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />}
+      {trader && hasTrades && (
+        <Button asChild variant="outline" size="sm">
+          <Link href={dayReportHref(date, trader)}>
+            {t("summary.dayReport")}<ArrowUpRight aria-hidden="true" />
+          </Link>
+        </Button>
+      )}
+    </div>
+  );
 
   return (
     <Panel
       title={t("summary.title")}
+      description={isMobile ? fmtDate(date, "weekdayDayMonthLong") : undefined}
       icon={ListChecks}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          {status}
-          {hasTrades && <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />}
-          {trader && hasTrades && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={dayReportHref(date, trader)}>
-                {t("summary.dayReport")}<ArrowUpRight aria-hidden="true" />
-              </Link>
-            </Button>
-          )}
-        </div>
-      }
+      actions={isMobile && hasTrades ? undefined : controls}
     >
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -104,6 +110,7 @@ export function DaySummary({
                   </div>
                 )}
               </div>
+              {isMobile && controls}
               {/* 4 columns only when the column is wide enough (was 4 × ~50px at 1440: «+$2…», «5 green…») */}
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 @md:grid-cols-4">
                 <Mini label={tc("trading.trades")} value={stats.trades} hint={stats.open ? t("summary.winsLossesOpen", { wins: stats.wins, losses: stats.losses, open: stats.open }) : t("summary.winsLosses", { wins: stats.wins, losses: stats.losses })} />

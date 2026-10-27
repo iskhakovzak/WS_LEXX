@@ -18,7 +18,7 @@ import { MarkReadButton, ReadStatusPanel } from "@/components/game-plan/read-sta
 import { HistoryPanel } from "@/components/game-plan/history-panel";
 import { PlanEditorSheet } from "@/components/game-plan/plan-editor-sheet";
 import { HORIZON, dateObj, gpApi, gpKeys, isIsoDate, nyToday, shiftTradingDay, type Horizon } from "@/components/game-plan/types";
-import { fmtRelative, fmtUsd } from "@/lib/format";
+import { fmtUsd } from "@/lib/format";
 import { nyClock } from "@/components/shared/finviz/model";
 import { DeskMorning } from "@/components/game-plan/desk-morning";
 import { defaultPlanView, deskEmptyKind, deskEmptyTitle, type PlanView } from "@/components/game-plan/plan-defaults";
@@ -54,17 +54,6 @@ function isTypingTarget(t: EventTarget | null) {
   if (!(t instanceof Element)) return false;
   const el = t as HTMLElement;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
-}
-
-/** "updated N min ago" in the UI language — re-renders every 15s. */
-function useAgo(ts: number) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => tick((n) => n + 1), 15_000);
-    return () => window.clearInterval(id);
-  }, []);
-  if (!ts) return "";
-  return gpI18n.t("page.updatedAgo", { ago: fmtRelative(ts) });
 }
 
 export default function GamePlanPage() {
@@ -120,7 +109,6 @@ export default function GamePlanPage() {
 
   const data = dayQ.data;
   const plan = data?.plan ?? null;
-  const ago = useAgo(dayQ.dataUpdatedAt);
 
   const go = useCallback((d: string) => {
     setDate(d);
@@ -175,7 +163,7 @@ export default function GamePlanPage() {
       <PageHeader
         title={shellI18n.t("nav.gamePlan")}
         icon={Compass}
-        description={t("page.description", { ago: ago || t("page.timeEt") })}
+        description={t("page.description", { ago: t("page.timeEt") })}
         actions={
           <>
             <nav aria-label={t("page.dayNav")} className="glass-field inline-flex items-center gap-0.5 p-1">
@@ -251,7 +239,6 @@ export default function GamePlanPage() {
       </PageHeader>
 
       {!!user && <RegimeDayView date={date} variant="strip" />}
-      {view === "desk" && isToday && <MorningScreener planDate={date} />}
       {view === "my" ? (
         <MyPlan date={date} deskPlan={plan} />
       ) : view === "traders" ? (
@@ -386,6 +373,7 @@ export default function GamePlanPage() {
         </aside>
       </div>
       )}
+      {view === "desk" && isToday && <MorningScreener planDate={date} /> /* after the plan and «В игре» (wave 2B) */}
 
       {isCurator && (
         <PlanEditorSheet

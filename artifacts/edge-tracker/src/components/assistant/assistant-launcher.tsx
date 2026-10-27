@@ -1,9 +1,8 @@
 /**
- * The assistant's ways in: the header button (the WS mark), the floating orb (assistant-orb.tsx: «Ask WS» +
- * the shortcut, suggestions on pages with an «ask» context), Ctrl/⌘+J (no other binding in the app or the shell uses
- * it; checked by key code so the Russian layout works too), the palette action and the page buttons (openAssistant in
- * lib/assistant/bus.ts). On phones the header has no room for the button (the market clock): the orb above the dock,
- * the palette and the page buttons open it there. The panel is a lazy chunk mounted on the first open and mounts here
+ * The assistant's one way in (design audit, wave 2B): on desktop the page header's question button (page-ask.tsx,
+ * registered into PageHeader below) with Ctrl/⌘+J (no other binding in the app or the shell uses it; checked by key
+ * code so the Russian layout works too) and the top bar's WS mark as the same entry; on phones the round orb above the
+ * dock (assistant-orb.tsx, hidden from 768 px) and the palette action (openAssistant in lib/assistant/bus.ts). The panel is a lazy chunk mounted on the first open and mounts here
  * either way. Hidden for guests and for anyone without the capability assistant.use (roles matrix).
  */
 import * as React from "react";
@@ -12,10 +11,14 @@ import { assistantI18n } from "@/i18n/ns/assistant";
 import { cn } from "@/lib/utils";
 import { ASSISTANT_OPEN_EVENT, setAssistantPanelOpen, type OpenRequest } from "@/lib/assistant/bus";
 import { WsMark } from "@/components/shared/ws-mark";
+import { registerPageAsk } from "@/components/ds/page-ask-slot";
 import { AssistantOrb } from "./assistant-orb";
+import { PageAskButton } from "./page-ask";
 import { ASSISTANT_KEYS } from "./keys";
 
 export { ASSISTANT_KEYS } from "./keys";
+
+registerPageAsk(PageAskButton);
 
 const AssistantPanel = React.lazy(() => import("./panel"));
 

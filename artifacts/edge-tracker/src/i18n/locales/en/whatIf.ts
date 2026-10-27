@@ -32,6 +32,8 @@ export default {
     showAll: "Show all time",
   },
   result: "Result",
+  autoPicked: "Picked from your data",
+  autoPickedHint: "The rule that would have given the most on these trades. Remove it or pick another — it is only a suggestion.",
   toast: {
     opened: "Scenario opened",
     saved: "Scenario saved",

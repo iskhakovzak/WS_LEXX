@@ -23,7 +23,7 @@ const monthLabel = (m: string) => {
 type View = "equity" | "monthly";
 
 export function EquityPanel({
-  equity, monthly, metric, trades, trader, daily = false,
+  equity, monthly, metric, trades, trader, daily = false, onMetric,
 }: {
   equity: EquityPoint[];
   /** The points are end-of-day closes (staff view, GET /api/stats/aggregate), not single trades. */
@@ -34,6 +34,9 @@ export function EquityPanel({
   trades?: EquityTradeInput[];
   /** Trader for the day-report link (null / "all" — derived from the trades). */
   trader?: string | null;
+  /** The series switch (R / $ нетто / $ брутто) in the chart's header: the metric is the curve's series (and the
+   * report's unit below it). */
+  onMetric?: (m: Metric) => void;
 }) {
   const { t } = statsI18n.useT();
   const [view, setView] = useState<View>("equity");
@@ -58,13 +61,24 @@ export function EquityPanel({
           : t("equity.hintMonthly", { unit })
       }
       actions={
-        <Segmented<View>
-          size="sm"
-          ariaLabel={t("equity.viewAria")}
-          value={view}
-          onChange={setView}
-          options={[{ value: "equity", label: t("equity.viewCurve") }, { value: "monthly", label: t("equity.viewMonthly") }]}
-        />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onMetric && (
+            <Segmented<Metric>
+              size="sm"
+              ariaLabel={t("metricAria")}
+              value={metric}
+              onChange={onMetric}
+              options={[{ value: "r", label: t("metric.r") }, { value: "net", label: t("metric.net") }, { value: "usd", label: t("metric.usd") }]}
+            />
+          )}
+          <Segmented<View>
+            size="sm"
+            ariaLabel={t("equity.viewAria")}
+            value={view}
+            onChange={setView}
+            options={[{ value: "equity", label: t("equity.viewCurve") }, { value: "monthly", label: t("equity.viewMonthly") }]}
+          />
+        </div>
       }
     >
       {view === "equity" && trades ? (

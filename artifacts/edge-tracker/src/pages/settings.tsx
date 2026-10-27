@@ -1,7 +1,8 @@
 /**
  * Settings (/settings): left-nav layout with sections. Each section lives in components/settings/*.
- * Deep links: /settings#trading, #integrations … (also remembered per browser). Team and permissions moved to the
- * desk console: their nav items (and old #team / #permissions links) open /admin?tab=people|roles.
+ * Deep links: /settings#trading, #notifications … (also remembered per browser). Personal settings only (design audit
+ * wave 2B): team, rights, backups and integrations live in the desk console — one «Пульт деска» item opens /admin, and
+ * old #team / #permissions / #data / #integrations links land where those things live now (LEGACY_SECTIONS).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
@@ -16,8 +17,6 @@ import { WrappedProfilePanel } from "@/components/wrapped/WrappedLaunch";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
 import { TradingSection } from "@/components/settings/TradingSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
-import { DataSection } from "@/components/settings/DataSection";
-import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
 import { SecuritySection } from "@/components/settings/SecuritySection";
 import { useTeam } from "@/components/settings/team-api";
 import { isTypingTarget } from "@/components/settings/shared";
@@ -25,9 +24,19 @@ import { settingsI18n } from "@/i18n/ns/settings";
 
 const LS_SECTION = "ws_lexx_settings_section";
 
+/** Sections that left /settings: where an old link goes now (the Telegram link itself is under «Уведомления»). */
+const LEGACY_SECTIONS: Record<string, { href?: string; staffHref?: string; to?: SectionId }> = {
+  team: { href: "/admin?tab=people" },
+  permissions: { href: "/admin?tab=roles" },
+  data: { href: "/admin?tab=data" },
+  integrations: { to: "notifications" },
+};
+
 function readInitialSection(): SectionId {
   const fromHash = window.location.hash.replace("#", "");
   if (SECTIONS.some((s) => s.id === fromHash)) return fromHash as SectionId;
+  const legacy = LEGACY_SECTIONS[fromHash];
+  if (legacy?.to) return legacy.to;
   try {
     const saved = localStorage.getItem(LS_SECTION);
     // A remembered section that moved to /admin must not bounce the user off /settings.
@@ -47,11 +56,11 @@ export default function Settings() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [, navigate] = useLocation();
 
-  // Sections that moved to /admin render nothing here; an old #team / #permissions link redirects (if visible).
-  const redirect = sections.find((s) => s.id === requested)?.href;
+  // Old #team / #permissions / #data links open the desk console (staff); anyone else stays on their profile.
   useEffect(() => {
-    if (redirect) navigate(redirect, { replace: true });
-  }, [redirect, navigate]);
+    const legacy = LEGACY_SECTIONS[window.location.hash.replace("#", "")];
+    if (legacy?.href && sections.some((s) => s.id === "desk")) navigate(legacy.href, { replace: true });
+  }, [sections, navigate]);
 
   // Fall back to the first local section when the requested one is hidden for this role (e.g. "team" for traders)
   // or lives on another page.
@@ -73,6 +82,7 @@ export default function Settings() {
     const onHash = () => {
       const id = window.location.hash.replace("#", "");
       if (SECTIONS.some((s) => s.id === id)) setRequested(id as SectionId);
+      else if (LEGACY_SECTIONS[id]?.to) setRequested(LEGACY_SECTIONS[id].to!);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -98,14 +108,14 @@ export default function Settings() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sections, select]);
 
-  // Attention badges in the nav.
+  // Attention badges in the nav: traders without a curator (the console), an unlinked Telegram (notifications).
   const { data: team } = useTeam(canSeeTeam);
   const unassigned = team?.filter((m) => m.active && m.role === "trader" && !m.assignedCurator).length ?? 0;
   const { data: profile } = useMyProfile(!!user?.traderName && user.role !== "guest");
   const badges: Partial<Record<SectionId, React.ReactNode>> = {
-    ...(unassigned > 0 ? { team: <Pill tone="down" className="text-2xs">{unassigned}</Pill> } : {}),
+    ...(unassigned > 0 ? { desk: <Pill tone="down" className="text-2xs">{unassigned}</Pill> } : {}),
     ...(profile && !profile.telegramLinked
-      ? { integrations: <span role="img" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--chart-3))]" aria-label={t("page.telegramNotLinked")} title={t("page.telegramNotLinked")} /> }
+      ? { notifications: <span role="img" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--chart-3))]" aria-label={t("page.telegramNotLinked")} title={t("page.telegramNotLinked")} /> }
       : {}),
   };
 
@@ -135,8 +145,6 @@ export default function Settings() {
               {active === "trading" && <TradingSection />}
               {active === "notifications" && <NotificationsSection onNavigate={select} />}
               {active === "security" && <SecuritySection />}
-              {active === "data" && <DataSection />}
-              {active === "integrations" && <IntegrationsSection />}
             </motion.div>
         </section>
       </div>

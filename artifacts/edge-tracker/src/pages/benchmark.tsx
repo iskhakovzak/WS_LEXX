@@ -27,6 +27,8 @@ import { SelfView } from "@/components/benchmark/self-view";
 import { fmtDateRange, fmtRate, fmtUsd } from "@/lib/format";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
 import { personName } from "@/i18n";
+import { rich } from "@/i18n/rich";
+import { cn } from "@/lib/utils";
 import { metricLabel } from "@/components/benchmark/format";
 
 type Tab = "table" | "heatmap" | "same" | "compare" | "trend";
@@ -131,6 +133,12 @@ export default function BenchmarkPage() {
       feeShare: gross > 0 ? fees / gross : null,
       breaches: rows.filter((r) => r.consistencyFlag === "breach").length,
       weaker: (data?.trend ?? []).filter((t) => t.verdict === "worse").length,
+      best: [...money].sort((x, y) => (y.net ?? 0) - (x.net ?? 0))[0] ?? null,
+      // Who needs attention: the consistency breach or a worse last 4 weeks (the same two counts as the KPI card).
+      attention: [...new Set([
+        ...rows.filter((r) => r.consistencyFlag === "breach").map((r) => r.trader),
+        ...(data?.trend ?? []).filter((t) => t.verdict === "worse").map((t) => t.trader),
+      ])],
     };
   }, [data]);
 
@@ -153,7 +161,21 @@ export default function BenchmarkPage() {
             {fmtDateRange(data.period.from, data.period.to, "short")} · NY
           </span>
         )}
-      />
+      >
+        {/* The answer first (design audit wave 2B): the desk's net, its leader and who needs attention, in one line. */}
+        {staff && data && data.rows.length > 0 && (
+          <p className="text-base font-medium text-foreground sm:text-lg" data-testid="benchmark-verdict">
+            {rich(t("verdict.net", { net: "{net}" }), {
+              net: <span className={cn("font-semibold tabular-nums", desk.net == null || desk.net === 0 ? "" : desk.net > 0 ? "text-up" : "text-down")}>{desk.net != null ? fmtUsd(desk.net, { signed: true, decimals: "auto" }) : "—"}</span>,
+            })}
+            <span className="font-normal text-muted-foreground">
+              {desk.best && desk.best.net != null && desk.best.net > 0 ? ` · ${t("verdict.best", { name: personName(desk.best.trader), net: fmtUsd(desk.best.net, { signed: true, decimals: "auto" }) })}` : ""}
+              {" · "}
+              {desk.attention.length ? t("verdict.attention", { names: desk.attention.map((n) => personName(n)).join(", ") }) : t("verdict.allClear")}
+            </span>
+          </p>
+        )}
+      </PageHeader>
 
       <Toolbar>
         <PeriodPicker<BenchPeriod>

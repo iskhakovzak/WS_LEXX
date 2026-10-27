@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSseParser } from "./sse";
-import { applyEvent, budgetLeftPct, contextFor, newAssistantMessage, pageKeyOf, STARTERS, suggestionFor } from "./model";
+import { applyEvent, budgetLeftPct, contextFor, headerQuestionOf, newAssistantMessage, pageKeyOf, STARTERS, suggestionFor } from "./model";
 import { sameText, wordDiff } from "./diff";
 import { appendText, eodLessons, eodSummary, planPayload, playbookPayload, rulePayload } from "./drafts";
 
@@ -90,5 +90,16 @@ describe("draft payloads (sent only on the person's click)", () => {
     expect(eodLessons({ tradeLessons: [{ tradeId: 5, lesson: "x" }, { tradeId: 0, lesson: "y" }] })).toEqual([{ tradeId: 5, lesson: "x" }]);
     expect(appendText("same", "same")).toBe("same");
     expect(rulePayload({ name: "n", kind: "k", threshold: { n: 3 } })).toEqual({ name: "n", kind: "k", threshold: { n: 3 } });
+  });
+});
+
+describe("page header question (one AI entry point)", () => {
+  it("a screen's own question wins, then the page suggestion, then the first starter, else none", () => {
+    const q = (route: string, ctx: Parameters<typeof pageKeyOf>[1] = null) => headerQuestionOf(route, pageKeyOf(route, ctx), suggestionFor(pageKeyOf(route, ctx), ctx));
+    expect(q("/stats?period=90d")).toEqual({ kind: "header", key: "stats" });
+    expect(q("/analytics")).toEqual({ kind: "chip", key: "analytics", intent: "analysis" });
+    expect(q("/stats", { tradeId: 7 })).toEqual({ kind: "chip", key: "trade", intent: "analysis" });
+    expect(q("/game-plan")).toEqual({ kind: "starter", key: "plan", intent: "draft_plan" });
+    expect(q("/settings")).toEqual({ kind: "none" });
   });
 });

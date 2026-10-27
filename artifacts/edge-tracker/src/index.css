@@ -342,9 +342,9 @@
   --field-gap: 1rem;           /* between form fields (16px); label → control is 6px (gap-1.5) */
   --tile-p: 0.75rem;           /* inner tile padding (12px) */
   --header-h: 3.5rem;          /* app header height (56px) */
-  /* Bottom clearance of the scroller so the last row never sits under the «Спросить WS» orb (assistant-orb, ws-mark.css):
-     desktop = orb 44px + its 20px offset + air; phones = the dock + the round orb above it. */
-  --orb-clear: 5.5rem;
+  /* Bottom clearance of the scroller: desktop = air under the last row (no floating orb there since wave 2B — the page
+     header asks the assistant); phones = the dock + the round orb above it (assistant-orb, ws-mark.css). */
+  --orb-clear: 2rem;
   --orb-clear-phone: 9.5rem;
   /* «Рабочие экраны: затемнённое» — share of the canvas colour laid over a photo under the content column. */
   --content-scrim: .8;

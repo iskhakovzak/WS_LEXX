@@ -128,28 +128,31 @@ export default function BehaviorPage() {
         title={tb("title")}
         description={tb("description")}
         icon={Brain}
-        actions={
-          <>
+        actions={<HelpButton id="behavior" />}
+      >
+        {/* Tabs left, the scope (person, period) right — one row under the title, so the h1 keeps its width and the
+            profile below starts high (design audit wave 2B). Phones: the controls wrap under the tabs. */}
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-[var(--glass-border)]">
+          <SectionTabs
+            ariaLabel={tb("sectionsAria")}
+            value={tab}
+            onChange={setTab}
+            className="border-b-0"
+            tabs={[
+              { value: "behavior", label: tb("tab.behavior"), icon: Activity },
+              { value: "setups", label: tb("tab.setups"), icon: Sparkles },
+            ]}
+          />
+          <div className="flex w-full min-w-0 items-center gap-2 pb-1.5 sm:w-auto sm:flex-wrap">
             {isCurator && (
-              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-auto min-w-[13rem] max-w-[18rem]" ariaLabel={tb("traderAria")} />
+              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="h-9 w-auto min-w-0 flex-1 sm:min-w-[13rem] sm:max-w-[18rem] sm:flex-none" ariaLabel={tb("traderAria")} />
             )}
             <PeriodPicker<Preset>
-              ariaLabel={tb("periodAria")} value={period} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()}
+              ariaLabel={tb("periodAria")} value={period} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()} size="sm"
               onPreset={setPeriod} onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
             />
-            <HelpButton id="behavior" />
-          </>
-        }
-      >
-        <SectionTabs
-          ariaLabel={tb("sectionsAria")}
-          value={tab}
-          onChange={setTab}
-          tabs={[
-            { value: "behavior", label: tb("tab.behavior"), icon: Activity },
-            { value: "setups", label: tb("tab.setups"), icon: Sparkles },
-          ]}
-        />
+          </div>
+        </div>
       </PageHeader>
       <PageHint id="behavior" />
 

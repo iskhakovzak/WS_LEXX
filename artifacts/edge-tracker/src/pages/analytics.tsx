@@ -13,11 +13,11 @@ import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
 import { Brain, Compass, Dices, FlaskConical, Grid3x3, Layers, LayoutDashboard, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { ChartSkeleton, Kbd, Page, PageHeader, Panel, Segmented, EmptyState, StatGridSkeleton } from "@/components/ds";
+import { ChartSkeleton, Kbd, Page, PageHeader, Panel, EmptyState, StatGridSkeleton } from "@/components/ds";
+import { AnalyticsTabBar } from "@/components/analytics-page/TabBar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import AnalyticsPro from "@/components/analytics/analytics-pro";
-import { BrokerStatsCard } from "@/components/propreports/BrokerStatsCard";
 import { FilterBar, type FilterOptions } from "@/components/analytics-page/FilterBar";
 import { OverviewTab } from "@/components/analytics-page/OverviewTab";
 import { EdgeTab } from "@/components/analytics-page/EdgeTab";
@@ -30,11 +30,12 @@ import { MyEdgeTab } from "@/components/analytics-page/my-edge/MyEdgeTab";
 import {
   type AnalyticsFilters, type DimensionKey, type Unit,
   DEFAULT_FILTERS, DIMENSIONS, applyAnalyticsFilters, applyNonPeriodFilters, activeFilterCount, horizonLabel,
-  realizedR, pnlValue, accountOf, sourceOf, customRangeOf, filtersRange, withHotkeys,
+  realizedR, pnlValue, accountOf, customRangeOf, filtersRange, withHotkeys,
 } from "@/components/analytics-page/metrics";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
 import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
-import { AskAssistantButton } from "@/components/shared/ask-assistant";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
+import { useAnalyticsLinkCards } from "@/components/analytics-page/link-cards";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
@@ -42,16 +43,17 @@ import { HelpButton, PageHint } from "@/components/shared/page-hint";
 type TabKey = AnalyticsTabKey;
 
 // Hotkeys follow the VISIBLE order (1…N): a trader without the staff-only tab gets 1–7, not 1–8 with a gap (MAKSIM-32).
-const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; curatorOnly?: boolean }[] = [
+// On view: the five tabs that answer «где мой edge»; the rest sit under «Ещё ▾» (design audit wave 2B: fewer choices).
+const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; curatorOnly?: boolean; more?: boolean }[] = [
   { value: "overview", icon: LayoutDashboard },
   { value: "edge", icon: Layers },
-  { value: "myedge", icon: Compass },
   { value: "matrix", icon: Grid3x3 },
-  { value: "whatif", icon: FlaskConical },
-  { value: "montecarlo", icon: Dices },
-  { value: "desk", icon: Users, curatorOnly: true },
   { value: "psychology", icon: Brain },
-  { value: "pro", icon: LineChart },
+  { value: "desk", icon: Users, curatorOnly: true },
+  { value: "myedge", icon: Compass, more: true },
+  { value: "whatif", icon: FlaskConical, more: true },
+  { value: "montecarlo", icon: Dices, more: true },
+  { value: "pro", icon: LineChart, more: true },
 ];
 
 /** Tabs a viewer sees, each with its hotkey «1»…«9» by position. */
@@ -178,18 +180,15 @@ export default function Analytics() {
   }, [tab]);
 
   const isCurator = user?.role === "curator" || user?.role === "admin";
-  // The source switch is staff-only; drop a source filter a trader may have saved earlier (it would be invisible).
+  // Trades come only from PropReports: no source filter (an old saved one is dropped); a trader has no person filter.
   useEffect(() => {
-    if (user && !isCurator && (filters.source || filters.trader)) setFilters((f) => ({ ...f, source: "", trader: "" }));
+    if (filters.source || (user && !isCurator && filters.trader)) setFilters((f) => ({ ...f, source: "", trader: isCurator ? f.trader : "" }));
   }, [user, isCurator, filters.source, filters.trader]);
   useEffect(() => {
-    if (user && !isCurator && dimension === "source") setDimension("horizon");
-  }, [user, isCurator, dimension]);
+    if (dimension === "source") setDimension("horizon");
+  }, [dimension]);
   const visibleTabs = useMemo(
-    () => visibleTabDefs(isCurator).map((d) => {
-      const Icon = d.icon;
-      return { value: d.value, key: d.key, label: <><Icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`tabs.${d.value}`)}</> };
-    }),
+    () => visibleTabDefs(isCurator).map((d) => ({ value: d.value, key: d.key, icon: d.icon, more: !!d.more, label: t(`tabs.${d.value}`) })),
     [isCurator, t],
   );
 
@@ -219,7 +218,7 @@ export default function Analytics() {
   const options: FilterOptions = useMemo(() => {
     const o = agg?.options;
     if (o) {
-      return { setups: o.setups, hasNoSetup: o.hasNoSetup, tickers: o.tickers, accounts: o.accounts, hasMixedSources: o.sources.length > 1 };
+      return { setups: o.setups, hasNoSetup: o.hasNoSetup, tickers: o.tickers, accounts: o.accounts };
     }
     const book = applyNonPeriodFilters(trades, { ...DEFAULT_FILTERS, trader: view.trader });
     const setups = [...new Set(book.map((tr) => tr.setup?.trim()).filter((x): x is string => !!x))].sort();
@@ -227,8 +226,7 @@ export default function Analytics() {
     book.forEach((tr) => { const k = (tr.ticker ?? "").toUpperCase(); if (k) counts.set(k, (counts.get(k) ?? 0) + 1); });
     const tickers = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k]) => k);
     const accounts = [...new Set(book.map(accountOf).filter(Boolean))].sort();
-    const sources = new Set(book.map(sourceOf));
-    return { setups, hasNoSetup: book.some((tr) => !tr.setup), tickers, accounts, hasMixedSources: sources.size > 1 };
+    return { setups, hasNoSetup: book.some((tr) => !tr.setup), tickers, accounts };
   }, [trades, view.trader, agg]);
 
   const filtered = useMemo(() => applyAnalyticsFilters(trades, view), [trades, view]);
@@ -255,6 +253,9 @@ export default function Analytics() {
     if (!hasPnl && hasR) parts.push(t("summary.rOnly"));
     return parts.filter(Boolean).join(" · ");
   }, [count, filters, hasPnl, hasR, scope, t]);
+  const cards = useAnalyticsLinkCards(filters, view, scope);
+  // The page header's assistant question («Где мой edge и где утечки?») reads the same window and person.
+  useAssistantContext({ ...(periodWin?.from ? { from: periodWin.from } : {}), ...(periodWin?.to ? { to: periodWin.to } : {}), ...(scope.trader ? { trader: scope.trader } : {}) });
   const lastKey = visibleTabs[visibleTabs.length - 1]?.key;
   const [hotBefore, hotAfter] = t("hotkeys", { range: "\u0000" }).split("\u0000");
 
@@ -268,11 +269,10 @@ export default function Analytics() {
           <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
             {hotBefore}<Kbd>1</Kbd>–<Kbd>{lastKey}</Kbd>{hotAfter}
           </span>
-          <AskAssistantButton context={{ ...(periodWin?.from ? { from: periodWin.from } : {}), ...(periodWin?.to ? { to: periodWin.to } : {}), ...(scope.trader ? { trader: scope.trader } : {}) }} />
           <HelpButton id="analytics" />
         </>}
       >
-        <Segmented<TabKey> ariaLabel={t("tabsAria")} options={visibleTabs} value={tab} onChange={setTab} className="self-start" />
+        <AnalyticsTabBar<TabKey> tabs={visibleTabs} value={tab} onChange={setTab} />
       </PageHeader>
       <PageHint id="analytics" />
 
@@ -292,15 +292,10 @@ export default function Analytics() {
               ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[160px] max-w-[18rem]"
             />
           ) : undefined}
-          showSource={isCurator}
           className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:bg-[var(--sticky-bg)]"
         />
       )}
       {!isLoading && (staffView || (!isError && !bookEmpty)) && <RangeFacetsPanel rf={rf} />}
-
-      {!isError && (tab === "overview" || bookEmpty) && (
-        <BrokerStatsCard trader={(isCurator && scopeTrader) || user?.traderName} />
-      )}
 
       {isError ? (
         <Panel>
@@ -341,7 +336,10 @@ export default function Analytics() {
           {tab === "myedge" ? (
             <MyEdgeTab filters={view} team={scope.team} />
           ) : tab === "psychology" ? (
-            <PsychologyTab userId={psychUser} isOwn={psychUser === user?.traderName} filters={view} trades={current} />
+            <PsychologyTab
+              userId={psychUser} isOwn={psychUser === user?.traderName} filters={view} trades={current}
+              behaviorLink={cards.behavior}
+            />
           ) : count === 0 ? (
             <Panel>
               <EmptyState
@@ -353,18 +351,21 @@ export default function Analytics() {
             </Panel>
           ) : tab === "overview" && agg ? (
             <AggOverview
-              agg={agg} previous={aggPrevQ.data ?? null} unit={unit} horizon={filters.horizon}
+              agg={agg} previous={aggPrevQ.data ?? null} unit={unit}
               dimension={statsDim} onDimension={setStatsDim}
-              onHorizon={(h) => setFilters((f) => ({ ...f, horizon: h }))}
               onPickTrader={pickTrader}
               onOpenEdge={() => openDimension("setup")}
+              reportLink={cards.report}
             />
           ) : tab === "overview" ? (
-            <OverviewTab trades={current} previous={previous} unit={unit} onOpenDimension={openDimension} />
+            <OverviewTab trades={current} previous={previous} unit={unit} onOpenDimension={openDimension} reportLink={cards.report} />
           ) : tab === "matrix" ? (
             <EdgeMatrixTab filters={view} unit={unit} hasR={hasR} hasPnl={hasPnl} isCurator={isCurator} />
           ) : tab === "whatif" ? (
-            <WhatIfTab trades={current} unit={unit} filters={view} />
+            <div className="flex flex-col gap-section">
+              {cards.whatIf}
+              <WhatIfTab trades={current} unit={unit} />
+            </div>
 
           ) : tab === "montecarlo" ? (
             <MonteCarloTab trades={current} unit={unit} filters={view} />

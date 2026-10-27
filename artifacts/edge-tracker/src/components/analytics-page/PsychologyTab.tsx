@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
@@ -78,11 +78,14 @@ export function PsychologyTab({
   isOwn,
   filters,
   trades,
+  behaviorLink,
 }: {
   userId: string;
   isOwn: boolean;
   filters: AnalyticsFilters;
   trades: Trade[];
+  /** The link card to /behavior with the same slice (it replaces the behaviour block this tab used to copy). */
+  behaviorLink?: ReactNode;
 }) {
   const { t } = analyticsI18n.useT();
   const motion = useChartMotion();
@@ -146,7 +149,6 @@ export function PsychologyTab({
   const ranked = psych.rankedInsights ?? [];
   const maxImpact = Math.max(0.01, ...ranked.map((i) => i.impact));
   const factors = psych.factors ?? [];
-  const behavior = psych.behavior ?? [];
   const useR = (cov?.tradesWithR ?? 0) >= (cov?.tradesWithPnl ?? 0);
   const convCorr = useR ? psych.convictionRCorrelation : psych.convictionPnlCorrelation ?? psych.convictionRCorrelation;
   const gradeCorr = useR ? psych.confidenceRCorrelation : psych.confidencePnlCorrelation ?? psych.confidenceRCorrelation;
@@ -243,22 +245,15 @@ export function PsychologyTab({
             )}
           </Panel>
 
-          <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
-            <ComparisonPanel
-              icon={Moon}
-              title={t("psych.wellbeing")}
-              description={t("psych.wellbeingHint")}
-              rows={factors}
-              empty={t("psych.wellbeingEmpty")}
-            />
-            <ComparisonPanel
-              icon={Activity}
-              title={t("psych.behavior")}
-              description={t("psych.behaviorHint")}
-              rows={behavior}
-              empty={t("psych.behaviorEmpty")}
-            />
-          </div>
+          {/* Behaviour without check-ins (after a loss, busy days…) is /behavior's job: one link card with the same slice. */}
+          <ComparisonPanel
+            icon={Moon}
+            title={t("psych.wellbeing")}
+            description={t("psych.wellbeingHint")}
+            rows={factors}
+            empty={t("psych.wellbeingEmpty")}
+          />
+          {behaviorLink}
 
           <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
             <Panel icon={Gauge} title={t("psych.conviction")} description={t("psych.convictionHint")}>

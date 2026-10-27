@@ -433,6 +433,7 @@ export default {
   },
 
   perf: {
+    wlRatio: "W/L ratio",
     title: "Broker statistics (PropReports)",
     descReport: "Trade Performance report",
     descAccount: "account {account}",

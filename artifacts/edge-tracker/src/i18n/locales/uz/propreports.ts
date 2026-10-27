@@ -433,6 +433,7 @@ export default {
   },
 
   perf: {
+    wlRatio: "Foyda / zarar",
     title: "Broker statistikasi (PropReports)",
     descReport: "Trade Performance hisoboti",
     descAccount: "hisob {account}",

@@ -1,8 +1,9 @@
 import * as React from "react";
+import { PageLinkCard } from "@/components/shared/page-link-card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, Loader2, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
-import { Panel, Pill, StatCard } from "@/components/ds";
+import { BarChart3, KeyRound, Loader2, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
+import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,13 +15,12 @@ import { useToast } from "@/hooks/use-toast";
 import { ApiError, http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
-import { Avatar, Callout, InlineError, ROLE_LABEL, ROLE_TONE, fmtDaysAgo } from "./shared";
+import { Avatar, Callout, InlineError, ROLE_LABEL, ROLE_TONE } from "./shared";
 import type { SectionId } from "./SettingsNav";
-import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { LanguageSelect } from "@/i18n/language-select";
 import { commonI18n } from "@/i18n/ns/common";
 import { settingsI18n } from "@/i18n/ns/settings";
-import { fmtCount, fmtDate } from "@/lib/format";
+import { fmtDate } from "@/lib/format";
 import { personName } from "@/i18n";
 import { LatinNameLine } from "./LatinNameLine";
 import { LogoutOthersRow } from "./LogoutOthersRow";
@@ -232,7 +232,7 @@ export function ProfileSection({ onNavigate, recap }: { onNavigate: (id: Section
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => onNavigate("integrations")} className="chip inline-flex min-h-10 items-center gap-1.5 px-3 text-xs font-medium sm:min-h-8">
+            <button type="button" onClick={() => onNavigate("notifications")} className="chip inline-flex min-h-10 items-center gap-1.5 px-3 text-xs font-medium sm:min-h-8">
               <Send className="h-3.5 w-3.5" aria-hidden="true" />
               {profile == null ? "Telegram" : profile.telegramLinked ? t("profile.telegramLinked") : t("profile.connectTelegram")}
               <ChevronRight className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
@@ -246,26 +246,12 @@ export function ProfileSection({ onNavigate, recap }: { onNavigate: (id: Section
 
       <LanguagePanel />
 
-      {/* Activity tiles */}
-      {trades && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
-        ) : (
-          <>
-            <StatCard label={t("profile.tradesInJournal")} value={stats ? fmtCount(stats.total) : "—"}
-              hint={stats?.firstTrade ? t("profile.since", { date: fmtDate(stats.firstTrade) }) : undefined} />
-            <StatCard label={t("profile.last30")} value={stats ? fmtCount(stats.last30) : "—"}
-              tone={stats && stats.last30 > 0 ? "accent" : "neutral"} hint={tc("units.tradesWord", { count: stats?.last30 ?? 0 })} />
-            <StatCard label={t("profile.lastTrade")} value={stats ? fmtDaysAgo(stats.lastTrade) : "—"}
-              hint={stats?.lastTrade ? fmtDate(stats.lastTrade) : undefined} />
-          </>
-        )}
-      </div>}
+      {/* Stats and the broker report are the profile's content, not a setting (design audit wave 2B): one link there. */}
+      {trades && (
+        <PageLinkCard href="/profile" icon={BarChart3} title={t("profile.statsLink")} description={t("profile.statsLinkHint")} />
+      )}
 
       {trades && recap}
-
-      {/* Broker statistics from PropReports (Trade Performance report) */}
-      {trades && <PerformanceReportPanel trader={name} compact />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title={t("profile.myTeam")} description={staff ? t("profile.myTeamStaff") : t("profile.myTeamTrader")} icon={Users} fill>

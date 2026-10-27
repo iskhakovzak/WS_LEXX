@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { BarChart3, FileDown, Microscope, Printer, RefreshCw, SearchX } from "lucide-react";
+import { BarChart3, FileDown, Printer, RefreshCw, SearchX } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { ChartSkeleton, EmptyState, Page, PageHeader, Panel, Segmented, Toolbar, emptyActions } from "@/components/ds";
+import { StatsVerdict } from "@/components/stats/verdict";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
 import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
 import { KpiGridSkeleton } from "@/components/stats/kpi-grid";
@@ -12,8 +14,7 @@ import { type Dimension } from "@/components/stats/breakdown-panel";
 import { ReportPanels, useReportData, useWindowExport } from "@/components/stats/report";
 import { EquityPanel } from "@/components/stats/equity-panel";
 import { downloadReportCsv, openPrintReport } from "@/components/stats/export";
-import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
-import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
+import { StatsBrokerBlock } from "@/components/propreports/BrokerReportBlock";
 import { usePerformance } from "@/components/propreports/api";
 import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
 import { preferredMetricOfAggregate, useStaffAggregates } from "@/components/stats/staff-data";
@@ -108,9 +109,15 @@ export default function Stats() {
     const p = loadPrefs();
     const sp = new URLSearchParams(window.location.search);
     const urlTrader = sp.get("trader");
-    // ?period=<preset> (the dashboard insight cards open /stats on their own window).
+    // ?period=<preset> (the dashboard insight cards open /stats on their own window), or ?period=custom&from=&to=
+    // and ?horizon= (the /analytics «Обзор» link card carries its slice).
     const urlPeriod = PERIOD_OPTIONS.find((o) => o.value === sp.get("period"))?.value;
-    return { ...p, ...(urlTrader ? { trader: urlTrader } : {}), ...(urlPeriod ? { period: urlPeriod } : {}) };
+    const urlCustom = sp.get("period") === "custom" ? parseDayRange(sp.get("from"), sp.get("to")) : null;
+    const urlHorizon = HORIZON_OPTIONS.find((o) => o.value === sp.get("horizon"))?.value;
+    return {
+      ...p, ...(urlTrader ? { trader: urlTrader } : {}), ...(urlPeriod ? { period: urlPeriod } : {}),
+      ...(urlCustom ? { period: "custom" as const, ...urlCustom } : {}), ...(urlHorizon ? { horizon: urlHorizon } : {}),
+    };
   });
   // «Вся команда»: an explicit pick (or a ?trader=all link) for this visit only.
   const [team, setTeam] = useState(() => new URLSearchParams(window.location.search).get("trader") === "all");
@@ -168,7 +175,9 @@ export default function Stats() {
     () => [...new Set((perf.data?.reports ?? []).map((r) => r.traderName).filter((x): x is string => !!x))].filter((t) => !traders.includes(t)),
     [perf.data, traders],
   );
-  const hasBroker = trader !== "all" && (perf.data?.reports ?? []).some((r) => r.traderName === trader);
+  // The broker block reads one person: the picked one, else the viewer's own book (never «Вся команда»).
+  const brokerTrader = trader !== "all" ? trader : !staff ? me : null;
+  const hasBroker = !!brokerTrader && (perf.data?.reports ?? []).some((r) => r.traderName === brokerTrader);
   // A trader whose results live only in PropReports opens straight onto their broker report.
   useEffect(() => {
     if (!solo || !me || trader !== "all" || isLoading || !perf.data) return;
@@ -214,6 +223,9 @@ export default function Stats() {
     fees,
   });
 
+  // The page header's assistant question («Как прошёл этот период?») reads the same window and person.
+  useAssistantContext({ ...(ranges.cur.from ? { from: ranges.cur.from } : {}), ...(ranges.cur.to ? { to: ranges.cur.to } : {}), ...(windowTrader ? { trader: windowTrader } : {}) });
+
   const header = (
     <PageHeader
       title={t("title")}
@@ -228,11 +240,6 @@ export default function Stats() {
       }
       actions={
         <>
-          <Button variant="outline" size="sm" className="rounded-full" asChild>
-            <Link href="/analytics">
-              <Microscope className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("deepButton")}
-            </Link>
-          </Button>
           <Button
             variant="outline" size="sm" className="hidden rounded-full md:inline-flex" disabled={!count || exporting}
             onClick={() => void withTrades((rows) => downloadReportCsv(rows, kpis, prevKpis, reportMeta()))}
@@ -251,7 +258,14 @@ export default function Stats() {
           </Button>
         </>
       }
-    />
+    >
+      {!isLoading && !isError && count > 0 && (
+        <StatsVerdict
+          k={kpis} prev={prevKpis} prevLoading={prevLoading} metric={metric} period={prefs.period}
+          curRange={fmtRange(ranges.cur)} prevRange={ranges.prev ? fmtRange(ranges.prev) : null}
+        />
+      )}
+    </PageHeader>
   );
 
   if (isError) {
@@ -301,12 +315,6 @@ export default function Stats() {
             onPreset={(v) => set("period", v)} onCustom={(r) => setPrefs((p) => ({ ...p, period: "custom", ...r }))}
             options={PERIOD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
-          <Segmented<Metric>
-            ariaLabel={t("metricAria")}
-            value={metric}
-            onChange={(v) => set("metric", v)}
-            options={[{ value: "r", label: t("metric.r") }, { value: "net", label: t("metric.net") }, { value: "usd", label: t("metric.usd") }]}
-          />
           <Segmented<HorizonFilter>
             ariaLabel={t("horizonAria")}
             value={prefs.horizon}
@@ -326,15 +334,13 @@ export default function Stats() {
 
       {/* The result curve right under the cuts, full width (owner: the first thing after the filters). */}
       {!bookEmpty && count > 0 && (
-        <EquityPanel equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff} />
+        <EquityPanel
+          equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff}
+          onMetric={(v) => set("metric", v)}
+        />
       )}
 
-      {hasBroker && (
-        <div className="space-y-4">
-          <PerformanceReportPanel trader={trader} />
-          <ReconcilePanel trader={trader} compact />
-        </div>
-      )}
+      {hasBroker && brokerTrader && <StatsBrokerBlock trader={brokerTrader} />}
 
       {bookEmpty ? (
         <Panel>

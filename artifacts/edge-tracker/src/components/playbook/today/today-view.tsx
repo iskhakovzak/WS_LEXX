@@ -118,7 +118,7 @@ export function TodayView({
     } else {
       body = (
         <div className="flex min-w-0 flex-col gap-[calc(var(--page-gap)+0.5rem)]">
-          <MorningScreener planDate={today.date} />
+          {/* The plan and today's setups first; the screener (folded to a few rows) after them (design audit wave 2B). */}
           {canPick && (
             <PlanToday
               today={today}
@@ -142,6 +142,7 @@ export function TodayView({
               </div>
             </div>
           </section>
+          <MorningScreener planDate={today.date} />
         </div>
       );
     }

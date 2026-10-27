@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ToastAction } from "@/components/ui/toast";
 import { EmptyState, Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
-import { AskAssistantButton } from "@/components/shared/ask-assistant";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
 import { IconAction, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { localDateString } from "@/lib/local-date";
@@ -330,6 +330,8 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQuery]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
+  // The page header's assistant question («Чего не хватает этому сетапу?») reads the open entry.
+  useAssistantContext(selectedId ? { playbookId: selectedId } : null);
 
   // URL → state (back / forward, pasted links).
   const urlSpace = params.get("space");
@@ -757,7 +759,6 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
             <span>{t("page.find")}</span>
           </Button>
           {modeTabs}
-          <AskAssistantButton context={selectedId ? { playbookId: selectedId } : undefined} />
           {!traderView && <Segmented<View>
             ariaLabel={t("page.viewAria")}
             value={view}

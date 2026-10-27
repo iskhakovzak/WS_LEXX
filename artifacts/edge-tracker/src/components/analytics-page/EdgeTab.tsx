@@ -135,7 +135,7 @@ export function EdgeTab({
             <SelectValue placeholder={t("edge.moreDims")} />
           </SelectTrigger>
           <SelectContent>
-            {DIMENSIONS.filter((d) => !MAIN_DIMS.includes(d.key) && (isStaff || d.key !== "source")).map((d) => (
+            {DIMENSIONS.filter((d) => !MAIN_DIMS.includes(d.key) && d.key !== "source").map((d) => (
               <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>
             ))}
           </SelectContent>

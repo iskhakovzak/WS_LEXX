@@ -17,6 +17,7 @@ export default {
       earnings_today: "Bugun ochilishdan oldin yoki yopilishdan keyin hisobot beradi",
     },
     updated: "{ago} yangilangan",
+    stale: "eskirgan: {ago} yangilangan",
     notYet: "hali yangilanmagan",
     collapsed: {
       one: "{count} ta nomzod · yetakchi {ticker} {move}",

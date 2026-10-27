@@ -45,6 +45,24 @@ export default {
   showAll: "Butun davrni koʻrsatish",
   allHorizons: "Barcha gorizontlar",
 
+  verdict: {
+    head: "{period} {value} {metric}",
+    noValue: "{period} {trades}",
+    metric: { r: "R", net: "netto", usd: "brutto" },
+    period: { "7d": "7 kunda", "30d": "30 kunda", "90d": "90 kunda", ytd: "Yil boshidan", all: "Butun davrda", custom: "{range} davrida" },
+    prev: { "7d": "oldingi 7 kunga", "30d": "oldingi 30 kunga", "90d": "oldingi 90 kunga" },
+    better: "{prev} nisbatan {amount} yaxshiroq",
+    worse: "{prev} nisbatan {amount} yomonroq",
+    betterRange: "{prev} davriga nisbatan {amount} yaxshiroq",
+    worseRange: "{prev} davriga nisbatan {amount} yomonroq",
+    same: "{prev} teng",
+    sameRange: "{prev} davriga teng",
+    prevEmpty: "avval savdolar boʻlmagan — solishtirish uchun yoʻq",
+  },
+  broker: {
+    title: "Broker hisoboti",
+    scope: "PropReports hisoboti toʻliq — yuqoridagi davr oynasi emas",
+  },
   kpi: {
     vsPrev: "Oldingi davrga nisbatan oʻzgarish",
     pf: "Profit factor",

@@ -20,6 +20,7 @@ export default {
       earnings_today: "Отчитываются сегодня до открытия или после закрытия",
     },
     updated: "обновлено {ago}",
+    stale: "устарело: обновлено {ago}",
     notYet: "ещё не обновлялся",
     collapsed: {
       one: "{count} кандидат · лидер {ticker} {move}",

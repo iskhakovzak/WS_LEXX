@@ -4,7 +4,7 @@ import type ru from "../ru/settings";
 export default {
   page: {
     title: "Settings",
-    description: "Profile, trading parameters, notifications and team",
+    description: "Your personal settings: profile, look, trading, notifications, security",
     telegramNotLinked: "Telegram not connected",
   },
   sections: {
@@ -12,11 +12,8 @@ export default {
     appearance: { label: "Appearance", description: "Interface theme" },
     trading: { label: "Trading", description: "Account, risk, fees, leverage" },
     notifications: { label: "Notifications", description: "Digest and Telegram alerts" },
-    team: { label: "Team", description: "Users, roles, assignments" },
-    permissions: { label: "Permissions", description: "Permissions matrix by role" },
-    data: { label: "Data and backups", description: "CSV export, database backup" },
-    integrations: { label: "Integrations", description: "Telegram bot, broadcasts" },
     security: { label: "Security", description: "Screen lock and quick unlock code" },
+    desk: { label: "Desk console", description: "Team, rights, backups, integrations" },
   },
   nav: {
     aria: "Settings sections",
@@ -35,16 +32,14 @@ export default {
     overYear: "over a year ago",
   },
   profile: {
+    statsLink: "Stats and the broker report — on your profile",
+    statsLinkHint: "Trades, totals and the PropReports broker stats",
     guest: "You are in guest mode. Sign in with your name to set up your profile, notifications and trading parameters.",
     memberSince: "On the team since {date}",
     member: "WS_Desk team member",
     telegramLinked: "Telegram connected",
     connectTelegram: "Connect Telegram",
     theme: "Theme: {name}",
-    tradesInJournal: "Trades in the journal",
-    since: "since {date}",
-    last30: "Last 30 days",
-    lastTrade: "Last trade",
     myTeam: "My team",
     myTeamStaff: "Assignments and assigned traders",
     myTeamTrader: "Who supports you on the desk",

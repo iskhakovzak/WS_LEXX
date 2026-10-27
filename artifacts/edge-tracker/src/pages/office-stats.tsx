@@ -299,10 +299,8 @@ export default function OfficeStatsPage() {
           )}
 
           <Section id="overview" title={t("page.sections.overview")} hint={periodLabel}>
-            <BentoGrid>
-              {view.insights.length > 0 && <div className="lg:col-span-12 xl:col-span-8"><InsightsStrip insights={view.insights} /></div>}
-              <WeeklyPulseCard ctx={ctx} today={data.today} onPickDay={pickDay} className={view.insights.length > 0 ? "lg:col-span-12 xl:col-span-4" : "lg:col-span-6"} />
-            </BentoGrid>
+            {/* The answer first (design audit wave 2B): the year's totals, then the pace to the goal beside the curve;
+                the automatic insights and the week's pulse follow. */}
             <KpiRow ctx={ctx} period={view.period} onJump={jump} />
             <BentoGrid>
               <GeneralChart ctx={ctx} onPickDay={pickDay} />
@@ -310,6 +308,10 @@ export default function OfficeStatsPage() {
                 <PacePanel ctx={ctx} today={data.today} />
                 <div id="office-day" className="flex-1"><DayDetail ctx={ctx} date={day} onClear={() => setDay(null)} /></div>
               </div>
+            </BentoGrid>
+            <BentoGrid>
+              {view.insights.length > 0 && <div className="lg:col-span-12 xl:col-span-8"><InsightsStrip insights={view.insights} /></div>}
+              <WeeklyPulseCard ctx={ctx} today={data.today} onPickDay={pickDay} className={view.insights.length > 0 ? "lg:col-span-12 xl:col-span-4" : "lg:col-span-6"} />
             </BentoGrid>
             <CalendarHeatmap ctx={ctx} selected={day} onPickDay={pickDay} onPickMonth={pickMonth} />
             <MonthlyPanel ctx={ctx} today={data.today} onPickMonth={pickMonth} />

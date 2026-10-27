@@ -1,7 +1,7 @@
 /*
- * The assistant's mark and its floating orb (ws-mark.tsx, assistant-orb.tsx). Monochrome like the rest of WS_Desk:
- * the mark is currentColor; the life is in light, not hue — a slow orbit on the ring, a breathing core glow, a sheen
- * sweeping the orb once in a while. A new member's orb pulses three times once; afterwards it stays calm.
+ * The assistant's mark and its phone orb (ws-mark.tsx, assistant-orb.tsx). Monochrome like the rest of WS_Desk:
+ * the mark is currentColor; the life is in light, not hue — a slow orbit on the ring, a breathing core glow. A new
+ * member's orb pulses three times once; afterwards it stays calm.
  * Every animation stops under prefers-reduced-motion.
  */
 
@@ -17,64 +17,37 @@
 @keyframes ws-mark-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 @keyframes ws-mark-glow { 0%, 100% { opacity: .18; } 50% { opacity: .42; } }
 
-/* ── the orb ─────────────────────────────────────────────────────────────── */
+/* ── the orb: the phone way into the assistant (desktop: the page header's question button + Ctrl/⌘+J) ───── */
 
 .ws-orb {
   position: fixed;
-  right: max(1.25rem, env(safe-area-inset-right));
-  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  right: .875rem;
+  /* Above the dock (bottom-2 + ~4rem tall + the safe area). */
+  bottom: calc(5.25rem + env(safe-area-inset-bottom));
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: .5rem;
   pointer-events: none;
 }
-/* Phones: above the dock (bottom-2 + ~4rem tall + the safe area). */
-@media (max-width: 767px) {
-  .ws-orb { right: .875rem; bottom: calc(5.25rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) {
+  .ws-orb { display: none; }
 }
 .ws-orb > * { pointer-events: auto; }
 
 .ws-orb-button {
   position: relative;
   isolation: isolate;
-  display: inline-flex;
-  align-items: center;
-  gap: .5rem;
-  height: 2.75rem;
-  padding: 0 1rem 0 .75rem;
+  display: grid;
+  place-items: center;
+  width: 2.875rem;
+  height: 2.875rem;
   border-radius: 999px;
   overflow: hidden;
   color: hsl(var(--background));
   background: hsl(var(--foreground));
   box-shadow: 0 10px 30px -12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06) inset;
-  transition: transform var(--dur-2, .2s) var(--ease, ease), box-shadow var(--dur-2, .2s) var(--ease, ease);
+  transition: transform var(--dur-2, .2s) var(--ease, ease);
 }
-.ws-orb-button:hover { transform: translateY(-1px); box-shadow: 0 14px 36px -12px rgb(0 0 0 / .55), 0 0 0 1px rgb(255 255 255 / .1) inset; }
-.ws-orb-button:active { transform: translateY(0) scale(.98); }
+.ws-orb-button:active { transform: scale(.96); }
 .ws-orb-button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
-/* The sheen: a soft light band crossing the pill every few seconds. */
-.ws-orb-button::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .16) 50%, transparent 65%);
-  transform: translateX(-120%);
-  animation: ws-orb-sheen 7s ease-in-out 2s infinite;
-}
-@keyframes ws-orb-sheen { 0%, 70% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
-
-.ws-orb-keys {
-  font-size: .6875rem;
-  line-height: 1;
-  padding: .25rem .375rem;
-  border-radius: .375rem;
-  background: rgb(255 255 255 / .12);
-  color: rgb(255 255 255 / .75);
-  font-variant-numeric: tabular-nums;
-}
-.dark .ws-orb-keys { background: rgb(0 0 0 / .1); color: rgb(0 0 0 / .65); }
 
 /* First visit: three soft rings, then calm for good. */
 .ws-orb-button[data-pulse="true"]::before {
@@ -87,47 +60,7 @@
 }
 @keyframes ws-orb-pulse { 0% { box-shadow: 0 0 0 0 hsl(var(--foreground) / .45); } 100% { box-shadow: 0 0 0 14px hsl(var(--foreground) / 0); } }
 
-/* Phones: a round orb (the mark only) so it never covers content. */
-@media (max-width: 767px) {
-  .ws-orb-button { width: 2.875rem; height: 2.875rem; padding: 0; justify-content: center; }
-  .ws-orb-label, .ws-orb-keys { display: none; }
-}
-
-/* Desktop: once the page scrolls, the pill folds into the round orb (the mark only), so it covers as little data as
-   possible; hover / focus opens it again. The scroller's bottom padding (--orb-clear) keeps the last row free. */
-@media (min-width: 768px) {
-  .ws-orb-label, .ws-orb-keys {
-    max-width: 12rem;
-    opacity: 1;
-    transition: max-width var(--dur-3, .24s) var(--ease, ease), opacity var(--dur-2, .18s) var(--ease, ease);
-    white-space: nowrap;
-    overflow: hidden;
-  }
-  .ws-orb-button { transition: transform var(--dur-2, .2s) var(--ease, ease), box-shadow var(--dur-2, .2s) var(--ease, ease), padding var(--dur-3, .24s) var(--ease, ease), gap var(--dur-3, .24s) var(--ease, ease); }
-  body:has(#main-content[data-scrolled]) .ws-orb-button:not(:hover, :focus-visible) { gap: 0; padding: 0 .75rem; }
-  body:has(#main-content[data-scrolled]) .ws-orb-button:not(:hover, :focus-visible) :is(.ws-orb-label, .ws-orb-keys) { max-width: 0; opacity: 0; padding-inline: 0; }
-}
-html[data-motion="off"] :is(.ws-orb-label, .ws-orb-keys) { transition: none; }
-
-/* The suggestion chip above the orb. */
-.ws-orb-chip {
-  display: inline-flex;
-  max-width: min(22rem, calc(100vw - 2rem));
-  align-items: center;
-  gap: .25rem;
-  border-radius: 999px;
-  padding: .25rem .25rem .25rem .75rem;
-  font-size: .8125rem;
-  color: hsl(var(--foreground));
-  background: var(--glass-thick-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-sm);
-  backdrop-filter: blur(16px) saturate(var(--glass-sat, 160%));
-  animation: ws-orb-chip-in .32s var(--ease, ease) both;
-}
-@keyframes ws-orb-chip-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-
-html[data-motion="off"] .ws-mark .ws-mark-orbit, html[data-motion="off"] .ws-mark .ws-mark-core, html[data-motion="off"] .ws-mark .ws-mark-glow, html[data-motion="off"] .ws-orb-button::after, html[data-motion="off"] .ws-orb-button[data-pulse="true"]::before, html[data-motion="off"] .ws-orb-chip { animation: none; }
+html[data-motion="off"] .ws-mark .ws-mark-orbit, html[data-motion="off"] .ws-mark .ws-mark-core, html[data-motion="off"] .ws-mark .ws-mark-glow, html[data-motion="off"] .ws-orb-button[data-pulse="true"]::before { animation: none; }
 html[data-motion="off"] .ws-orb-button { transition: none; }
 
 /* The boost switch («x5») in the panel: a small power-up badge. */

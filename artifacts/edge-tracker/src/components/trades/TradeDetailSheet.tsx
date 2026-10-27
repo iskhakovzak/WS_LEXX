@@ -223,7 +223,7 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
             )}
             <PlaybookSheetButton className="h-8" />
             <CopyTradeLink id={t.id} ticker={t.ticker} />
-            <AskAssistantButton compact suggest="trade" context={{ tradeId: t.id, date: dayOf(t), ...(t.trader ? { trader: t.trader } : {}) }} />
+            <AskAssistantButton question="trade" className="h-8" context={{ tradeId: t.id, date: dayOf(t), ...(t.trader ? { trader: t.trader } : {}) }} />
           </div>
         </div>
         <SheetDescription className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:text-sm">

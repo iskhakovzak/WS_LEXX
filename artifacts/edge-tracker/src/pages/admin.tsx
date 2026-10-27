@@ -14,6 +14,8 @@ import { ModerationQueue } from "@/components/admin/ModerationQueue";
 import { RolesPanel } from "@/components/admin/RolesPanel";
 import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
+import { DataSection } from "@/components/settings/DataSection";
+import { TelegramBroadcast } from "@/components/settings/IntegrationsSection";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
 import { DeskGroupsPanel } from "@/components/settings/groups-panel";
@@ -292,7 +294,14 @@ function AdminConsole() {
           </div>
         )}
         {tab === "usage" && <UsagePanel enabled={showUsage} screenLabel={screenLabel} menu={TRADER_MENU} onOpenSettings={showSettings ? () => setTab("settings") : undefined} />}
-        {tab === "data" && <DataPanel actor={actor} isAdmin={isAdmin} />}
+        {tab === "data" && (
+          // Desk data tools and the Telegram broadcast moved here from /settings (personal settings only, wave 2B).
+          <div className="flex flex-col gap-section">
+            <DataPanel actor={actor} isAdmin={isAdmin} />
+            <DataSection />
+            {can("telegram.broadcast") && <TelegramBroadcast />}
+          </div>
+        )}
         {tab === "audit" && <AuditLog actor={actor} tierNames={tierNames} />}
         {tab === "errors" && <AppErrorsPanel />}
       </div>

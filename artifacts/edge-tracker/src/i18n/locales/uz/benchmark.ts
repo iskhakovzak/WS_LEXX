@@ -17,6 +17,12 @@ export default {
   emptyHint: "Uzunroq davrni tanlang — savdolar yopilgandan soʻng bu yerda avtomatik paydo boʻladi.",
   tabsAria: "Benchmark koʻrinishlari",
   tab: { table: "Jadval", heatmap: "Issiqlik xaritasi", same: "Bir tiker — bir kun", compare: "Ikkitasini solishtirish", trend: "4 haftalik tendensiya" },
+  verdict: {
+    net: "Desk sof natijasi {net}",
+    best: "eng yaxshisi — {name} ({net})",
+    attention: "eʼtibor kerak: {names}",
+    allClear: "hech kimga eʼtibor kerak emas",
+  },
   stat: {
     traders: "Treyderlar / savdolar",
     tradersHint: "persentillarda: {count} (≥ {min} ta savdo)",

@@ -5,7 +5,7 @@
 export default {
   page: {
     title: "Настройки",
-    description: "Профиль, торговые параметры, уведомления и команда",
+    description: "Ваши личные настройки: профиль, вид, торговля, уведомления, безопасность",
     telegramNotLinked: "Telegram не подключён",
   },
   sections: {
@@ -13,11 +13,8 @@ export default {
     appearance: { label: "Внешний вид", description: "Тема интерфейса" },
     trading: { label: "Торговля", description: "Счёт, риск, комиссии, плечо" },
     notifications: { label: "Уведомления", description: "Дайджест и Telegram-оповещения" },
-    team: { label: "Команда", description: "Пользователи, роли, назначения" },
-    permissions: { label: "Права доступа", description: "Матрица прав по ролям" },
-    data: { label: "Данные и бэкапы", description: "Экспорт CSV, бэкап БД" },
-    integrations: { label: "Интеграции", description: "Telegram-бот, рассылки" },
     security: { label: "Безопасность", description: "Блокировка экрана и код быстрого входа" },
+    desk: { label: "Пульт деска", description: "Команда, права, бэкапы, интеграции" },
   },
   nav: {
     aria: "Разделы настроек",
@@ -36,16 +33,14 @@ export default {
     overYear: "больше года назад",
   },
   profile: {
+    statsLink: "Статистика и отчёт брокера — в профиле",
+    statsLinkHint: "Сделки, итоги и брокерская статистика PropReports",
     guest: "Вы в гостевом режиме. Войдите под своим именем, чтобы настроить профиль, уведомления и торговые параметры.",
     memberSince: "В команде с {date}",
     member: "Участник команды WS_Desk",
     telegramLinked: "Telegram подключён",
     connectTelegram: "Подключить Telegram",
     theme: "Тема: {name}",
-    tradesInJournal: "Сделок в журнале",
-    since: "с {date}",
-    last30: "За 30 дней",
-    lastTrade: "Последняя сделка",
     myTeam: "Моя команда",
     myTeamStaff: "Назначения и подопечные",
     myTeamTrader: "Кто ведёт вас на деске",

@@ -225,7 +225,7 @@ export default {
     emptyPending: "Не посчитано {trades} — нажмите «Посчитать всё».",
     emptyNone: "Нет закрытых сделок за период.",
     aria: "Агрегаты по сетапу",
-    col: { setup: "Сетап", expectancy: "Ожидание / сделку · 95% ДИ", winRate: "Win rate · 95% ДИ", net: "Нетто", confidence: "Уверенность", verdict: "Вердикт" },
+    col: { setup: "Сетап", expectancy: "Ожидание / сделку · 95% ДИ", winRate: "Винрейт · 95% ДИ", net: "Нетто", confidence: "Уверенность", verdict: "Вердикт" },
     acceptedTitle: "Принято в {trades} — открыть в журнале",
     accepted: "принято {count}",
     smallTitle: "Меньше {n} сделок: интервалы широкие, выводы ненадёжны",

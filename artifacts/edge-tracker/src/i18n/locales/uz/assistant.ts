@@ -15,7 +15,12 @@ export default {
     whatIf: { label: "Qaysi qoida eng koʻp foyda berardi?", prompt: "Bitimlarimda qaysi bitta qoida eng koʻp foyda berardi? Bunga qanchalik ishonsa boʻladi?" },
     analytics: { label: "Edge qayerda, yoʻqotish qayerda?", prompt: "Edge xaritam va patternlarim boʻyicha edge qayerda va qayerda yoʻqotyapman? Qaysi biri hali gipoteza?" },
     playbook: { label: "Bu setapga nima yetishmaydi?", prompt: "Bu setapga qaysi boʻlimlar va shartlar yetishmaydi? Undagi bitimlarim bilan solishtir." },
-    dismiss: "Maslahatni yashirish",
+  },
+  headerAsk: {
+    stats: { label: "Bu davr qanday oʻtdi?", prompt: "Bu davrga xulosa qil: oldingi xuddi shunday davrga nisbatan natija, nima foyda berdi, qayerda yoʻqotish bor va keyingi bitta fokus." },
+    behavior: { label: "Qaysi odat eng qimmat?", prompt: "Bu davrda qaysi odatim menga eng qimmatga tushdi va uni qaysi bitta qoida tuzatadi?" },
+    office: { label: "Ofisni nima pastga tortyapti?", prompt: "Ofis statistikasi boʻyicha: natijani nima pastga tortyapti, nima foyda beryapti va keyingi oy uchun bitta tavsiya." },
+    benchmark: { label: "Kimga eʼtibor kerak?", prompt: "Benchmarkdagi qaysi treyderlarga eʼtibor kerak va nima uchun? Har bir kishiga bitta sabab va bitta harakat." },
   },
   boost: {
     label: "Chuqurroq",

@@ -17,6 +17,12 @@ export default {
   emptyHint: "Pick a longer period — trades appear here automatically once closed.",
   tabsAria: "Benchmark views",
   tab: { table: "Table", heatmap: "Heatmap", same: "Same ticker, same day", compare: "Compare two", trend: "4-week trend" },
+  verdict: {
+    net: "Desk net {net}",
+    best: "best — {name} ({net})",
+    attention: "needs attention: {names}",
+    allClear: "nobody needs attention",
+  },
   stat: {
     traders: "Traders / trades",
     tradersHint: "in percentiles: {count} (≥ {min} tr.)",

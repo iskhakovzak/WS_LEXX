@@ -4,15 +4,18 @@
  * range itself («3–21 окт. 2026 г.»), so the choice is visible where it was made; clicking it again edits the range.
  * The form opens prefilled (the stored range, else the current preset's window), refuses from > to, and says which
  * window the «к прошлому периоду» comparison uses when the page compares (`comparePrev`).
+ * Phones (< 768 px) get one native select instead of the segment row (design audit wave 2B: the period is one control,
+ * not a strip that runs off the screen); «Период…» in it opens the same form.
  */
 import * as React from "react";
-import { CalendarRange } from "lucide-react";
+import { CalendarRange, ChevronDown } from "lucide-react";
 import { Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { fmtDateRange } from "@/lib/format";
 import { draftRange, prevDayRange, rangeDays, rangeError, type DayRange } from "@/lib/period-range";
 import { commonI18n } from "@/i18n/ns/common";
@@ -51,6 +54,7 @@ export function PeriodPicker<P extends string>({
   const toId = React.useId();
   const errId = React.useId();
   const active = value === CUSTOM_PERIOD && custom;
+  const isMobile = useIsMobile();
 
   const openForm = () => {
     setDraft(draftRange(value === CUSTOM_PERIOD ? custom : null, value === CUSTOM_PERIOD ? null : presetRange ?? null, today));
@@ -82,13 +86,28 @@ export function PeriodPicker<P extends string>({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
         <span className={cn("inline-flex max-w-full", className)}>
-          <Segmented<string>
-            ariaLabel={ariaLabel}
-            size={size}
-            value={value}
-            options={segs}
-            onChange={(v) => (v === CUSTOM_PERIOD ? openForm() : onPreset(v as P))}
-          />
+          {isMobile ? (
+            <span className="glass-field relative inline-flex h-10 max-w-full items-center rounded-full">
+              <select
+                aria-label={ariaLabel}
+                value={value}
+                onChange={(e) => (e.target.value === CUSTOM_PERIOD ? openForm() : onPreset(e.target.value as P))}
+                className="h-full max-w-full appearance-none truncate rounded-full bg-transparent pl-3.5 pr-8 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {options.map((o) => <option key={o.value} value={o.value}>{typeof o.label === "string" ? o.label : String(o.value)}</option>)}
+                <option value={CUSTOM_PERIOD}>{active ? fmtDayRange(active) : t("periodPicker.custom")}</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            </span>
+          ) : (
+            <Segmented<string>
+              ariaLabel={ariaLabel}
+              size={size}
+              value={value}
+              options={segs}
+              onChange={(v) => (v === CUSTOM_PERIOD ? openForm() : onPreset(v as P))}
+            />
+          )}
         </span>
       </PopoverAnchor>
       <PopoverContent align="start" className="w-[22rem]">

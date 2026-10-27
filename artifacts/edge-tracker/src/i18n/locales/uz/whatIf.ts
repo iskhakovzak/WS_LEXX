@@ -32,6 +32,8 @@ export default {
     showAll: "Butun davrni koʻrsatish",
   },
   result: "Natija",
+  autoPicked: "Maʼlumotlar boʻyicha tanlangan",
+  autoPickedHint: "Bu savdolarda eng koʻp foyda bergan boʻlardi qoida. Uni olib tashlang yoki boshqasini tanlang — bu faqat tavsiya.",
   toast: {
     opened: "Ssenariy ochildi",
     saved: "Ssenariy saqlandi",
