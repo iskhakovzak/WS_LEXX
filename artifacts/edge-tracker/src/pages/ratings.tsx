@@ -20,7 +20,7 @@ import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
 import { QuestsProgressTab } from "@/components/quests/progress-tab";
-import { useQuestsMe } from "@/components/quests/api";
+import { AchievementCatalogPanel } from "@/components/quests/catalog-panel";
 import { SeasonTab } from "@/components/gamification/season-tab";
 import { QuestsGamificationExtras, QuestsGamificationHeader } from "@/components/gamification/quests-blocks";
 import { gamificationI18n } from "@/i18n/ns/gamification";
@@ -44,10 +44,9 @@ export default function RatingsPage() {
   const { t: tq } = questsI18n.useT();
   const { t: tg } = gamificationI18n.useT();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
-  // Quests are a trader's own loop: staff see a trader's quests in the curator profile. Staff who trade themselves (the
-  // server gives them their own quests) get the personal tab too.
-  const staffQuests = useQuestsMe(!!me && isCurator);
-  const questsOn = !!me && (!isCurator || (staffQuests.data?.quests?.length ?? 0) > 0);
+  // Quests and achievements are everyone's with a trader name (staff are traders too, owner rule 2026-10-21): the tab
+  // used to hide for staff without active quests — the owner then saw only the stage ladder, not the achievements.
+  const questsOn = !!me;
 
   // Staff = traders + extras (owner rule 2026-10-21): everyone with a trader name opens on their own «Мой прогресс»
   // like a trader; the curator tab stays one click away. Who is rated does not change.
@@ -172,7 +171,12 @@ export default function RatingsPage() {
         />
       )}
       {activeTab === "me" && <MyProgressTab me={me} ratings={ratings} ratingsLoading={ratingsQ.isLoading} />}
-      {activeTab === "quests" && <QuestsProgressTab header={<QuestsGamificationHeader />} extra={<QuestsGamificationExtras />} />}
+      {activeTab === "quests" && (
+        <QuestsProgressTab
+          header={<QuestsGamificationHeader />}
+          extra={<>{<QuestsGamificationExtras />}{isCurator && <AchievementCatalogPanel canEdit={isAdmin} />}</>}
+        />
+      )}
       {activeTab === "season" && <SeasonTab participant={questsOn} />}
 
       {isCurator && (

@@ -183,6 +183,8 @@ export default {
     quest_failed: { label: "Quest not done", description: "A quest you assigned was not done or its deadline passed" },
     quest_cancelled: { label: "Quest cancelled", description: "A curator cancelled a quest they gave you" },
     achievement_earned: { label: "Achievement", description: "A new achievement tier: contract streak, reviews, plan before the open, simulator and more" },
+    achievement_summary: { label: "Achievements recounted", description: "One message when achievements are counted over many past days at once" },
+    kudos_received: { label: "Curator kudos", description: "A curator recognised your day or trade" },
     reward_eligible: { label: "Reward available", description: "You met the condition of a reward from the desk catalog — you can request it" },
     reward_requested: { label: "Reward request", description: "A trader asks to be handed a catalog reward (curators and admins)" },
     reward_granted: { label: "Reward granted", description: "Your curator handed you a catalog reward" },

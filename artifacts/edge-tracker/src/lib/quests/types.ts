@@ -9,8 +9,26 @@ export type TextItem = { key: string; params?: Record<string, string | number | 
 
 // ─── Achievements: permanent, tiered lines (the existing badges become tiers of these lines) ───
 
-export type AchievementCategory = "discipline" | "review" | "focus" | "risk" | "planning" | "learning" | "growth";
+export type AchievementCategory =
+  | "discipline" | "review" | "focus" | "risk" | "planning" | "learning" | "growth" | "records" | "leaks" | "mastery" | "social";
 export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
+/** The victory ladder by horizon (docs/achievements/CATALOG.md): a small win is always near. */
+export type AchievementHorizon = "day" | "week" | "month" | "signature" | "path" | "social" | "career";
+/** What `current` and the tier targets count («ещё 2 дня»). */
+export type AchievementUnit =
+  | "days" | "weeks" | "months" | "count" | "losses" | "steps" | "leaks" | "setups" | "kudos" | "seasons" | "lessons" | "exams" | "games"
+  | "comebacks" | "trades" | "ranks";
+
+/** One entry of a grouped card: a closed (or still open) leak, a path step of the current stage. */
+export interface AchievementItem {
+  key: string;
+  label: TextItem;
+  earnedOn: string | null;
+  state: "done" | "open" | "lost";
+  /** Progress of an open item (e.g. «18 из 30 сделок в срезе после отметки»). */
+  info?: TextItem | null;
+  lostOn?: string | null;
+}
 
 export interface AchievementTierState {
   tier: AchievementTier;
@@ -32,6 +50,29 @@ export interface Achievement {
   tier: AchievementTier | null;
   /** Hidden (secret) achievements show «???» until earned. */
   secret: boolean;
+  horizon?: AchievementHorizon;
+  unit?: AchievementUnit;
+  /** A big win: a stage step, setup gold, a closed leak, a comeback, a platinum — the ceremony, not just a notice. */
+  big?: boolean;
+  /** Setup mastery: the tier the data supports NOW (may be below the earned one — the edge faded); null = none. */
+  held?: AchievementTier | null;
+  /** The day the earned tier stopped holding (shown honestly; the tier stays earned). */
+  lostOn?: string | null;
+  /** The numbers behind it now (setup edge, leak progress). */
+  info?: TextItem | null;
+  /** Grouped cards (closed leaks, path steps). */
+  items?: AchievementItem[];
+}
+
+/** «Ближайшая победа»: the in-progress tier with the fewest units left (day and week lines first). */
+export interface NearestWin {
+  id: string;
+  title: TextItem;
+  tier: AchievementTier;
+  left: number;
+  unit: AchievementUnit;
+  current: number;
+  target: number;
 }
 
 // ─── Quests: time-boxed tasks with progress and a reward ───
@@ -75,6 +116,27 @@ export interface QuestsMe {
   achievements: Achievement[];
   /** Totals for the header: quests done this week, achievements earned, onboarding step x of n. */
   summary: { weekDone: number; weekTotal: number; achievementsEarned: number; achievementsTotal: number; onboarding: { done: number; total: number } | null };
+  /** The dashboard line «Ближайшая победа: …» (null = nothing in progress / achievements off). */
+  nearest?: NearestWin | null;
+  /** After a stop: clean days since it (shown instead of `nearest` while the trader is stopped). */
+  comeback?: { since: string; days: number; need: number } | null;
+  /** Big wins of the last days the trader has not seen yet (the ceremony); `key` = "line|tier". */
+  celebrate?: { key: string; id: string; tier: AchievementTier; date: string; title: TextItem }[];
+}
+
+/** GET /api/quests/catalog (staff): every line with its criteria, tiers, horizon and whether an admin switched it off. */
+export interface AchievementCatalogEntry {
+  id: string;
+  category: AchievementCategory;
+  horizon: AchievementHorizon;
+  unit: AchievementUnit;
+  tiers: { tier: AchievementTier; target: number }[];
+  secret: boolean;
+  big: boolean;
+  dynamic: boolean;
+  /** Feeds the capital allocation signal (desk settings). */
+  capital: boolean;
+  disabled: boolean;
 }
 
 /** POST /api/quests/assign (curator): a quest for one trader from a template, with own target / deadline / points. */

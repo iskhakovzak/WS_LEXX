@@ -19,6 +19,7 @@ import type { AchievementInput } from "./achievements";
 import type { QuestData } from "./catalog";
 import { tagDays } from "../playbookToday/untagged";
 import { viewerTier } from "../playbookToday/tier";
+import { loadV2Inputs, type V2Inputs } from "../achievements/load";
 
 const none = <T>() => ({ rows: [] as T[] });
 const loadTradesOf = (trader: string) => async (from: string, to: string) => (await loadBehaviorRows(trader, from, to)).map(rowToBehaviorTrade);
@@ -261,17 +262,20 @@ export type TraderInputs = {
   ledger: LedgerDay[];
   achievements: Omit<AchievementInput, "onboarding">;
   quests: QuestData;
+  /** Achievements v2 sources (lib/achievements/load); null when achievements are off or the load failed. */
+  v2?: V2Inputs | null;
 };
 
 /**
  * One load for both engines. `fullStops`: the clean-month line still has tiers to earn — load the whole stop history
  * (otherwise only this month, for the monthly quest).
  */
-export async function loadTraderInputs(trader: string, now: Date, o: { fullStops: boolean }): Promise<TraderInputs> {
+export async function loadTraderInputs(trader: string, now: Date, o: { fullStops: boolean; v2?: boolean }): Promise<TraderInputs> {
   const asOf = lastFinishedDay(now);
   const today = nyDate(now);
   const monthStart = `${today.slice(0, 7)}-01`;
   const stopsFrom = o.fullStops ? "2000-01-01" : (monthStart < asOf ? monthStart : asOf);
+  const v2 = o.v2 ? loadV2Inputs(trader, asOf, today).catch(() => null) : Promise.resolve(null);
   const [{ summary, ledger }, reviews, focus, stops, games, plans, user, promo, acad, gp, opens, prefill, holiday, tags, tier, drills, dailyTasks] = await Promise.all([
     disciplineSummary(trader, { loadTrades: loadTradesOf(trader), now }),
     reviewDays(trader, today).catch(() => [] as ReviewDay[]),
@@ -293,7 +297,7 @@ export async function loadTraderInputs(trader: string, now: Date, o: { fullStops
   ]);
   const plansBeforeOpen = [...plans].filter(([d, p]) => p.beforeOpen && d <= today).map(([d]) => d);
   return {
-    asOf, role: user.role, tier, summary, ledger,
+    asOf, role: user.role, tier, summary, ledger, v2: await v2,
     achievements: {
       asOf, ledger, reviews: reviews.filter((r) => r.date <= asOf), focus, stops: stops.days, cleanMonthMinDays: setting("rewards.cleanMonthMinDays"),
       games, plansBeforeOpen, promotions: promo, lessons: acad.lessons, exams: acad.exams, academy: acad.academy,

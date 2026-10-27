@@ -154,6 +154,8 @@ export async function buildProfile(p: PersonRow, viewer: ProfileViewer, now = ne
   const best = new Map<string, { line: string; tier: string; day: string }>();
   const rank: Record<string, number> = { bronze: 0, silver: 1, gold: 2, platinum: 3 };
   for (const a of hist.achievements) {
+    // Per-setup / per-leak / per-step lines live on the achievements shelf; the hero shows one coin per static line.
+    if (a.line.includes(":")) continue;
     const cur = best.get(a.line);
     if (!cur || (rank[a.tier] ?? 0) >= (rank[cur.tier] ?? 0)) best.set(a.line, a);
   }

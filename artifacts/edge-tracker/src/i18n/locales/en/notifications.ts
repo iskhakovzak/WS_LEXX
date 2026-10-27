@@ -38,6 +38,8 @@ export default {
     quest_failed: { label: "Quest not completed", description: "A trainee did not complete your quest by the deadline" },
     quest_cancelled: { label: "Quest cancelled", description: "Your curator cancelled a quest they gave you" },
     achievement_earned: { label: "New achievement", description: "A new achievement tier: bronze, silver, gold or platinum" },
+    achievement_summary: { label: "Achievements from history", description: "Achievements counted over past days — one message instead of many" },
+    kudos_received: { label: "Curator kudos", description: "A curator recognised your trading day or trade" },
     reward_eligible: { label: "Reward available", description: "You meet a catalog reward's condition — you can request it" },
     reward_requested: { label: "Reward request", description: "A trader requested a reward — grant or decline it" },
     reward_granted: { label: "Reward granted", description: "Your curator marked your reward as granted" },

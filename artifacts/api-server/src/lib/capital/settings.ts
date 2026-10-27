@@ -4,7 +4,10 @@ import type { CapitalSettings } from "./types";
 
 export function capitalSettings(): CapitalSettings {
   return {
-    weights: { edge: setting("capital.weightEdge"), regime: setting("capital.weightRegime"), discipline: setting("capital.weightDiscipline") },
+    weights: {
+      edge: setting("capital.weightEdge"), regime: setting("capital.weightRegime"), discipline: setting("capital.weightDiscipline"),
+      achievements: setting("capital.achievementsEnabled") && setting("achievements.enabled") ? setting("capital.weightAchievements") : 0,
+    },
     maxStepUpPct: setting("capital.maxStepUpPct"),
     maxStepDownPct: setting("capital.maxStepDownPct"),
     minStepPct: setting("capital.minStepPct"),

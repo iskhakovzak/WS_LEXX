@@ -43,7 +43,16 @@ describe("lines and tiers (default settings)", () => {
       contract_streak: [5, 10, 20, 50], clean_month: [1, 3, 6], comeback: [5], reviews_total: [10, 50, 100, 250],
       review_streak: [5, 10, 20, 40], focus_beaten: [5, 10, 20], plan_before_open: [10, 30, 100], full_loop: [20],
       own_replays: [1, 10, 50], beat_yourself: [3, 10, 25], lessons: [5, 20, 50], exams: [1, 2, 3], tier_up: [1, 2, 3], onboarding: [7],
+      // v2 (docs/achievements/CATALOG.md)
+      contract_days: [20, 60, 150, 400], stop_respected: [10, 50, 150, 400], guard_respected: [5, 25, 100], clean_week: [1, 4, 12, 26],
+      iron_week: [1], stop_comeback: [1, 3, 5], quiet_comeback: [1], clean_quarter: [1], review_week: [1, 4, 12, 26], review_month: [1, 3, 6, 12],
+      plan_month: [1, 3, 6, 12], no_revenge: [10, 25, 50, 100], better_week: [1, 5, 15], record_fees: [1, 3, 6], record_r: [1, 3, 6],
+      record_discipline: [1, 3, 6], leaks_closed: [1, 3, 6, 10], setups_confirmed: [1, 2, 3, 5], path_steps: [1, 5, 14, 28], kudos: [1, 5, 20, 50],
+      desk_top3: [1, 3, 6],
     });
+    // 35 lines, 107 tiers before the per-setup / per-leak / per-step ones.
+    expect(res.length).toBe(35);
+    expect(res.reduce((s, r) => s + r.tiers.length, 0)).toBe(107);
     expect(line(res, "comeback").tiers[0]!.tier).toBe("gold");
     expect(line(res, "contract_streak").tiers.map((t) => t.tier)).toEqual(["bronze", "silver", "gold", "platinum"]);
   });

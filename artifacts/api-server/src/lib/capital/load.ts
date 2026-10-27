@@ -9,6 +9,8 @@
  *   discipline        behaviour discipline index (lib/disciplineDays), rule_violations + trading_errors, eod_days
  *                     closed, risk_alert_log breach days
  *   limits / stage    trader_risk_limits (daily, weekly, buying_power), lib/people/stage (Джун)
+ *   achievements      big achievements as a positive signal (lib/achievements/signal: held setup mastery, closed leaks,
+ *                     clean months, comebacks; reset by a fresh violation)
  */
 import { pool } from "@workspace/db";
 import { closeDateSql, closedSql, netPnlSql, num, signedRSql } from "../tradeMath";
@@ -21,6 +23,8 @@ import { regimeDaysMap } from "../marketRegime/store";
 import { isWeekend, addDays } from "../tradingDate";
 import type { RegimeKey } from "../marketRegime/regimes";
 import type { CapDay, CapDiscipline, CapTier, CapTraderInput, LadderAction } from "./types";
+import { loadAchievementSignals } from "../achievements/signal";
+import { disabledLines } from "../achievements/view";
 
 /** How far back «this week's regime» looks when today has none (trading days). */
 const REGIME_LOOKBACK_DAYS = 5;
@@ -124,7 +128,10 @@ export async function loadCapitalInputs(today: string, windowDays: number): Prom
     pool.query<{ id: number; trader: string }>(`SELECT id, trader FROM scaling_proposals WHERE status = 'pending' AND kind = 'limits'`),
   ]);
   const bp = new Map(extra.rows.map((x) => [x.trader, num(x.bp)]));
-  const discipline = await loadDiscipline(names, from, today, days);
+  const [discipline, signals] = await Promise.all([
+    loadDiscipline(names, from, today, days),
+    loadAchievementSignals(names, today, disabledLines()).catch(() => new Map()),
+  ]);
   const pending = new Map(open.rows.map((x) => [String(x.trader), Number(x.id)]));
   const inputs: CapTraderInput[] = traders.map((t) => {
     const stage = stages.get(t.trader)?.stage ?? null;
@@ -139,6 +146,7 @@ export async function loadCapitalInputs(today: string, windowDays: number): Prom
       discipline: discipline.get(t.trader) ?? { index: null, tradedDays: 0, closedDays: 0, violations: 0, stopDays: 0 },
       ladderAction: t.recommendation.action as LadderAction,
       pendingTier: !!t.pendingProposal, // evaluateScope reads tier proposals only
+      achievements: signals.get(t.trader) ?? null,
     };
   });
   return {

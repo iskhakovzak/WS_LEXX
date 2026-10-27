@@ -19,6 +19,9 @@ export default {
   noRegime: "Режим рынка за неделю не задан — учитываем общий edge",
   discipline: "Дисциплина {score}/100: индекс {index}, нарушений {violations}, EOD закрыт в {closed} дней, стопов риска {stops}",
   disciplineNone: "Дисциплину не оценить: в окне нет торговых дней",
+  achievements: "Достижения {value}/100 (плюс к решению, не основание): {list}",
+  achievementsReset: "Бонус достижений обнулён: нарушение {day}",
+  achievementKind: { setup: "мастер сетапа", leak: "закрытая утечка", cleanMonth: "чистый месяц", comeback: "возвращение после стопа" },
   verdict: {
     raise: "Поднять дневной лимит на {pct}%: {from} → {to}",
     cut: "Снизить дневной лимит на {pct}%: {from} → {to}",

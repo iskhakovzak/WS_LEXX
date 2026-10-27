@@ -24,7 +24,7 @@ export type EvaluationFacts = {
   /** Traded days (all time). */
   tradedDays: readonly string[];
   /** Achievement tiers stored by this evaluation. */
-  awarded: readonly { line: string; tier: string; date: string; target: number }[];
+  awarded: readonly { line: string; tier: string; date: string; target: number; detail?: Record<string, unknown> | null }[];
 };
 
 /** Seasons to (re)score now. */
@@ -54,7 +54,9 @@ export async function afterEvaluation(trader: string, f: EvaluationFacts): Promi
     const from = addDays(f.asOf, -RECENT_DAYS);
     for (const a of f.awarded) {
       if (a.date < from) continue;
-      await recordRecognition({ trader, kind: "achievement", ref: `${a.line}:${a.tier}`, params: { line: a.line, tier: a.tier, target: a.target }, day: a.date });
+      const d = a.detail ?? {};
+      const subject = { ...(d.name != null ? { name: String(d.name) } : {}), ...(d.slice != null ? { slice: String(d.slice) } : {}), ...(d.metric != null ? { metric: String(d.metric), stage: String(d.stage ?? "") } : {}) };
+      await recordRecognition({ trader, kind: "achievement", ref: `${a.line}:${a.tier}`, params: { line: a.line, tier: a.tier, target: a.target, ...subject }, day: a.date });
     }
     const tierTargets = [1, 2, 3, 4].map((i) => Number(setting(`achievements.contractStreak${i}` as "achievements.contractStreak1")));
     for (const m of streakMilestones(f.ledger, f.asOf, setting("gamification.streakMilestoneStep"), tierTargets)) {

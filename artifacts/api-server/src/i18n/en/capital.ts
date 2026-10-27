@@ -19,6 +19,9 @@ export default {
   noRegime: "No market regime set this week — using the overall edge",
   discipline: "Discipline {score}/100: index {index}, {violations} violations, EOD closed on {closed} of days, {stops} risk stops",
   disciplineNone: "Discipline cannot be scored: no trading days in the window",
+  achievements: "Achievements {value}/100 (adds to the decision, never the reason): {list}",
+  achievementsReset: "Achievement bonus reset: a violation on {day}",
+  achievementKind: { setup: "setup master", leak: "leak closed", cleanMonth: "clean month", comeback: "comeback after a stop" },
   verdict: {
     raise: "Raise the daily loss limit by {pct}%: {from} → {to}",
     cut: "Cut the daily loss limit by {pct}%: {from} → {to}",

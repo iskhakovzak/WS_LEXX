@@ -255,7 +255,7 @@ export default function Dashboard() {
       dailyStep={m.daily.step}
       dailyToday={m.daily.today}
       frame={m.dailyOn ? <DayLine enabled={m.dailyOn} journalOpenDate={m.journalOpenDate} embedded /> : null}
-      progress={m.dailyOn ? <DayProgress enabled={m.dailyOn} quests={<QuestStrip enabled={m.dailyOn} />} /> : null}
+      progress={m.dailyOn ? <DayProgress enabled={m.dailyOn} quests={<QuestStrip enabled={m.dailyOn} stopped={sl.state === "stopped"} />} /> : null}
       extraItems={backlog ? [backlog] : undefined}
     />
   );

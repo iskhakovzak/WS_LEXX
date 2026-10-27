@@ -3,8 +3,10 @@
  * proportion), and the desk view of where the risk moves. The estimates come from lib/capital/edge.ts.
  *
  * The formula, in plain words:
- *   1. composite S (−1 … 1) = weighted mean of: edge score, regime score, discipline (0–100 → −1 … 1); weights are desk
- *      settings, a missing part drops out and the rest are renormalised.
+ *   1. composite S (−1 … 1) = weighted mean of: edge score, regime score, discipline (0–100 → −1 … 1) and — only when
+ *      above zero — the big-achievements signal (0 … 1, lib/achievements/signal); weights are desk settings, a missing
+ *      part drops out and the rest are renormalised. The achievements part can strengthen a raise the edge already proves
+ *      (the «proven» and discipline gates below stay), never cause one, and never pull S down.
  *   2. gates, in order (the first that fires decides): a junior (unless settings include juniors) / no tier / a tier
  *      proposal waiting / the ladder itself says promote or demote (the stage ladder goes first) / no daily limit →
  *      keep. Discipline below `disciplineCut` → cut by the full max step (needs no sample). Fewer than `minTrades`
@@ -49,11 +51,13 @@ export function tierBand(tierKey: string | null, tiers: readonly CapTier[], s: P
 }
 
 /** Weighted mean of the known parts on −1 … 1 (null when no part with a positive weight is known). */
-export function compositeOf(edge: EdgeEstimate, regime: RegimeEstimate | null, disc: DisciplineScore, w: CapitalSettings["weights"]): number | null {
+export function compositeOf(edge: EdgeEstimate, regime: RegimeEstimate | null, disc: DisciplineScore, w: CapitalSettings["weights"], achievements: number | null = null): number | null {
   const parts: [number | null, number][] = [
     [edge.score, w.edge],
     [regime?.score ?? null, w.regime],
     [disc.score == null ? null : disc.score / 50 - 1, w.discipline],
+    // Positive-only: no achievements is «no information», not a negative.
+    [achievements != null && achievements > 0 ? Math.min(1, achievements) : null, w.achievements ?? 0],
   ];
   let sw = 0;
   let s = 0;
@@ -82,6 +86,8 @@ function baseReasons(edge: EdgeEstimate, regime: RegimeEstimate | null, disc: Di
     code: "discipline", score: disc.score == null ? null : Math.round(disc.score), index: d.index == null ? null : Math.round(d.index),
     violations: d.violations, closedPct: d.tradedDays ? Math.round((100 * d.closedDays) / d.tradedDays) : null, stopDays: d.stopDays,
   });
+  const a = input.achievements;
+  if (a && (a.value > 0 || a.resetBy)) out.push({ code: "achievements", value: a.value, parts: a.parts, resetBy: a.resetBy });
   return out;
 }
 
@@ -125,7 +131,7 @@ export function decideTrader(input: CapTraderInput, ctx: Ctx, raw?: { r: Raw | n
   const edge = edgeOf(input.days, lim, ctx.priors, input.trader, raw);
   const regime = regimeEdgeOf(input.days, ctx.regime, lim, edge.u, ctx.priors.tauU);
   const disc = disciplineOf(input.discipline);
-  const S = compositeOf(edge, regime, disc, s.weights);
+  const S = compositeOf(edge, regime, disc, s.weights, input.achievements?.value ?? null);
   const band = tierBand(input.tierKey, ctx.tiers, s);
   const row: CapPlanRow = {
     trader: input.trader, tierKey: input.tierKey, direction: "keep", stepPct: 0,

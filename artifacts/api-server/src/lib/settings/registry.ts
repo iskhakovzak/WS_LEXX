@@ -144,6 +144,29 @@ export const SETTINGS = {
   // the open + kept contract + reviewed on time)
   "achievements.comebackCount": { group: "achievements", type: "number", default: 5, min: 1, max: 100, step: 1, unit: "count" },
   "achievements.fullLoopDays": { group: "achievements", type: "number", default: 20, min: 1, max: 500, step: 1, unit: "days" },
+  // Achievements v2 (lib/achievements/*, docs/achievements/CATALOG.md): the rules of the new lines (their tier numbers
+  // live in the catalog), lines switched off by an admin (comma-separated ids from the catalog), kudos, the ceremony.
+  "achievements.disabled": { group: "achievements", type: "text", default: "", maxLength: 2000, hidden: true },
+  "achievements.cleanWeekMinDays": { group: "achievements", type: "number", default: 3, min: 1, max: 5, step: 1, unit: "days" },
+  "achievements.revengeMinutes": { group: "achievements", type: "number", default: 10, min: 1, max: 120, step: 1, unit: "minutes" },
+  "achievements.comebackDays": { group: "achievements", type: "number", default: 5, min: 2, max: 30, step: 1, unit: "days" },
+  "achievements.masteryTrades1": { group: "achievements", type: "number", default: 30, min: 10, max: 1000, step: 5, unit: "trades" },
+  "achievements.masteryTrades2": { group: "achievements", type: "number", default: 60, min: 10, max: 1000, step: 5, unit: "trades" },
+  "achievements.masteryTrades3": { group: "achievements", type: "number", default: 100, min: 10, max: 2000, step: 5, unit: "trades" },
+  "achievements.masteryTagShare": { group: "achievements", type: "number", default: 0.8, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.leakMinTrades": { group: "achievements", type: "number", default: 30, min: 10, max: 500, step: 5, unit: "trades" },
+  "achievements.kudosEnabled": { group: "achievements", type: "boolean", default: true },
+  "achievements.ceremony": { group: "achievements", type: "boolean", default: true },
+  // Big achievements as a positive signal of the capital engine (lib/achievements/signal.ts → lib/capital): what each one
+  // is worth (the sum is capped at 1), how long it counts, and the quiet days after a violation the signal needs.
+  "achievements.signalSetupBronze": { group: "achievements", type: "number", default: 0.3, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.signalSetupSilver": { group: "achievements", type: "number", default: 0.6, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.signalSetupGold": { group: "achievements", type: "number", default: 1, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.signalLeakClosed": { group: "achievements", type: "number", default: 0.4, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.signalCleanMonth": { group: "achievements", type: "number", default: 0.3, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.signalComeback": { group: "achievements", type: "number", default: 0.2, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "achievements.signalWindowDays": { group: "achievements", type: "number", default: 90, min: 20, max: 365, step: 5, unit: "days" },
+  "achievements.signalResetDays": { group: "achievements", type: "number", default: 10, min: 0, max: 60, step: 1, unit: "days" },
 
   // Telegram daily loop (lib/daily/telegramJobs; New York time, weekdays)
   "telegram.morningEnabled": { group: "telegram", type: "boolean", default: true },
@@ -391,6 +414,10 @@ export const SETTINGS = {
   "capital.capPctOfTier": { group: "capital", type: "number", default: 150, min: 100, max: 500, step: 5, unit: "pct" },
   "capital.maxDeskGrowthPct": { group: "capital", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "pct" },
   "capital.autoApply": { group: "capital", type: "boolean", default: false },
+  // Big achievements (a confirmed setup edge, a closed leak, a clean month, a comeback after a stop) as a 4th, positive-only
+  // part of the composite: it can strengthen a raise the edge already proves, never cause one or a cut by itself.
+  "capital.achievementsEnabled": { group: "capital", type: "boolean", default: true },
+  "capital.weightAchievements": { group: "capital", type: "number", default: 0.15, min: 0, max: 1, step: 0.05, unit: "ratio" },
   // «Ментор» — the personal AI mentor (lib/mentor). It runs on the assistant's models and the member's daily budget
   // (assistant.dailyUnits); the daily rhythm is generated on demand when the trader opens the mentor. Escalation to the
   // curator is deterministic (no model): a tilt streak, repeated commitment breaks, drawdown near the limit, silence.
