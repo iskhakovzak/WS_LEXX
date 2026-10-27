@@ -1,27 +1,16 @@
-# gitleaks: default rules + an allowlist for local/CI test database URLs only.
+# gitleaks: default rules + an allowlist for names that are not secrets and for local/CI test database URLs only.
 # Never allowlist a real token, password or key here — rotate it instead (ARCHITECTURE.md §6).
+# One [allowlist] table (not [[allowlists]]): gitleaks-action pins a gitleaks release that predates the plural form.
 title = "WS_LEXX"
 
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Local and CI test Postgres DSNs (postgres:postgres on localhost)"
-regexTarget = "match"
-regexes = [
-  '''postgres(ql)?://postgres:postgres@(localhost|127\.0\.0\.1)(:\d+)?(/[A-Za-z0-9_]*)?''',
-]
-
-[[allowlists]]
-description = "Browser storage key names (localStorage / sessionStorage), e.g. PREFS_KEY = \"ws_lexx_disc_prefs_v1\" — names, not secrets"
+[allowlist]
+description = "Local/CI test Postgres DSNs (postgres:postgres on localhost); browser storage key names (PREFS_KEY = \"ws_lexx_disc_prefs_v1\"); identifier-valued keys (key: \"maxTradesPerTicker3\", storageKey: \"ratings.lb.period.v2\") — names, not secrets"
 regexTarget = "line"
 regexes = [
+  '''postgres(ql)?://postgres:postgres@(localhost|127\.0\.0\.1)(:\d+)?(/[A-Za-z0-9_]*)?''',
   '''[A-Z][A-Z0-9_]*_KEY\s*=\s*["'][a-z][a-z0-9_.:-]*["']\s*;?\s*(//.*)?$''',
-]
-
-[[allowlists]]
-description = "Identifier-valued object keys — rule ids like key: \"maxTradesPerTicker3\" and storage names like storageKey: \"ratings.lb.period.v2\" — names, not secrets"
-regexTarget = "match"
-regexes = [
   '''\b(key|storageKey)\s*:\s*["'][a-z][A-Za-z0-9_.:-]*["']''',
 ]
