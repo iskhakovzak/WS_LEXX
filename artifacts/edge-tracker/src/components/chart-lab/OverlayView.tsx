@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Layers } from "lucide-react";
-import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tint, tooltipProps } from "@/components/shared/charts";
 import { fmtNum } from "@/lib/format";
@@ -44,7 +44,7 @@ export function OverlayView({ trader }: { trader: string }) {
   const facets = useLabFacets(trader);
   const [picked, setPicked] = React.useState<LabPick>(null);
   const pick = picked ?? defaultPick(facets.data);
-  const [unit, setUnit] = React.useState<OverlayUnit>("pct");
+  const [unit, setUnit] = usePersistentState<OverlayUnit>("chartLab.overlay.unit", "pct");
   const q = useLabOverlay(trader, pick, unit);
   const o = q.data;
   const rows = React.useMemo(() => (o ? overlayRows(o) : []), [o]);

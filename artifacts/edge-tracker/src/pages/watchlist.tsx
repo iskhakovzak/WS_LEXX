@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { Radar, Search, AlertTriangle, RefreshCw, Archive, Eye, Flame, Clock, History } from "lucide-react";
@@ -117,7 +118,9 @@ export default function Watchlist() {
   const onSort = (k: SortKey) => setSort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: SORT_DEFAULT_DIR[k] }));
 
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<Set<Filter>>(() => new Set());
+  const [filterList, setFilterList] = usePersistentState<Filter[]>("watchlist.filters", []);
+  const filters = useMemo(() => new Set(filterList), [filterList]);
+  const setFilters = useCallback((u: Set<Filter> | ((cur: Set<Filter>) => Set<Filter>)) => setFilterList((cur) => [...(typeof u === "function" ? u(new Set(cur)) : u)]), [setFilterList]);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -702,14 +705,15 @@ export default function Watchlist() {
     } else {
       toast({ title: wt("toast.notInWatchlist", { ticker }) });
     }
-    try {
-      const params = new URLSearchParams(window.location.search);
-      params.delete("ticker");
-      const qs = params.toString();
-      window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
-    } catch { /* ignore */ }
+    if (!hit) replaceSearchParams({ ticker: null }); // an open card keeps ?ticker= (see below); a prefill drops it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, isLoading, isError, allRows]);
+  // The open card rides in ?ticker= so a reload reopens it; closing it clears the param (not a new «deep link»).
+  useEffect(() => {
+    if (isLoading) return;
+    replaceSearchParams({ ticker: openId != null ? allRows.find((r) => r.item.id === openId)?.item.ticker ?? null : null });
+    deepLinkHandled.current = window.location.search.replace(/^\?/, "");
+  }, [openId, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── derived UI bits ─────────────────────────────────────────────────
   const openRow = openId != null ? allRows.find((r) => r.item.id === openId) ?? null : null;

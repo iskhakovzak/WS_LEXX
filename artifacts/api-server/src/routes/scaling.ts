@@ -30,7 +30,7 @@ import { attachDisciplineDays } from "../lib/disciplineDays";
 import { violationDaySql } from "../lib/violationWindow";
 import { can, requireCap, type Capability } from "../lib/permissions";
 import {
-  OPS, evaluateTrader, metricsMeta, normalizeDisciplineRule, renderStoredReasons, unitsMeta, windowStart,
+  OPS, evaluateTrader, metricsMeta, renderStoredReasons, unitsMeta, windowStart,
   type ReasonItem, type Evaluation, type MetricKey, type Rule, type Tier, type TraderInput,
 } from "../lib/scalingEngine";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
@@ -67,8 +67,8 @@ function clientDate(raw: unknown): string {
   const s = typeof raw === "string" ? raw.trim() : "";
   return YMD_RE.test(s) ? s : nyDate();
 }
-/** Stored rules with legacy 0–10 discipline thresholds read on the 0–100 index (lib/disciplineIndex). */
-const loadRulesNow = async (): Promise<Rule[]> => (await loadRules()).map(normalizeDisciplineRule);
+/** Stored rules as saved (legacy 0–10 discipline thresholds were converted once by migration 0274). */
+const loadRulesNow = async (): Promise<Rule[]> => loadRules();
 
 type Proposal = {
   id: number; trader: string; action: string; fromTier: string | null; toTier: string; status: string; source: string;

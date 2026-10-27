@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
+import { logger } from "../lib/logger";
 import { logActivity } from "../lib/activity";
 import { activityDetails, activityTitle } from "../lib/activityText";
 import { config } from "../config";
@@ -852,7 +853,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
      SELECT $1, $2, $3::jsonb
       WHERE NOT EXISTS (SELECT 1 FROM playbook_revisions WHERE playbook_id = $1 AND trader = $2 AND created_at > NOW() - INTERVAL '10 minutes')`,
     [id, auth.name, JSON.stringify(prevRows[0])]
-  ).catch(() => {});
+  ).catch((err) => logger.warn({ err, id }, "playbook: revision snapshot not saved (the edit itself goes on)"));
 
   const fields: string[] = [];
   const vals: unknown[] = [];
@@ -1003,7 +1004,7 @@ router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req,
     // Writing a setup score onto a trade requires owning that trade (or being staff).
     const own = await canTouchTrade(req, tradeId);
     await pool.query(`DELETE FROM playbook_checklist_runs WHERE playbook_id = $1 AND trade_id = $2`, [id, tradeId]);
-    await pool.query(`UPDATE trades SET setup_score = $1 WHERE id = $2`, [score, tradeId]).catch(() => {});
+    await pool.query(`UPDATE trades SET setup_score = $1 WHERE id = $2`, [score, tradeId]);
   } else {
     await pool.query(`DELETE FROM playbook_checklist_runs WHERE playbook_id = $1 AND trade_id IS NULL AND trader = $2`, [id, auth.name]);
   }
@@ -1277,7 +1278,8 @@ router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<v
   const pb = await loadSetupAccess(id);
   if (!pb || !canReadPure(await loadViewer(req), pb)) throw new AppError("SETUP_NOT_FOUND");
   const own = await canTouchTrade(req, Number(tradeId));
-  await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2`, [id, Number(tradeId)]);
+  // The setup tag is playbook_id + the setup's name together (lib/tradesSetupLink): the trades list reads the name.
+  await pool.query(`UPDATE trades SET playbook_id = $1, setup = (SELECT name FROM playbook WHERE id = $1) WHERE id = $2`, [id, Number(tradeId)]);
   await tradeTagged(Number(tradeId));
   res.json({ success: true });
 }));
@@ -1287,7 +1289,12 @@ router.delete("/playbook/:id/link-trade/:tradeId", asyncHandler(async (req, res)
   const tradeId = Number(req.params.tradeId);
   if (isNaN(tradeId)) throw badRequest("INVALID_ID");
   const own = await canTouchTrade(req, tradeId);
-  await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`, [tradeId, Number.isInteger(id) ? id : null]);
+  await pool.query(
+    `UPDATE trades SET playbook_id = NULL,
+            setup = CASE WHEN setup = (SELECT name FROM playbook WHERE id = trades.playbook_id) THEN NULL ELSE setup END
+      WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`,
+    [tradeId, Number.isInteger(id) ? id : null],
+  );
   await tradeTagged(tradeId);
   res.json({ success: true });
 }));

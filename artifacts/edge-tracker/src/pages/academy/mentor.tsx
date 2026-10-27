@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { AlertTriangle, Archive, CalendarClock, ClipboardCheck, Eye, ListChecks, MessagesSquare, MoreHorizontal, Plus, Target, UserCheck, UserCog, Users, X } from "lucide-react";
 import {
-  DataTable, EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, Toolbar, useTableSort, type Tone,
+  DataTable, EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, Toolbar, usePersistentState, useTableSort, type Tone,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,13 +33,14 @@ import { personName } from "@/i18n";
 export default function AcademyMentorPage() {
   const { t } = academyCohortsI18n.useT();
   const { isCurator, user } = useAuth();
-  const search = useSearch();
-  const [all, setAll] = useState(false);
-  const [filter, setFilter] = useState<StudentFilter>("all");
+  const [all, setAll] = usePersistentState("academy.mentor.all", false);
+  const [filter, setFilter] = usePersistentState<StudentFilter>("academy.mentor.filter", "all");
   const q = useMentorDashboard(all, isCurator);
   const d = q.data;
-  const [selected, setSelected] = useState<string | null>(() => new URLSearchParams(search).get("student"));
-  useEffect(() => { const s = new URLSearchParams(search).get("student"); if (s) setSelected(s); }, [search]);
+  // ?student= is read and written: the open student card survives a reload; closing it clears the param.
+  const [studentParam, setStudent] = useSearchParam("student", "");
+  const selected = studentParam || null;
+  const setSelected = (s: string | null) => setStudent(s);
   const [meetingFor, setMeetingFor] = useState<string | null | undefined>(undefined);
   // 1:1 dialog: each student with their cohort's format, so the meeting format is prefilled (remote → online).
   const meetingStudents = useMemo(() => {

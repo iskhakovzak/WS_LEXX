@@ -39,8 +39,11 @@ const mine = vi.hoisted(() => ({
   insertPersonal: vi.fn(async (userId: number, i: Record<string, unknown>) => ({ ...i, id: 9, userId, resolvedTickers: [], resolvedAt: null, active: true })),
   personalById: vi.fn(),
   updatePersonal: vi.fn(async (_u: number, id: number, p: Record<string, unknown>, cur: Record<string, unknown>) => ({ ...cur, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)), id })),
-  writeView: vi.fn(async (_id: number, v: unknown) => v),
-  readView: vi.fn(async () => ({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [9], sort: null, tab: "shared" })),
+  // The stored view, merged per field by the store in one statement (lib/themes/personalStore mergeView).
+  mergeView: vi.fn(async (_id: number, patch: Record<string, unknown>) => {
+    const { normalizeView } = await import("../../lib/themes/personal");
+    return normalizeView({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [9], sort: null, tab: "shared", ...patch });
+  }),
 }));
 vi.mock("../../lib/themes/personalStore", () => mine);
 const boards = vi.hoisted(() => ({
@@ -115,7 +118,7 @@ describe("view", () => {
   it("saves visible columns (≥ 1, table order) and hidden ids; refuses junk and guests", async () => {
     const r = await call("PUT", "/api/themes/view", { columns: ["today", "premarket"], hidden: [3] });
     expect(r.json).toEqual({ columns: ["premarket", "today"], hidden: [3], sort: null, tab: "shared" });
-    expect(mine.writeView).toHaveBeenCalledWith(5, { columns: ["premarket", "today"], hidden: [3], sort: null, tab: "shared" });
+    expect(mine.mergeView).toHaveBeenCalledWith(5, { columns: ["today", "premarket"], hidden: [3] });
     // A partial save merges with the stored view (here: the sort and the last tab only).
     const p = await call("PUT", "/api/themes/view", { sort: { col: "today", dir: "asc" }, tab: 4 });
     expect(p.json).toEqual({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [9], sort: { col: "today", dir: "asc" }, tab: 4 });

@@ -40,8 +40,8 @@ export function disciplineIndexOf(days: readonly DisciplineDay[] | null | undefi
 /**
  * Rules stored before 2.7 compared the discipline metric on the curators' 1–10 scale (seed: promote ≥ 7, demote < 4).
  * The metric is now 0–100, so an absolute discipline threshold ≤ this value is a legacy 0–10 threshold and is read ×10
- * (7 → 70, 4 → 40). No migration: stored rows stay as they are until a curator saves the rule set again.
- * The old seeded labels («… ниже 4») are dropped too, so the reader sees the metric label instead.
+ * (7 → 70, 4 → 40). Migration 0274 converted the stored rows once; reads no longer rescale (a threshold a curator types
+ * as 8 must come back as 8). This helper stays for one-off conversions and its tests.
  */
 export const DISCIPLINE_LEGACY_MAX = 10;
 

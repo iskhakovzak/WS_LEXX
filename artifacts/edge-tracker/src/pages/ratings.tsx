@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "wouter";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { CalendarClock, ListOrdered, Plus, Star, Swords, Trophy, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
@@ -57,6 +58,8 @@ export default function RatingsPage() {
     const v = new URLSearchParams(search).get("tab") as Tab | null;
     if (v && TABS.includes(v)) setTab(v);
   }, [search, setTab]);
+  // A choice made here is written to ?tab too, so a stale ?tab=quests from a link never wins over it on reload.
+  const selectTab = (v: Tab) => { setTab(v); replaceSearchParams({ tab: v }); };
   const [dialog, setDialog] = useState<{ open: boolean; trader?: string; editing?: Rating | null }>({ open: false });
   const [deleting, setDeleting] = useState<Rating | null>(null);
 
@@ -142,9 +145,9 @@ export default function RatingsPage() {
       >
         <div className="flex flex-wrap items-center gap-2">
           {/* Five tabs overflow a 375 px screen: the bar scrolls sideways and the cut edge fades as a hint. */}
-          <SectionTabs ariaLabel={t("page.tabsAria")} tabs={tabOptions} value={activeTab} onChange={setTab} className="min-w-0 flex-1" />
+          <SectionTabs ariaLabel={t("page.tabsAria")} tabs={tabOptions} value={activeTab} onChange={selectTab} className="min-w-0 flex-1" />
           {isCurator && pendingCount > 0 && activeTab !== "curator" && (
-            <button type="button" className="chip min-h-8 px-3 text-sm" onClick={() => setTab("curator")}>
+            <button type="button" className="chip min-h-8 px-3 text-sm" onClick={() => selectTab("curator")}>
               {t("page.pending", { week: weekLabel(thisWeek), count: pendingCount })}
             </button>
           )}

@@ -628,7 +628,7 @@ router.post("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
     riskAmount: numOrNull(b.riskAmount),
     setupQuality: b.setupQuality ? String(b.setupQuality) : null,
   }).returning();
-  await pool.query(`UPDATE trade_ideas SET horizon = $2, valid_until = $3 WHERE id = $1`, [row.id, horizon, validUntil]).catch(() => undefined);
+  await pool.query(`UPDATE trade_ideas SET horizon = $2, valid_until = $3 WHERE id = $1`, [row.id, horizon, validUntil]);
   logActivity({ action: "created", section: "trade-ideas", entityId: String(row.id), entityTitle: row.ticker, trader: row.trader ?? undefined, details: `${row.side ?? ""} ${row.setup ?? ""}`.trim() });
   const [withMeta] = await attachMeta([{ ...row, reactions: [], linkedTrade: null }], req.authUser);
   res.status(201).json(withMeta);
@@ -649,7 +649,8 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   if (!manager) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   if (b.status !== undefined && !["draft", "published", "converted"].includes(String(b.status))) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
   if (b.score !== undefined && b.score !== null && (typeof b.score !== "number" || b.score < 0 || b.score > 100)) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
-  if (b.trader !== undefined && !staff) throw new AppError("STAFF_ONLY");
+  // The edit form always sends the idea's own author back: only a real change of author is staff-only.
+  if (b.trader !== undefined && (b.trader || null) !== (existing.trader || null) && !staff) throw new AppError("STAFF_ONLY");
   if (b.ticker !== undefined && !IDEA_TICKER_RE.test(String(b.ticker).trim().toUpperCase())) throw badRequest("INVALID_TICKER");
   const side = b.side !== undefined ? parseSide(b.side) : undefined;
   if (side === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "side" });
@@ -708,7 +709,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
     await pool.query(
       `UPDATE trade_ideas SET trade_link_source = CASE WHEN converted_trade_id IS NULL THEN 'off' ELSE 'manual' END, trade_linked_at = NOW() WHERE id = $1`,
       [id],
-    ).catch(() => undefined);
+    );
   }
   const [withMeta] = await attachMeta([{ ...row, reactions: [], linkedTrade: null }], req.authUser);
   res.json(withMeta);

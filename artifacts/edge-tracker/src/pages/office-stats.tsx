@@ -6,6 +6,7 @@
  * before the response leaves it, so nothing here relies on hiding for privacy; admin blocks are simply not mounted.
  */
 import * as React from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { AlertTriangle, BadgeCheck, Building2, CalendarDays, Clock, GraduationCap, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
 import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -154,8 +155,9 @@ export default function OfficeStatsPage() {
   const view = data ? (data.role === "admin" ? (unit === "usd" ? data.usd : data.pct) : data.pct) : undefined;
   const focus = view?.years.find((y) => y.year === focusYear);
 
-  const [day, setDay] = React.useState<string | null>(null);
-  React.useEffect(() => { setDay(null); }, [focusYear]);
+  const [dayParam, setDay] = useSearchParam("day", ""); // ?day= — the drilled-in day survives a reload
+  const day = dayParam || null;
+  React.useEffect(() => { if (day && !day.startsWith(String(focusYear))) setDay(null); }, [focusYear]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickDay = (d: string) => { setDay(d); document.getElementById("office-day")?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" }); };
   const pickMonth = (m: number) => { setMonth(m); setMode("month"); };
   const navRef = React.useRef<HTMLElement>(null);

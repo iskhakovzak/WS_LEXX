@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { BarChart3 } from "lucide-react";
-import { Panel, Segmented, EmptyState, toneOf, toneText } from "@/components/ds";
+import { Panel, Segmented, EmptyState, toneOf, toneText, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -48,7 +48,7 @@ function bucketFor(dim: Dim) {
 /** Totals by setup / time / weekday / ticker / side with diverging bars. */
 export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metric: Metric; val: ValueFn }) {
   const [dim, setDim] = useState<Dim>(() => loadPref(DIM_KEY, DIMS) ?? "setup");
-  const [mode, setMode] = useState<Mode>("net");
+  const [mode, setMode] = usePersistentState<Mode>("analytics.pro.mode", "net");
   const [showAll, setShowAll] = useState(false);
 
   const rows: Row[] = useMemo(() => {

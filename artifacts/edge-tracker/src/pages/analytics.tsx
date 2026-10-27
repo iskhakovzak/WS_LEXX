@@ -13,7 +13,7 @@ import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
 import { Brain, Compass, Dices, FlaskConical, Grid3x3, Layers, LayoutDashboard, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { ChartSkeleton, Kbd, Page, PageHeader, Panel, EmptyState, StatGridSkeleton } from "@/components/ds";
+import { ChartSkeleton, Kbd, Page, PageHeader, Panel, EmptyState, StatGridSkeleton, usePersistentState } from "@/components/ds";
 import { AnalyticsTabBar } from "@/components/analytics-page/TabBar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -178,7 +178,7 @@ export default function Analytics() {
     if (staffView && trader !== view.trader) pickTrader(trader || me || "");
     setFilters((cur) => ({ ...cur, ...f }));
   }, [staffView, view.trader, pickTrader, me]);
-  const [statsDim, setStatsDim] = useState<StatsDimension>("trader");
+  const [statsDim, setStatsDim] = usePersistentState<StatsDimension>("analytics.statsDim", "trader");
   const unitPref: Unit = sc.unit ?? "r";
   const [dimension, setDimension] = useState<DimensionKey>(saved.dimension);
 

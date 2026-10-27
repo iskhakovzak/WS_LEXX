@@ -17,6 +17,9 @@ import { academyI18n } from "@/i18n/ns/academy";
 import { shellI18n } from "@/i18n/ns/shell";
 import { cn } from "@/lib/utils";
 import { comparePersonNames, personName } from "@/i18n";
+import { useSearchParam } from "@/hooks/use-search-param";
+
+const REVIEW_STATUSES: readonly ReviewStatus[] = ["submitted", "returned", "graded", "all"];
 
 /**
  * /academy/learn — «Обучение»: каталог программ с прогрессом, дерево модулей выбранной программы,
@@ -68,10 +71,16 @@ export default function AcademyLearn() {
   const tree = useProgramTree(tab === "catalog" ? selectedId : null, viewUser || undefined);
 
   // undefined = not chosen yet → default to the viewer's own cohort when they mentor exactly one.
-  const [cohortPick, setCohortId] = useState<number | null | undefined>(undefined);
-  const [progressProgram, setProgressProgram] = useState<number | null>(null);
-  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("submitted");
-  useEffect(() => { if (!progressProgram && selectedId) setProgressProgram(selectedId); }, [selectedId, progressProgram]);
+  // Cohort / progress program / review status ride in the URL (?cohort= ?pprogram= ?status=): kept on reload.
+  const [cohortRaw, setCohortRaw] = useSearchParam("cohort", "");
+  const cohortPick: number | null | undefined = cohortRaw === "" ? undefined : cohortRaw === "all" ? null : Number(cohortRaw) || undefined;
+  const setCohortId = (v: number | null) => setCohortRaw(v == null ? "all" : String(v));
+  const [pprogram, setPprogram] = useSearchParam("pprogram", "");
+  const progressProgram = Number(pprogram) || null;
+  const setProgressProgram = (v: number | null) => setPprogram(v ? String(v) : null);
+  const [statusRaw, setReviewStatus] = useSearchParam("status", "submitted", { allowed: REVIEW_STATUSES });
+  const reviewStatus = statusRaw as ReviewStatus;
+  useEffect(() => { if (!progressProgram && selectedId) setPprogram(String(selectedId)); }, [selectedId, progressProgram, setPprogram]);
 
   const traders = useMemo(
     () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames).map((n) => ({ value: n, label: personName(n) })),

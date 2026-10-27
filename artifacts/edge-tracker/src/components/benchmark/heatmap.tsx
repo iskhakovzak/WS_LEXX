@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { DataTable, Segmented } from "@/components/ds";
+import { DataTable, Segmented, usePersistentState } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { BenchRow, MetricDef } from "./api";
 import { fmtMetric, heatStyle, metricHint, metricLabel } from "./format";
@@ -12,7 +11,7 @@ type Mode = "value" | "pct";
 /** Traders × metrics; colour = percentile inside the desk (green = best), text = value or percentile. */
 export function BenchmarkHeatmap({ rows, metrics, median }: { rows: BenchRow[]; metrics: MetricDef[]; median: Record<string, number | null> }) {
   const { t } = benchmarkI18n.useT();
-  const [mode, setMode] = useState<Mode>("value");
+  const [mode, setMode] = usePersistentState<Mode>("benchmark.heatmap.mode", "value");
   const ranked = rows.filter((r) => r.qualified);
   if (!ranked.length) return <p className="py-8 text-center text-sm text-muted-foreground">{t("heatmap.noRanked")}</p>;
   return (

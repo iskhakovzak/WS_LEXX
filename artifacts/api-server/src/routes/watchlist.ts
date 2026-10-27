@@ -23,6 +23,7 @@ import { calcWatchlistScore } from "../lib/scoreEngine";
 import { logger } from "../lib/logger";
 import { requireMember } from "../lib/auth";
 import { nyDate } from "../lib/tradingDate";
+import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { watchActor, readWatchView } from "../lib/watchlist/access";
 import { canReadRow, canWriteRow, canEditDesk, ownerOf, parseScope, readScope, type WatchActor, type WatchScope } from "../lib/watchlist/scope";
@@ -247,6 +248,8 @@ function contentOf(b: Record<string, unknown>): ContentPatch {
   if (b.notes !== undefined) p.notes = textOrNull(b.notes);
   if (b.sector !== undefined) p.sector = textOrNull(b.sector);
   if (b.tags !== undefined) p.tags = textOrNull(b.tags);
+  // The form's screenshot links (one per line, http(s) only — same cleaning as ideas / events).
+  if (b.screenshotUrl !== undefined) p.screenshotUrl = sanitizeMultiLineUrls(typeof b.screenshotUrl === "string" ? b.screenshotUrl : null);
   for (const k of ["marketCap", "float", "adv", "longName"] as const) if (b[k] !== undefined) p[k] = textOrNull(b[k]);
   for (const k of ["atr", "relativeVolume", "beta", "shortInterest"] as const) if (b[k] !== undefined) p[k] = numOrNull(b[k]);
   return p;

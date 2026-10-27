@@ -1,9 +1,9 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 import { LineChart as LineIcon } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { EmptyState, Panel, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Segmented, usePersistentState } from "@/components/ds";
 import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
 import {
   ACTIVE_DOT, BAR_RADIUS, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
@@ -39,7 +39,7 @@ export function EquityPanel({
   onMetric?: (m: Metric) => void;
 }) {
   const { t } = statsI18n.useT();
-  const [view, setView] = useState<View>("equity");
+  const [view, setView] = usePersistentState<View>("stats.equity.view", "equity");
   const motion = useChartMotion();
   const gid = useId().replace(/:/g, "");
   const paint = useMemo(() => pnlPaint(`statsEq${gid}`, equity.map((p) => p.equity)), [equity, gid]);

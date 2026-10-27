@@ -22,7 +22,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { logAudit } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { requireStaff } from "../lib/auth";
-import { CAPABILITY_DEFS, DEFAULT_MATRIX, DEFAULT_SCOPE, ROLES, buildEffectiveMatrix, capabilitiesOf, capabilityDef, diffFromDefaults, getMatrixState, invalidatePermissionsCache, isEditableRole, requireCap, resolveActor, type Capability, type EffectiveMatrix, type Override, type Role } from "../lib/permissions";
+import { CAPABILITY_DEFS, DEFAULT_MATRIX, DEFAULT_SCOPE, ROLES, buildEffectiveMatrix, capabilitiesOf, capabilityDef, diffFromDefaults, getMatrixState, invalidatePermissionsCache, isEditableRole, loadOverrides, requireCap, resolveActor, type Capability, type EffectiveMatrix, type Override, type Role } from "../lib/permissions";
 import { badRequest, unauthorized } from "../lib/http";
 import { localizedCapabilityDefs } from "../lib/permissionsI18n";
 import { langOf, type Lang } from "../i18n";
@@ -116,7 +116,8 @@ router.put("/permissions/matrix", asyncHandler(async (req, res): Promise<void> =
     throw badRequest("VALIDATION", { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
   }
   const actor = req.authUser!.name;
-  const before = (await getMatrixState()).overrides;
+  // Fresh and strict (not the 15 s cache, which turns a failed read into «no overrides»): the save rewrites the table.
+  const before = (await loadOverrides(true)).overrides;
 
   let next: Override[];
   if (parsed.data.reset) {

@@ -31,7 +31,7 @@ import {
 } from "@/components/notes/author-plan";
 import {
   AN_KEYS, BUILTIN_TEMPLATES, MOODS, SECTIONS, appendText, applyTemplate,
-  isIsoDate, loadCustomTemplates, parseNote, relTime, saveCustomTemplates, serializeNote,
+  isIsoDate, LEGACY_TPL_KEY, keepUnsavedNote, parseCustomTemplates, parseNote, readUnsavedNote, relTime, serializeNote,
   type Audience, type AuthorNote, type DayContext, type DayTrade, type NoteTemplate, type SectionKey,
 } from "@/components/notes/author-model";
 import { fmtDate } from "@/lib/format";
@@ -39,6 +39,7 @@ import { http } from "@/lib/api/http";
 import { nyDate, prevWeekday } from "@/lib/trading-date";
 import { isNotFound } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
+import { useServerPref } from "@/hooks/use-server-pref";
 import { notesI18n } from "@/i18n/ns/notes";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -152,7 +153,7 @@ export default function AuthorNotesPage() {
   const [activeKey, setActiveKey] = useState<EditorTarget | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AuthorNote | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [templates, setTemplates] = useState<NoteTemplate[]>(() => loadCustomTemplates());
+  const [templates, setTemplates] = useServerPref<NoteTemplate[]>("notes.authorTemplates", [], { legacyKey: LEGACY_TPL_KEY, parse: parseCustomTemplates });
   const [tplDialog, setTplDialog] = useState(false);
   const [tplName, setTplName] = useState("");
   const firstFieldRef = useRef<HTMLTextAreaElement | null>(null);
@@ -223,6 +224,12 @@ export default function AuthorNotesPage() {
         if (data.raw_text?.trim()) setModeState(p.structured ? "sections" : "free");
       }
       setLoadState("ok");
+      // A copy the server never confirmed (failed save, then a reload / restart) comes back and is saved again.
+      const unsaved = readUnsavedNote(trader, d);
+      if (unsaved && (unsaved.raw !== (data?.raw_text ?? "") || unsaved.mood !== (data?.mood ?? ""))) {
+        setRaw(unsaved.raw); setMood(unsaved.mood); rawRef.current = unsaved.raw; moodRef.current = unsaved.mood;
+        setStatus("dirty"); void saveRef.current({ force: true });
+      } else if (unsaved) keepUnsavedNote(trader, d, null);
     } catch {
       if (seq === loadSeq.current) setLoadState("error");
     }
@@ -239,7 +246,10 @@ export default function AuthorNotesPage() {
     if (!noteRef.current && !text.trim() && !m && !opts?.force) { setStatus("idle"); return null; }
     setStatus("saving");
     try {
-      const data = await http.put<AuthorNote>(`/api/author-notes`, { raw_text: text, note_date: d, mood: m || null });
+      const body = { raw_text: text, note_date: d, mood: m || null };
+      // keepalive: a save started by closing / hiding the tab still reaches the server (browser cap ≈ 64 KB).
+      const data = await http.put<AuthorNote>(`/api/author-notes`, body, { keepalive: JSON.stringify(body).length < 30_000 });
+      keepUnsavedNote(trader, d, null);
       if (d === dateRef.current) {
         setNote(data);
         if (rawRef.current === text && moodRef.current === m) { setStatus("saved"); setSavedAt(Date.now()); }
@@ -250,6 +260,7 @@ export default function AuthorNotesPage() {
       return data;
     } catch (e) {
       if (d === dateRef.current) setStatus("error");
+      keepUnsavedNote(trader, d, { raw: text, mood: m });
       toast({ title: notesI18n.t("author.toast.saveFailed"), description: e instanceof Error ? e.message : notesI18n.t("author.toast.checkConnection"), variant: "destructive" });
       return null;
     }
@@ -358,16 +369,13 @@ export default function AuthorNotesPage() {
     if (!Object.keys(sections).length) { toast({ title: t("author.toast.fillOneBlock"), variant: "destructive" }); return; }
     const next = [{ id: `c${Date.now()}`, name, description: t("myTemplate"), sections, custom: true }, ...templates.filter((x) => x.name !== name)];
     setTemplates(next);
-    saveCustomTemplates(next);
     setTplDialog(false);
     setTplName("");
     toast({ title: t("author.toast.tplSaved") });
   };
 
   const removeTemplate = (id: string) => {
-    const next = templates.filter((t) => t.id !== id);
-    setTemplates(next);
-    saveCustomTemplates(next);
+    setTemplates(templates.filter((t) => t.id !== id));
   };
 
   /* ── Insert from the day's trades ── */

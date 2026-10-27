@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -151,7 +151,7 @@ export function CatalystWeek({
   onRetry: () => void;
 }) {
   const { t } = big7I18n.useT();
-  const [week, setWeek] = useState<"this" | "next">("this");
+  const [week, setWeek] = usePersistentState<"this" | "next">("big7.catalysts.week", "this");
   const TODAY = useBig7Today();
   // Saturday / Sunday: the week that matters is the one ahead, not the one that just closed.
   const dow = new Date(`${TODAY}T12:00:00Z`).getUTCDay();
@@ -341,7 +341,7 @@ export function CatalystSheet({
   open, onOpenChange, merged, onAdd, onEdit,
 }: { open: boolean; onOpenChange: (o: boolean) => void; merged: MergedCatalyst[]; onAdd: () => void; onEdit: (c: MergedCatalyst) => void }) {
   const { t } = big7I18n.useT();
-  const [scope, setScope] = useState<"upcoming" | "past">("upcoming");
+  const [scope, setScope] = usePersistentState<"upcoming" | "past">("big7.catalysts.scope", "upcoming");
   const { canEdit } = useAuth();
   const TODAY = useBig7Today();
   const list = scope === "upcoming"

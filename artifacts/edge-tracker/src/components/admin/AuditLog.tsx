@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Download, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,9 +70,10 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
   const win = periodWindow(per.period, per.today, per.custom);
   const from = win?.from ?? "";
   const to = win?.to ?? "";
-  const [who, setWho] = useState(ALL);
-  const [what, setWhat] = useState(ALL);
-  const [objType, setObjType] = useState(ALL);
+  // Who / what / object type ride in the URL (?who= ?what= ?obj=): a reload keeps the audit filter.
+  const [who, setWho] = useSearchParam("who", ALL);
+  const [what, setWhat] = useSearchParam("what", ALL);
+  const [objType, setObjType] = useSearchParam("obj", ALL);
   const [objIdInput, setObjIdInput] = useState("");
   const [objId, setObjId] = useState("");
   const objIdField = useId();

@@ -232,16 +232,27 @@ export function useSyncLocalJournal(trader: string) {
   return { pending: q.data ?? [], flush };
 }
 
+/** A failure worth a local copy: no answer at all, or the server's own failure (not a refusal of the content). */
+export function isTransientSaveError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 0 || err.status >= 500);
+}
+
 export function useSaveJournalDay() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (e: JournalEntry): Promise<{ entry: JournalEntry; mode: StorageMode }> => {
       if (!serverDown()) {
-        const r = await putServer(e);
-        if (r) return r;
+        try {
+          const r = await putServer(e);
+          if (r) return r;
+        } catch (err) {
+          // Server unreachable or failing (a restart, a 5xx): keep the text in this browser, marked for sync, instead
+          // of only in memory — useSyncLocalJournal pushes it once the server answers again.
+          if (!isTransientSaveError(err)) throw err;
+        }
       }
       writeLocal(e);
-      return { entry: { ...e, updatedAt: new Date().toISOString() }, mode: "local" };
+      return { entry: { ...e, updatedAt: new Date().toISOString(), pendingSync: true }, mode: "local" };
     },
     onSuccess: ({ entry, mode }) => {
       // Patch every cached range that contains this date, without refetching (keeps the editor stable).

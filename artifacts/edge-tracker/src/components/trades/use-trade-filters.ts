@@ -6,7 +6,6 @@ import {
   HORIZONS,
   PAGE_SIZES,
   readLS,
-  readLSArray,
   writeLS,
   type Horizon,
   type Outcome,
@@ -17,6 +16,7 @@ import {
 } from "./trade-utils";
 import { isPreset, PRESET_META, type Preset } from "./review-presets";
 import { normalizePeriod } from "@/lib/period-range";
+import { useServerPref } from "@/hooks/use-server-pref";
 
 const FILTERS_KEY = "ws.trades.filters.v2";
 const VIEWS_KEY = "ws.trades.views.v1";
@@ -24,6 +24,15 @@ const SORT_KEY = "ws.trades.sort.v1";
 const SIZE_KEY = "ws.trades.pageSize.v1";
 
 export type SavedView = { id: string; name: string; filters: TradeFilters };
+
+/** Saved views from the account / the old browser copy: shape-checked, at most 30. */
+export function parseSavedViews(v: unknown): SavedView[] | null {
+  if (!Array.isArray(v)) return null;
+  return v
+    .filter((x): x is SavedView => !!x && typeof x === "object" && typeof (x as SavedView).name === "string" && !!(x as SavedView).filters && typeof (x as SavedView).filters === "object")
+    .map((x) => ({ id: String(x.id ?? x.name), name: x.name, filters: x.filters }))
+    .slice(0, 30);
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SORT_COLS: readonly SortCol[] = ["date", "ticker", "side", "setup", "trader", "entry", "exit", "r", "result", "pnl", "gross", "fees", "exitEff", "mfeR", "left", "impact", "hold"];
@@ -155,7 +164,8 @@ export function useTradeFilters() {
   const [sort, setSortState] = useState<SortConfig>(() => initial.state.sort ?? readLS<SortConfig>(SORT_KEY, { col: "date", dir: "desc" }));
   const [page, setPageState] = useState<number>(() => initial.state.page ?? 1);
   const [pageSize, setPageSizeState] = useState<number>(() => initial.state.pageSize ?? readLS<{ size: number }>(SIZE_KEY, { size: DEFAULT_PAGE_SIZE }).size);
-  const [views, setViews] = useState<SavedView[]>(() => readLSArray<SavedView>(VIEWS_KEY));
+  // Saved views are the person's own: kept on the account (prefs "trades.views"); the old browser copy is moved up once.
+  const [views, setViews] = useServerPref<SavedView[]>("trades.views", [], { legacyKey: VIEWS_KEY, parse: parseSavedViews });
   // Preset / layout live only in the URL: a fresh visit always opens the day view.
   const [preset, setPresetState] = useState<Preset | null>(() => initial.state.preset ?? null);
   const [view, setViewState] = useState<TradesView>(() => initial.state.view ?? "days");
@@ -219,20 +229,12 @@ export function useTradeFilters() {
   }, []);
 
   const saveView = useCallback((name: string) => {
-    setViews((prev) => {
-      const next = [...prev.filter((v) => v.name !== name), { id: `${Date.now()}`, name, filters: { ...filters, q: filters.q.trim() } }];
-      writeLS(VIEWS_KEY, next);
-      return next;
-    });
-  }, [filters]);
+    setViews((prev) => [...prev.filter((v) => v.name !== name), { id: `${Date.now()}`, name, filters: { ...filters, q: filters.q.trim() } }]);
+  }, [filters, setViews]);
 
   const removeView = useCallback((id: string) => {
-    setViews((prev) => {
-      const next = prev.filter((v) => v.id !== id);
-      writeLS(VIEWS_KEY, next);
-      return next;
-    });
-  }, []);
+    setViews((prev) => prev.filter((v) => v.id !== id));
+  }, [setViews]);
 
   const applyView = useCallback((v: SavedView) => { setFilters(normalizeStoredFilters(v.filters)); setPageState(1); }, []);
 

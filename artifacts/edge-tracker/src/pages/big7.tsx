@@ -9,6 +9,7 @@
  * 5 min) — re-polled every 3 min only in premarket/regular hours; quotes every 60 s only during the
  * regular session; daily stats once per 20 min. Nothing polls on a closed session.
  */
+import { useSearchParam } from "@/hooks/use-search-param";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useListBig7Tickers } from "@workspace/api-client-react";
 import type { Big7Ticker } from "@workspace/api-client-react";
@@ -30,7 +31,8 @@ import { TickerManagerSheet, useSeedBig7 } from "@/components/big7/TickerManager
 import {
   useAutoEarnings, useBig7Today, useCatalysts, useGapRisk, useMyStats, useNow, useQuotes, useSessionBars,
 } from "@/components/big7/use-big7";
-import { DEFAULT_BIG7, lsRaw, lsRawSet, mergeCatalysts, type BoardTicker, type MergedCatalyst } from "@/components/big7/lib";
+import { DEFAULT_BIG7, mergeCatalysts, parseHotPref, type BoardTicker, type HotPref, type MergedCatalyst } from "@/components/big7/lib";
+import { useServerPref } from "@/hooks/use-server-pref";
 import { big7I18n } from "@/i18n/ns/big7";
 import { commonI18n } from "@/i18n/ns/common";
 import {
@@ -69,23 +71,12 @@ export default function Big7() {
   const { data: tickers = [], isLoading: tickersLoading, isError: tickersError, error: tickersErr, refetch: refetchTickers } = useListBig7Tickers();
   const { seed, seeding } = useSeedBig7();
 
-  // Hot list: per day, local (managed in the ticker sheet). Rolls over at the NY date change in an open tab.
+  // Hot list of the day (managed in the ticker sheet): on the account, so it follows the person to another device; a new
+  // NY day starts empty (the day is stored with it). The old per-day browser copy is moved up once.
   const today = useBig7Today();
-  const HOT_KEY = `big7_hot_${today}`;
-  const readHot = (key: string): string[] => {
-    try {
-      const v = JSON.parse(lsRaw(key) || "[]");
-      return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-    } catch { return []; }
-  };
-  const [hotSymbols, setHotSymbols] = useState<string[]>(() => readHot(HOT_KEY));
-  const [hotKeyLoaded, setHotKeyLoaded] = useState(HOT_KEY);
-  if (hotKeyLoaded !== HOT_KEY) { setHotKeyLoaded(HOT_KEY); setHotSymbols(readHot(HOT_KEY)); }
-  const saveHot = useCallback((syms: string[]) => {
-    const unique = [...new Set(syms.map((s) => s.toUpperCase()))];
-    setHotSymbols(unique);
-    lsRawSet(HOT_KEY, JSON.stringify(unique));
-  }, [HOT_KEY]);
+  const [hotPref, setHotPref] = useServerPref<HotPref>("big7.hot", { day: "", symbols: [] }, { legacyKey: `big7_hot_${today}`, parse: (v) => parseHotPref(v, today) });
+  const hotSymbols = useMemo(() => (hotPref.day === today ? hotPref.symbols : []), [hotPref, today]);
+  const saveHot = useCallback((syms: string[]) => setHotPref({ day: today, symbols: [...new Set(syms.map((s) => s.toUpperCase()))] }), [today, setHotPref]);
 
   const core: BoardTicker[] = useMemo(
     () => (tickers as Big7Ticker[])
@@ -165,13 +156,15 @@ export default function Big7() {
   const myBy = useMemo(() => new Map((myAll.data?.tickers ?? []).map((t) => [t.ticker, t])), [myAll.data]);
 
   // ── sheets / dialogs ────────────────────────────────────────────────────
-  const [openSym, setOpenSym] = useState<string | null>(null);
+  const [symParam, setSymParam] = useSearchParam("sym", ""); // ?sym= — the open ticker sheet survives a reload
+  const openSym = symParam || null;
+  const setOpenSym = useCallback((s: string | null) => setSymParam(s), [setSymParam]);
   const openRow = openSym ? rowBySymbol.get(openSym) ?? null : null;
   const step = useCallback((dir: 1 | -1) => {
     if (!boardSymbols.length) return;
     const i = openSym ? boardSymbols.indexOf(openSym) : -1;
     setOpenSym(boardSymbols[(i + dir + boardSymbols.length) % boardSymbols.length]);
-  }, [boardSymbols, openSym]);
+  }, [boardSymbols, openSym, setOpenSym]);
 
   const [managerOpen, setManagerOpen] = useState(false);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
@@ -194,7 +187,7 @@ export default function Big7() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [boardSymbols, canEdit, addCatalyst]);
+  }, [boardSymbols, canEdit, addCatalyst, setOpenSym]);
 
   const coreEmpty = !tickersLoading && !tickersError && core.length === 0;
   const dataLoading = tickersLoading || (bars.loading && !snaps.QQQ);

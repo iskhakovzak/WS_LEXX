@@ -18,7 +18,7 @@
 import { scalingT } from "../i18n/ns";
 import { formatCountFor, type Lang, } from "../i18n";
 import { DEFAULT_RULES } from "./scalingSeed";
-import { disciplineIndexOf, normalizeDisciplineRule, type DisciplineDay } from "./disciplineIndex";
+import { disciplineIndexOf, type DisciplineDay } from "./disciplineIndex";
 
 export { DEFAULT_RULES, DEFAULT_TIERS } from "./scalingSeed";
 /** The one discipline score (0–100) of the ladder — defined in lib/disciplineIndex.ts, shared with lib/promotionEngine. */
@@ -574,7 +574,7 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
   const nextTier = idx >= 0 ? tiers[idx + 1] ?? null : tiers[0] ?? null;
   const prevTier = idx > 0 ? tiers[idx - 1] : null;
 
-  const applicable = rules.filter((r) => r.enabled && (r.tierKey == null || r.tierKey === input.tierKey)).map(normalizeDisciplineRule);
+  const applicable = rules.filter((r) => r.enabled && (r.tierKey == null || r.tierKey === input.tierKey));
   const windowsNeeded = new Set<number>([20, ...applicable.map((r) => Math.max(1, Math.round(r.windowDays)))]);
   const windows = [...windowsNeeded].sort((a, b) => a - b).map((n) => computeWindowMetrics(input, tier, n, lang));
   const byWindow = new Map(windows.map((w) => [w.windowDays, w]));

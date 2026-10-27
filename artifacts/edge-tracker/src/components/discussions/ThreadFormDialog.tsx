@@ -12,6 +12,7 @@ import { TagSelector } from "@/components/tag-selector";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { ScreenshotFields } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { RichText } from "./RichText";
@@ -80,6 +81,9 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
   }, [open, editing, defaultTicker, defaultType, context?.tradeId]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // The topic and text survive a closed dialog / reload until the thread is saved (local draft).
+  const draft = useTextDraft(open ? `thread:${editing?.id ?? "new"}` : null, { topic: form.topic, notes: form.notes },
+    (d) => setForm((f) => ({ ...f, ...d })), { base: editing ? { topic: editing.topic, notes: splitNotes(editing.notes).text } : { topic: "", notes: "" } });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
@@ -89,7 +93,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
 
   const createMut = useCreateDiscussion({
     mutation: {
-      onSuccess: (d) => { invalidate(); toast({ title: t("form.created") }); onSaved(d.id); onClose(); },
+      onSuccess: (d) => { draft.clear(); invalidate(); toast({ title: t("form.created") }); onSaved(d.id); onClose(); },
       onError: (e: unknown) => toast({ title: tc("states.error"), description: humanizeApiError(e, tc("states.saveFailed")), variant: "destructive" }),
     },
   });
@@ -113,6 +117,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
     setPatching(true);
     try {
       await http.patch(`/api/discussions/${editing.id}`, { topic, type: form.type, ticker, notes, tags: [...form.tags, ...flags].join(", "), audience: form.audience });
+      draft.clear();
       invalidate();
       toast({ title: t("form.updated") });
       onSaved(editing.id);

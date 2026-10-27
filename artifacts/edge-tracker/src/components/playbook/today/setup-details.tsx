@@ -3,6 +3,7 @@
  * conditions, management, notes / mistakes), examples, stats with the linked trades, history. Read-only unless the
  * viewer may edit the setup — the same pieces as the library card, without the curator header.
  */
+import { useSearchParam } from "@/hooks/use-search-param";
 import { useMemo, useState } from "react";
 import { FileText, History, ListChecks, Trophy } from "lucide-react";
 import { SectionTabs } from "@/components/ds";
@@ -18,10 +19,12 @@ import { StructuredDescription } from "../structured-editor";
 import { TradePickerDialog } from "../trade-picker-dialog";
 
 type Tab = "about" | "examples" | "stats" | "history";
+const TABS: readonly Tab[] = ["about", "examples", "stats", "history"];
 
 export function SetupDetails({ setupId }: { setupId: number }) {
   const { t } = playbookTodayI18n.useT();
-  const [tab, setTab] = useState<Tab>("about");
+  const [tabRaw, setTab] = useSearchParam("stab", "about", { allowed: TABS }); // ?stab= — kept on reload
+  const tab = tabRaw as Tab;
   const [picker, setPicker] = useState(false);
   const entriesQ = usePlaybookEntries();
   const summary = usePlaybookSummary().map;

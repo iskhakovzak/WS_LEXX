@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { fmtDate, fmtDeskDateTime } from "@/lib/format";
@@ -44,6 +45,10 @@ export function EodReviewSheet({ item: incoming, onClose, onNext }: { item: Queu
     setComment(dayQ.data?.day?.curatorComment ?? "");
     setScore(dayQ.data?.day?.curatorScore ?? null);
   }, [item?.id, dayQ.data?.day?.curatorComment, dayQ.data?.day?.curatorScore]);
+  // An unsent comment survives a closed sheet / reload (local draft, keyed once the day is loaded).
+  const draft = useTextDraft(open && item && dayQ.data ? `eod-review:${item.id}` : null, { comment, score },
+    (d) => { setComment(d.comment); setScore(d.score); },
+    { base: { comment: dayQ.data?.day?.curatorComment ?? "", score: dayQ.data?.day?.curatorScore ?? null } });
 
   const review = useEodMutation((b: { id: number; comment: string; score: number; next: boolean }) =>
     eodApi.curatorReview(b.id, { comment: b.comment, score: b.score }).then((out) => ({ ...out, goNext: b.next })),
@@ -57,6 +62,7 @@ export function EodReviewSheet({ item: incoming, onClose, onNext }: { item: Queu
     if (!item || score == null) return;
     if (!comment.trim()) { toast({ title: t("sheet.writeComment"), variant: "destructive" }); return; }
     review.mutate({ id: item.id, comment: comment.trim(), score, next }, {
+      onSuccess: () => draft.clear(),
       onError: (e) => toast({ title: t("sheet.saveFailed"), description: (e as Error).message, variant: "destructive" }),
     });
   };

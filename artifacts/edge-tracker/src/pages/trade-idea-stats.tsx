@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -93,8 +94,8 @@ export default function TradeIdeaStats() {
   // ?period (+ from/to); the old «30 / 90 / 365 / all» value in localStorage still opens on its window.
   const { period, custom, setPreset, setCustom } = usePeriodParam({ presets: PRESETS, fallback: "quarter", storageKey: "ideaStats.period" });
   const today = nyDate();
-  const [author, setAuthor] = useState<string>("all");
-  const [bestMode, setBestMode] = useState<"best" | "worst">("best");
+  const [author, setAuthor] = useSearchParam("author", "all"); // ?author= — the picked person survives a reload
+  const [bestMode, setBestMode] = useStoredState<"best" | "worst">("ideaStats.bestMode", "best", ["best", "worst"]);
   // Outcome basis: price vs. the idea's own target / stop (every published idea with numeric levels), or the linked
   // trade (only ideas a trade was matched to). Trades arrive from PropReports, so links are the rarer signal.
   const [basis, setBasis] = useStoredState<OutcomeBasis>("ideaStats.basis", "price", ["price", "trades"]);

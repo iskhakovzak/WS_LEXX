@@ -240,7 +240,7 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
     }
     // Link the trade to the setup for stats when it is unlinked and the caller may write it.
     if (link && (await canAccessTrade(req, tradeId, "write")) === true) {
-      const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2 AND playbook_id IS NULL AND deleted_at IS NULL`, [row.id, tradeId]);
+      const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = $1, setup = (SELECT name FROM playbook WHERE id = $1) WHERE id = $2 AND playbook_id IS NULL AND deleted_at IS NULL`, [row.id, tradeId]);
       linked += rowCount ?? 0;
       if (rowCount) linkedTradeIds.push(tradeId);
     }
@@ -330,7 +330,7 @@ router.patch("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res):
     push("playbook_id", target);
     // Keep stats consistent: the trade follows its example when it was linked to the old setup and is writable.
     if ((await canAccessTrade(req, ex.tradeId, "write")) === true) {
-      await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2 AND playbook_id = $3`, [target, ex.tradeId, row.id]);
+      await pool.query(`UPDATE trades SET playbook_id = $1, setup = (SELECT name FROM playbook WHERE id = $1) WHERE id = $2 AND playbook_id = $3`, [target, ex.tradeId, row.id]);
     }
   }
   if (!sets.length) throw badRequest("NO_FIELDS");
@@ -354,7 +354,7 @@ router.delete("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res)
   // the caller may write the trade.
   let unlinked = false;
   if (req.query.unlink === "1" && (await canAccessTrade(req, ex.tradeId, "write")) === true) {
-    const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND playbook_id = $2`, [ex.tradeId, row.id]);
+    const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = NULL, setup = CASE WHEN setup = (SELECT name FROM playbook WHERE id = $2) THEN NULL ELSE setup END WHERE id = $1 AND playbook_id = $2`, [ex.tradeId, row.id]);
     unlinked = !!rowCount;
   }
   await logActivity({ action: "deleted", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: activityDetails("exampleRemoved", { trade: ex.tradeId }), params: { detailsKey: "exampleRemoved", trade: ex.tradeId } });

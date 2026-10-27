@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Link } from "wouter";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill, toneOf } from "@/components/ds";
 import { HeatCalendar, type HeatDay, type HeatWeek } from "@/components/shared/charts";
@@ -44,12 +45,17 @@ export function CalendarPanel({ days, metric, trader, hideTrader }: {
   const latest = days.at(-1)?.key;
   const first = days[0]?.key;
   const [month, setMonth] = useState<Month>(() => (latest ? monthOf(latest) : monthOf(toKey(new Date()))));
-  const [selected, setSelected] = useState<string | null>(null);
+  // The opened day rides in ?day= (kept on reload while it is in the data set).
+  const [dayParam, setDayParam] = useSearchParam("day", "");
+  const selected = dayParam || null;
+  const setSelected = (u: string | null | ((cur: string | null) => string | null)) => setDayParam(typeof u === "function" ? u(selected) : u);
 
-  // Jump to the latest month with trades whenever the dataset changes (period/trader switch).
+  // Jump to the latest month with trades whenever the dataset changes (period/trader switch) — or to the linked day.
   useEffect(() => {
+    if (dayParam && byKey.has(dayParam)) { setMonth(monthOf(dayParam)); return; }
     setMonth(latest ? monthOf(latest) : monthOf(toKey(new Date())));
-    setSelected(null);
+    if (days.length) setDayParam(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest, first]);
 
   const weeks = useMemo(() => {

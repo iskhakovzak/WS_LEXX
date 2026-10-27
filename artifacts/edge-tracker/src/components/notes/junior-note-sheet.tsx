@@ -9,11 +9,13 @@ import { Kbd, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  builtinSnippets, addSnippet, appendSnippet, clearDraft, draftDiffers, loadDraft, loadMySnippets, qk,
-  relTime, reviewKeyAction, saveDraft, saveMySnippets, sectionsOf, wordCount, type JuniorNote, type ReviewContext,
+  builtinSnippets, addSnippet, appendSnippet, clearDraft, draftDiffers, loadDraft, qk,
+  relTime, reviewKeyAction, saveDraft, sectionsOf, wordCount, type JuniorNote, type ReviewContext,
 } from "./junior-lib";
 import { fmtDate } from "@/lib/format";
 import { http } from "@/lib/api/http";
+import { useServerPref } from "@/hooks/use-server-pref";
+import { parseSnippets } from "./junior-persist";
 import { FeedbackCard, MarkdownText, MoodPill, ScorePicker, SectionsView } from "./junior-ui";
 import { PrevFocusCard, ReviewContextRail } from "./junior-review-context";
 import { notesI18n } from "@/i18n/ns/notes";
@@ -72,7 +74,7 @@ export function JuniorNoteSheet({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [current, setCurrent] = React.useState<JuniorNote | null>(note);
-  const [mySnippets, setMySnippets] = React.useState<string[]>(loadMySnippets);
+  const [mySnippets, setMySnippets] = useServerPref<string[]>("junior.snippets", [], { legacyKey: "ws_lexx_junior_snippets", parse: parseSnippets });
   const feedbackRef = React.useRef<HTMLTextAreaElement>(null);
   const isCurator = mode === "curator";
 
@@ -150,12 +152,10 @@ export function JuniorNoteSheet({
     if (!text) return;
     const next = addSnippet(mySnippets, text);
     setMySnippets(next);
-    toast({ title: saveMySnippets(next) ? t("junior.sheet.savedToQuick") : t("junior.sheet.quickSaveFailed") });
+    toast({ title: t("junior.sheet.savedToQuick") });
   };
   const forgetSnippet = (s: string) => {
-    const next = mySnippets.filter((x) => x !== s);
-    setMySnippets(next);
-    saveMySnippets(next);
+    setMySnippets(mySnippets.filter((x) => x !== s));
   };
 
   const syncCaches = (updated: JuniorNote) => {

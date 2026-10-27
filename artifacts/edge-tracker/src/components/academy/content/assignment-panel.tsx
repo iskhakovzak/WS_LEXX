@@ -21,6 +21,7 @@ import { fmtR, fmtUsd } from "@/lib/format";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { useTextDraft } from "@/hooks/use-text-draft";
 
 export function RubricTable({ rubric, scores }: { rubric: RubricCriterion[]; scores?: Record<string, number> | null }) {
   const { t } = academyI18n.useT();
@@ -138,6 +139,7 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
   const [url, setUrl] = useState(editing?.url ?? "");
   const [tradeIds, setTradeIds] = useState<number[]>(editing?.tradeIds ?? []);
   const [busy, setBusy] = useState(false);
+  const draft = useTextDraft(`assignment:${assignmentId}:${editing?.id ?? "new"}`, text, setText, { base: editing?.text ?? "" }); // until sent
   const { t } = academyI18n.useT();
   const short = minTrades > 0 && tradeIds.length < minTrades;
 
@@ -151,6 +153,7 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
         const r = await api.submit(assignmentId, body);
         toast({ title: t("assignment.submitted"), description: r.notified ? t("assignment.mentorNotified", { count: r.notified }) : t("assignment.queued") });
       }
+      draft.clear();
       void invalidateAcademy(qc);
       onDone();
     } catch (err) {
@@ -226,6 +229,7 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
   const [scores, setScores] = useState<Record<string, string>>(() =>
     Object.fromEntries(rubric.map((c) => [c.key, submission.scores?.[c.key] != null ? String(submission.scores[c.key]) : ""])));
   const [comment, setComment] = useState(submission.mentorComment ?? "");
+  const commentDraft = useTextDraft(`grade:${submission.id}`, comment, setComment, { base: submission.mentorComment ?? "" });
   const [busy, setBusy] = useState<"graded" | "returned" | null>(null);
   const { t } = academyI18n.useT();
   const nums = rubric.map((c) => Math.max(0, Math.min(c.maxPoints, Number((scores[c.key] ?? "").replace(",", ".")) || 0)));
@@ -242,6 +246,7 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
         scores: decision === "graded" ? Object.fromEntries(rubric.map((c, i) => [c.key, nums[i]])) : undefined,
         comment,
       });
+      commentDraft.clear();
       toast({ title: decision === "graded" ? t("assignment.gradeSaved") : t("assignment.returned"), description: t("assignment.willBeNotified", { name: personName(submission.userName) }) });
       void invalidateAcademy(qc);
       onDone?.();
