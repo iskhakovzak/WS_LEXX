@@ -8,9 +8,9 @@ export default {
   title: "Бенчмарк деска",
   descSelf: "Ваши метрики против анонимной медианы деска",
   descDesk: "Сравнение трейдеров: нетто, стабильность, исполнение и тренд — для кураторов и head of desk",
-  period: { week: "Неделя", month: "Месяц", quarter: "Квартал", all: "Всё время" },
   periodAria: "Период",
   minTrades: "Мин. сделок",
+  minTradesChip: "Мин. сделок: {count}",
   minTradesAria: "Минимум сделок для перцентилей и медианы",
   updating: "обновление…",
   assigned: "мои подопечные",
@@ -20,6 +20,12 @@ export default {
   emptyHint: "Выберите период длиннее — сделки появятся здесь автоматически после закрытия.",
   tabsAria: "Виды бенчмарка",
   tab: { table: "Таблица", heatmap: "Тепловая карта", same: "Один тикер — один день", compare: "Сравнение двух", trend: "Тренд 4 нед." },
+  verdict: {
+    net: "Нетто деска {net}",
+    best: "лучший — {name} ({net})",
+    attention: "внимания требуют: {names}",
+    allClear: "внимания никто не требует",
+  },
   stat: {
     traders: "Трейдеров / сделок",
     tradersHint: "в перцентилях: {count} (≥ {min} сд.)",
@@ -27,6 +33,7 @@ export default {
     netHint: "Σ pnl − |комиссии|",
     fees: "Комиссии / брутто",
     feesHint: "доля брутто, ушедшая в комиссии",
+    feesNone: "нет брокерских данных о комиссиях за период",
     attention: "Требуют внимания",
     attentionHint: "консистентность: {breaches} · хуже за 4 нед.: {weaker}",
   },
@@ -39,7 +46,7 @@ export default {
   metric: {
     net: { label: "Нетто", hint: "Σ (pnl − |комиссии|)" },
     expectancy: { label: "Ожидание $", hint: "Нетто / сделки с $" },
-    winRate: { label: "Win rate", hint: "W / (W + L), безубыток исключён" },
+    winRate: { label: "Винрейт", hint: "W / (W + L), безубыток исключён" },
     profitFactor: { label: "PF", hint: "Σ нетто⁺ / |Σ нетто⁻|; нет убытков → —" },
     payoff: { label: "Плюс / минус", hint: "Средний плюс / |средний минус|" },
     sharpe: { label: "Sharpe", hint: "Среднее / σ дневного нетто × √252 (≥ 5 дней)" },
@@ -81,7 +88,7 @@ export default {
     notRecovered: "не восстановлен",
     greenRedTitle: "{green} зелёных / {red} красных",
     holdTitle: "Плюсовые {win}, минусовые {loss}",
-    footnote: "Деньги — нетто (pnl − |комиссии|). Win rate = W/(W+L). PF = Σ⁺/|Σ⁻|, «—» если нет убытков. Sharpe/Sortino — по дневному нетто × √252, от 5 дней. R — только по сделкам со стопом/риском. Бледные строки — меньше минимума сделок.",
+    footnote: "Деньги — нетто (pnl − |комиссии|). Винрейт = W/(W+L). PF = Σ⁺/|Σ⁻|, «—» если нет убытков. Sharpe/Sortino — по дневному нетто × √252, от 5 дней. R — только по сделкам со стопом/риском. Бледные строки — меньше минимума сделок.",
   },
 
   heatmap: {
@@ -176,7 +183,7 @@ export default {
 
   trend: {
     verdict: { better: "Лучше", worse: "Хуже", flat: "Без изменений", nodata: "Мало данных" },
-    col: { trades: "Сделки", net: "Нетто", winRate: "Win rate", profitFactor: "PF", expectancy: "Ожидание", greenShare: "Зел. дни", maxDd: "Макс. DD", feeShare: "Комиссии", totalR: "Σ R" },
+    col: { trades: "Сделки", net: "Нетто", winRate: "Винрейт", profitFactor: "PF", expectancy: "Ожидание", greenShare: "Зел. дни", maxDd: "Макс. DD", feeShare: "Комиссии", totalR: "Σ R" },
     weeksAria: "{trader}, недели: {list}",
     barTitle: "{week}: {value} · {trades} — {hint}",
     empty: "Нет сделок за последние 8 недель",

@@ -9,11 +9,12 @@ export default {
     risk: "Риск-деск",
     trades: "Сделки",
     journal: "Дневник",
-    calculator: "Калькулятор",
+    calculator: "Опционный калькулятор",
     analytics: "Аналитика",
     weeklyReview: "Отчёт недели",
     dayReport: "Разбор дня",
     myReview: "Мой разбор",
+    coach: "Ментор",
     behavior: "Поведение и сетапы",
     trainer: "Тренажёр",
     whatIf: "Что если",
@@ -38,13 +39,14 @@ export default {
     authorNotes: "Сводка автора",
     juniorNotes: "Сводка джунов",
     ratings: "Рейтинги",
+    profile: "Мой профиль",
     scaling: "План масштабирования",
     topResults: "Топ",
     activity: "Активность",
     ideaStats: "Статистика идей",
     notifications: "Уведомления",
     academyMy: "Моё обучение",
-    academyLearn: "Обучение",
+    academyLearn: "Курсы",
     academyPath: "Путь трейдера",
     academyChallenges: "Экзамены",
     academyMentor: "Наставник",
@@ -69,19 +71,14 @@ export default {
     academyPath: "Путь",
     academyContent: "Редактор",
   },
-  /** Sidebar groups, in the order of a trader's day. */
+  /** Sidebar groups, in the order of a trader's day («Управление» = staff only, right under «Сегодня»). */
   groups: {
     today: "Сегодня",
-    trade: "Торговля",
-    growth: "Разбор и рост",
+    manage: "Управление",
+    review: "Разбор",
     market: "Рынок",
     team: "Команда",
-    academy: "Академия",
-    manage: "Управление",
-  },
-  /** Sidebar rows that name a set of pages by its job (the row opens the first page of the set). */
-  hubs: {
-    tools: "Инструменты",
+    learn: "Обучение",
   },
   titles: {
     research: "Архив исследований",
@@ -107,6 +104,9 @@ export default {
     hideChildren: "Скрыть разделы «{name}»",
     toRail: "Свернуть меню до иконок",
     fromRail: "Развернуть меню",
+    pinnedTitle: "Закреплённые подразделы. Закрепить: наведите на подраздел и нажмите булавку",
+    goHintOpen: "Все горячие клавиши — в «Помощи»",
+    goHintDismiss: "Скрыть подсказку",
   },
   /** Sidebar footer: the trader's own day (from the risk desk). */
   today: {
@@ -117,11 +117,19 @@ export default {
     haltedWeekly: "Недельный стоп: торговля остановлена",
     haltedDrawdown: "Макс. просадка: торговля остановлена",
     usedAria: "Использовано {pct} дневного лимита",
+    marketClosed: "Рынок закрыт",
+    /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
+    haltedClosed: "{stop} — статус к следующей сессии",
+    /** Halted, but the person has not traded this week (a staff account with an old drawdown): a quiet fact, not an alarm. */
+    haltedIdle: "{stop} — подробности в риск-деске",
+    stop: { daily: "Дневной стоп", weekly: "Недельный стоп", drawdown: "Макс. просадка" },
     open: "Открыть риск-деск",
   },
   mobile: {
     navLabel: "Быстрая навигация",
     more: "Ещё",
+    /** Phone dock label of the dashboard (the first tab). */
+    home: "Главная",
     hasWarnings: "есть предупреждения",
     needsAttention: "требует внимания",
     allSections: "Все разделы",
@@ -145,7 +153,7 @@ export default {
   header: {
     skipToContent: "Перейти к содержимому",
     toggleMenu: "Свернуть или развернуть меню",
-    logoAria: "WS_LEXX — на дашборд",
+    logoAria: "WS_Desk — на дашборд",
     userMenuAria: "Меню пользователя: {name}",
     languageAria: "Язык интерфейса: {name}",
   },
@@ -218,6 +226,38 @@ export default {
     footerOpen: "открыть",
     footerTicker: "тикер",
     footerGo: "затем буква — быстрый переход",
+    footerGroups: "группы",
+    footerTradeId: "сделка по номеру",
+    quick: "Быстрые действия",
+    back: "Назад",
+    languageHeading: "Язык интерфейса",
+    languageCurrentMark: "Текущий язык",
+    langNames: { ru: "русский", en: "английский", uz: "узбекский" },
+    trade: {
+      heading: "Сделка #{id}",
+      loading: "Ищу сделку #{id}…",
+      notFound: "Сделка #{id} не найдена — открыть в сделках",
+    },
+    ticker: {
+      trades: "Сделки по {ticker}",
+      chart: "График {ticker}",
+      chartHint: "WS Chart · {date}",
+      stats: "Моя статистика по {ticker}",
+      statsLine: "{trades} · винрейт {winRate} · {net}",
+      statsNone: "Своих сделок по {ticker} пока нет",
+      statsLoading: "Считаю…",
+    },
+    keywords: {
+      closeDay: "закрыть день итог дня закрытие дня вечер разбор",
+      share: "картинка поделиться изображение карточка",
+      plan: "план на сегодня премаркет мой план",
+      idea: "новая идея добавить идею",
+      event: "новое событие катализатор отчёт",
+      risk: "риск лимиты деск позиции",
+      theme: "тема тёмная светлая оформление",
+      language: "язык",
+      setup: "сетап плейбук шпаргалка",
+    },
     sections: {
       trades: "Сделки",
       ideas: "Идеи",
@@ -231,8 +271,20 @@ export default {
     action: {
       newIdea: "Новая идея",
       newEvent: "Новое событие",
-      theme: "Сменить тему",
+      theme: "Переключить тему",
       language: "Язык: {name}",
+      languageMenu: "Язык",
+      languageCurrent: "Сейчас: {name}",
+      closeDay: "Закрыть день",
+      closeDayHint: "Итог дня {date} · {trades}",
+      shareLast: "Картинка последней сделки",
+      shareLastHint: "{ticker} · {date}",
+      planToday: "План на сегодня",
+      planTodayHint: "Мой план: стоп дня, тикеры, правило",
+      riskDesk: "Риск-деск",
+      riskDeskHint: "Позиции и лимиты деска",
+      myRisk: "Мой риск",
+      myRiskHint: "Лимиты и позиции на сегодня",
     },
     tickerAction: {
       ideas: "Идеи по {ticker}",
@@ -262,6 +314,7 @@ export default {
     },
     setupVariation: "вариация сетапа",
     people: {
+      card: "Профиль: характеристика и автобиография",
       heading: "Люди",
       actionsFor: "{name}: открыть",
       profile: "Профиль в кабинете куратора",
@@ -297,12 +350,30 @@ export default {
     toDashboard: "На дашборд",
     sections: "Разделы",
   },
+  /** A section the desk switched off (a desk feature switch, e.g. nav.authorNotes) opened by URL. */
+  sectionOff: {
+    title: "Раздел выключен администратором",
+    lead: "«{section}» сейчас выключен в настройках деска. Остальные разделы работают как обычно.",
+    ask: "Чтобы включить его, обратитесь к администратору деска.",
+  },
   sectionBlocked: {
     title: "Раздел закрыт для вашей ступени",
     lead: "«{section}» сейчас закрыт для ступени «{stage}». Остальные разделы работают как обычно.",
     askCurator: "Чтобы открыть его, напишите своему куратору: {name}.",
     askStaff: "Чтобы открыть его, обратитесь к куратору или администратору деска.",
     toDashboard: "На дашборд",
+  },
+  /** Opening intro (components/shell/welcome-intro.tsx): {name} is set in an italic serif. */
+  // The opening intro is English in every language (owner, 2026-10-24).
+  intro: {
+    welcome: "Welcome, {name}",
+    trader: "Trader",
+    greeting: {
+      night: "Good night, {name}",
+      morning: "Good morning, {name}",
+      day: "Good afternoon, {name}",
+      evening: "Good evening, {name}",
+    },
   },
   app: {
     pageLoading: "Загрузка страницы…",

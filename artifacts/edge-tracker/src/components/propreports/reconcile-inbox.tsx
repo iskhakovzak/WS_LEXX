@@ -71,17 +71,17 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
           {p.account && <Pill tone="neutral">{p.account}</Pill>}
           <Pill tone={resultTone(t.result)}>{fmtUsd(t.netPnl, { signed: true })} net</Pill>
         </div>
-        <span className="text-2xs text-muted-foreground">{tt("inbox.queuedSince", { date: fmtDate(p.createdAt, "short") })}</span>
+        <span className="text-2xs text-muted-foreground">{tt("inbox.queuedSince", { date: fmtDate(p.createdAt, "medium") })}</span>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         <Side title={tt("inbox.broker")} tone="accent">
           <StatRow label={tt("inbox.entryExit")} value={`${fmtPrice(t.avgEntry)} → ${fmtPrice(t.avgExit)}`} />
           <StatRow label={tt("inbox.qtyMax")} value={tt("inbox.qtyValue", { qty: t.qty, fills: t.fillCount })} />
           <StatRow label={tt("inbox.grossFees")} value={<span>{fmtUsd(t.grossPnl, { signed: true })} / <FeesBreakdown fees={t.fees} total={t.totalFees} /></span>} />
           <StatRow label="Net" value={fmtUsd(t.netPnl, { signed: true })} tone={t.netPnl > 0 ? "up" : t.netPnl < 0 ? "down" : "neutral"} />
           <StatRow label={tt("inbox.horizonHold")} value={`${horizonLabel(t.horizon)} · ${t.holdTime ?? "—"}`} />
-          <button type="button" className="mt-1 text-left text-xs text-primary hover:underline" onClick={() => setShowExec((v) => !v)}>{showExec ? tt("inbox.hideExec") : tt("inbox.showExec")}</button>
+          <button type="button" aria-expanded={showExec} className="mt-1 text-left text-xs text-primary hover:underline" onClick={() => setShowExec((v) => !v)}>{showExec ? tt("inbox.hideExec") : tt("inbox.showExec")}</button>
           {showExec && <ExecutionsList trip={t} />}
         </Side>
         <Side title={tt("inbox.manual", { count: p.candidates.length })} tone="neutral">

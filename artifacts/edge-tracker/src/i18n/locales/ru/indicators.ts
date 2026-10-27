@@ -159,7 +159,7 @@ export default {
     download: "Скачать набор (.md)",
   },
   md: {
-    title: "# Мой набор индикаторов — WS_LEXX",
+    title: "# Мой набор индикаторов — WS_Desk",
     exported: "Экспорт: {date} · {count} шт.",
     horizon: "Горизонт: {value}",
     timeframe: "Таймфрейм: {value}",

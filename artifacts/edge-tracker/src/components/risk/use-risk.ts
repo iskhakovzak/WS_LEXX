@@ -306,7 +306,7 @@ export const riskKeys = {
   all: ["risk"] as const,
   me: () => ["risk", "me"] as const,
   desk: () => ["risk", "desk"] as const,
-  history: (trader: string, days: number) => ["risk", "history", trader, days] as const,
+  history: (trader: string, days: number, to?: string) => ["risk", "history", trader, days, to ?? null] as const,
   positions: (trader: string | null) => ["risk", "positions", trader ?? "*"] as const,
   limits: (trader: string) => ["risk", "limits", trader] as const,
   limitsHistory: (trader: string) => ["risk", "limits-history", trader] as const,
@@ -331,11 +331,12 @@ export function useRiskDesk(enabled = true) {
   });
 }
 
-export function useRiskHistory(trader: string | null, days: number) {
+/** `days` calendar days ending `to` (default today, NY); the server clamps to 5…730. */
+export function useRiskHistory(trader: string | null, days: number, to?: string) {
   return useQuery({
-    queryKey: riskKeys.history(trader ?? "", days),
+    queryKey: riskKeys.history(trader ?? "", days, to),
     queryFn: () =>
-      http.get<RiskHistory>(`/api/risk/history?trader=${encodeURIComponent(trader ?? "")}&days=${days}&date=${nyDate()}`),
+      http.get<RiskHistory>(`/api/risk/history?trader=${encodeURIComponent(trader ?? "")}&days=${days}&date=${to ?? nyDate()}`),
     enabled: !!trader,
     placeholderData: keepPreviousData,
   });

@@ -210,12 +210,12 @@ export function MistakeDialog({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="mistake-trade" className="text-sm font-medium">{t("mistake.trade")}</Label>
               <Select value={tradeId} onValueChange={setTradeId}>
                 <SelectTrigger id="mistake-trade"><SelectValue placeholder={t("mistake.noTrade")} /></SelectTrigger>
-                <SelectContent className="max-h-72">
+                <SelectContent className="max-h-[min(18rem,var(--radix-select-content-available-height))]">
                   <SelectItem value={NO_TRADE}>{t("mistake.noTrade")}</SelectItem>
                   {tradeOptions.map((t) => (
                     <SelectItem key={t.id} value={String(t.id)}>

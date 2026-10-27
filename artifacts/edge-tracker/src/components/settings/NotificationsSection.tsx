@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TelegramConnect } from "./IntegrationsSection";
 import { Bell, BellOff, Medal, ChevronRight } from "lucide-react";
 import { Panel } from "@/components/ds";
 import { Switch } from "@/components/ui/switch";
@@ -110,7 +111,7 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
           </SettingRow>
           <DailyTelegramRow disabled={!enabled} />
           {profile && !linked && (
-            <button type="button" onClick={() => onNavigate("integrations")}
+            <button type="button" onClick={() => document.getElementById("settings-telegram")?.scrollIntoView({ behavior: "smooth", block: "start" })}
               className="lift flex items-center justify-between gap-3 rounded-xl bg-[hsl(var(--chart-3)/0.12)] px-3 py-2.5 text-left text-sm">
               <span className="text-foreground">{t("tgAlerts.notLinked")}</span>
               <span className="flex shrink-0 items-center gap-1 text-primary">{t("tgAlerts.link")} <ChevronRight className="h-4 w-4" aria-hidden="true" /></span>
@@ -178,6 +179,8 @@ export function NotificationsSection({ onNavigate }: { onNavigate: (id: SectionI
   return (
     <div className="flex max-w-2xl flex-col gap-4">
       <TelegramAlertsPanel onNavigate={onNavigate} />
+      {/* The Telegram link itself (was «Интеграции»): personal, so it lives with the alerts it powers. */}
+      <div id="settings-telegram" className="scroll-mt-4"><TelegramConnect /></div>
       {!isCurator && <ShareAchievementsPanel />}
       <Callout icon={Bell}>{t("tgAlerts.about")}</Callout>
     </div>

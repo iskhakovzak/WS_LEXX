@@ -18,7 +18,7 @@ export function AsideCard({ title, action, children, className }: { title: React
   return (
     <section className={cn("flex flex-col gap-2 rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3", className)}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+        <h3 className="text-xs font-semibold text-muted-foreground">{title}</h3>
         {action}
       </div>
       {children}

@@ -3,13 +3,13 @@
  * and the mentor grading form (rubric scores + comment, or «вернуть на доработку»).
  */
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Loader2, Search, Send, Undo2, X } from "lucide-react";
+import { ExternalLink, Loader2, Pencil, Search, Send, Undo2, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { EmptyState, ErrorState, ListSkeleton, Panel, Pill } from "@/components/ds";
+import { EmptyState, ErrorState, ListSkeleton, Panel, Pill, RowActions } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -326,7 +326,7 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-4">
         <Panel title={t("kind.assignment")}>
           <Markdown source={assignment.bodyMd} />
@@ -352,25 +352,27 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
             <EmptyState title={t("assignment.noSubmissions")} description={mine ? t("assignment.noSubmissionsHint") : undefined} />
           ) : (
             sorted.map((s) => (
-              <div key={s.id} id={`submission-${s.id}`} className={cn("flex flex-col gap-2 rounded-2xl", focusSubmission === s.id && "ring-1 ring-primary/50")}>
+              <div key={s.id} id={`submission-${s.id}`} data-row className={cn("flex flex-col gap-2 rounded-2xl", focusSubmission === s.id && "ring-1 ring-primary/50")}>
                 <SubmissionCard
                   s={s}
                   rubric={assignment.rubric}
                   showUser={data.all}
                   actions={
-                    <div className="flex gap-1.5">
-                      {mine && canSubmit && s.status === "submitted" && (
-                        <>
-                          <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>{commonI18n.t("actions.edit")}</Button>
-                          <Button size="sm" variant="ghost" onClick={() => withdraw(s)} disabled={withdrawing === s.id}>{withdrawing === s.id && <Loader2 className="animate-spin" aria-hidden="true" />}{t("assignment.withdraw")}</Button>
-                        </>
-                      )}
-                      {staff && (
+                    // One visible action (staff: grade; the author: edit) — the rest in «…» (design audit wave 3).
+                    <RowActions
+                      more={mine && canSubmit && s.status === "submitted" ? [
+                        staff && { label: commonI18n.t("actions.edit"), icon: Pencil, onSelect: () => setEditing(s) },
+                        { label: t("assignment.withdraw"), icon: Undo2, onSelect: () => withdraw(s), disabled: withdrawing === s.id },
+                      ] : undefined}
+                    >
+                      {staff ? (
                         <Button size="sm" variant={gradingId === s.id ? "secondary" : "outline"} onClick={() => setGradingId(gradingId === s.id ? null : s.id)} aria-expanded={gradingId === s.id}>
                           {s.status === "submitted" ? t("review.grade") : t("review.regrade")}
                         </Button>
-                      )}
-                    </div>
+                      ) : mine && canSubmit && s.status === "submitted" ? (
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>{commonI18n.t("actions.edit")}</Button>
+                      ) : null}
+                    </RowActions>
                   }
                 />
                 {staff && gradingId === s.id && (

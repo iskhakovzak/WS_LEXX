@@ -105,14 +105,12 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
             <Button variant="outline" size="icon" onClick={() => qc.invalidateQueries({ queryKey: prKeys.all })} aria-label={commonI18n.t("actions.refresh")} disabled={fetching}>
               <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
-            {canSync && (
-              // OWNER-18: without the broker API there is nothing to sync — disabled, the reason is the tooltip.
-              <span title={apiConfigured ? undefined : t("page.syncDisabled")} className="inline-flex">
-                <Button onClick={() => setRunOpen(true)} disabled={!status.data || !apiConfigured} aria-describedby={apiConfigured ? undefined : "pr-sync-disabled"}>
-                  <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("page.syncNow")}
-                </Button>
-                {!apiConfigured && <span id="pr-sync-disabled" className="sr-only">{t("page.syncDisabled")}</span>}
-              </span>
+            {canSync && apiConfigured && (
+              // Without the broker API there is nothing to sync: the button is not shown (the status says «API не настроено»,
+              // the file import below is the real action; design audit wave 2).
+              <Button onClick={() => setRunOpen(true)} disabled={!status.data}>
+                <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("page.syncNow")}
+              </Button>
             )}
           </>
         }

@@ -179,7 +179,7 @@ export function DayBrief({
   const whenLabel = day === today ? t("today.when.today") : day === nextTradingDay(today, closed) && day > today ? t("today.when.next") : past ? t("today.when.past") : null;
 
   return (
-    <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-12">
+    <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-12">
       <Panel
         className="lg:col-span-7"
         icon={CalendarClock}
@@ -205,7 +205,7 @@ export function DayBrief({
             )}
 
             <section aria-label={t("today.macro")}>
-              <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Landmark className="h-3.5 w-3.5" aria-hidden="true" /> {t("today.macro")}
               </h3>
               {data.holidays.isLoading ? (
@@ -221,7 +221,7 @@ export function DayBrief({
 
             {!past && (
               <section aria-label={t("today.myReports")}>
-                <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Megaphone className="h-3.5 w-3.5" aria-hidden="true" /> {t("today.myReports")}
                 </h3>
                 {earningsLoading ? (

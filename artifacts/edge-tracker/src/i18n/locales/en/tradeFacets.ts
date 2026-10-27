@@ -6,6 +6,7 @@ export default {
   aria: "Trade breakdown: years, time, strategy, tags",
   open: "Show breakdown",
   close: "Hide breakdown",
+  allIn: "all in",
   hidden: { one: "{count} value hidden", other: "{count} values hidden" },
   dims: {
     years: "Years",
@@ -51,6 +52,13 @@ export default {
   restore: "Bring back «{label}» ({dim})",
   exclude: "Exclude «{label}»",
   include: "Bring back «{label}»",
+  tickerSearch: "Find a ticker",
+  tickerSearchPlaceholder: "Ticker, e.g. NVDA",
+  tickerFound: "Tickers found: {n}",
+  tickerNotFound: "No trades in «{q}» here",
+  tickerOnly: "Only these",
+  tickerOnlyHint: "Keep only the tickers found in the report, exclude the rest",
+  tickerClear: "Clear search",
   clickHint: "Click a row to exclude the value, click again to bring it back",
   single: "Single value:",
   hints: {
@@ -73,6 +81,7 @@ export default {
   },
   imx: {
     toggle: "Exclude IMX",
+    chip: "No IMX",
     hint: "IMX are closing-auction trades (any fill 15:50–16:00 New York time, tag «IMX»). By default they stay in lists and totals.",
     line: "Total {total} · of which IMX {imx}",
     lineExcluded: "Total {total} without IMX · IMX excluded: {imx}",

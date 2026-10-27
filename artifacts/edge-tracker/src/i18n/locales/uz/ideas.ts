@@ -260,8 +260,7 @@ export default {
     undoDeleted: "oʻchirildi",
   },
   stats: {
-    periods: { d30: "30 kun", d90: "90 kun", year: "Yil", all: "Hammasi" },
-    periodText: { all: "butun davr", d30: "soʻnggi 30 kun", d90: "soʻnggi 90 kun", year: "soʻnggi yil" },
+    periodText: { week: "soʻnggi hafta", month: "soʻnggi oy", quarter: "soʻnggi chorak", year: "soʻnggi yil", all: "butun davr", custom: "{range} davri" },
     cols: {
       ideas: "Gʻoyalar",
       conversion: "Konversiya",
@@ -311,8 +310,6 @@ export default {
     authorAria: "Gʻoyalar muallifi",
     you: "(siz)",
     youShort: "(siz)",
-    myIdeas: "Mening gʻoyalarim",
-    resetAuthor: "Muallifni tozalash",
     loadingPrices: "narxlar yuklanmoqda…",
     pricesFailed: "Narxlar yuklanmadi.",
     loading: "Statistika yuklanmoqda",

@@ -105,7 +105,7 @@ export function IndexLevels({
         {(draft.spyS || draft.spyR || draft.qqqS || draft.qqqR) && !showIdx && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
       </button>
       {showIdx && (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {(["spy", "qqq"] as const).map((sym) => {
             const S = sym === "spy" ? "spyS" : "qqqS";
             const R = sym === "spy" ? "spyR" : "qqqR";

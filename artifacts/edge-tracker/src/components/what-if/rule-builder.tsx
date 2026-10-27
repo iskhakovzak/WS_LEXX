@@ -10,94 +10,21 @@ import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
 import type { Preset } from "./api";
 import { type PreviewTrade, type Rule, type RuleType, chipLabel, isApplied, previewRule } from "./rules";
+import { type Mode, fieldsFor } from "./builder-fields";
 
 /**
  * «Свой сценарий»: a sentence-like form instead of a wall of switches —
  * «Исключить сделки, где [время входа] [раньше] [09:45]» → live count of the trades it touches → «Добавить».
- * Fields whose rule the running API does not support yet (`supported`) are hidden.
+ * The fields (builder-fields.ts) the running API does not support (`supported`), the trades cannot answer or — for a
+ * choice — have nothing to choose from are hidden.
  */
-
-type Mode = "exclude" | "stop" | "cap";
-type Op = { id: string; label: string };
-type FieldDef = {
-  id: string;
-  label: string;
-  ops: Op[];
-  input: "time" | "tickers" | "number" | "none";
-  unit?: string;
-  placeholder?: string;
-  defaultValue: string;
-  requires: RuleType;
-  build: (op: string, value: string) => Rule | null;
-};
-
-const num = (v: string): number | null => {
-  const n = Number(v.replace(",", "."));
-  return Number.isFinite(n) && v.trim() !== "" ? n : null;
-};
-const HM = /^([01]?\d|2[0-3]):[0-5]\d$/;
-/** Labels are getters over the whatIf namespace (read when rendered, so they follow the UI language). */
-const wt = whatIfI18n.t;
-
-const EXCLUDE_FIELDS: FieldDef[] = [
-  {
-    id: "time", get label() { return wt("builder.field.time"); }, ops: [{ id: "before", get label() { return wt("builder.op.before"); } }, { id: "after", get label() { return wt("builder.op.after"); } }], input: "time", defaultValue: "09:45", requires: "timeWindow",
-    build: (op, v) => (HM.test(v) ? (op === "before" ? { type: "timeWindow", from: v, to: null } : { type: "timeWindow", from: null, to: v }) : null),
-  },
-  {
-    id: "ticker", get label() { return wt("builder.field.ticker"); }, ops: [{ id: "in", get label() { return wt("builder.op.in"); } }], input: "tickers", placeholder: "AMD, TSLA", defaultValue: "", requires: "excludeTickers",
-    build: (_op, v) => {
-      const tickers = [...new Set(v.split(/[\s,;]+/).map((t) => t.trim().toUpperCase()).filter((t) => /^[A-Z0-9.\-]{1,16}$/.test(t)))];
-      return tickers.length ? { type: "excludeTickers", tickers } : null;
-    },
-  },
-  {
-    id: "hold", get label() { return wt("builder.field.hold"); }, ops: [{ id: "lt", get label() { return wt("builder.op.shorter"); } }], input: "number", get unit() { return wt("builder.unit.min"); }, defaultValue: "2", requires: "minHold",
-    build: (_op, v) => { const n = num(v); return n && n > 0 ? { type: "minHold", seconds: Math.round(n * 60) } : null; },
-  },
-  {
-    id: "price", get label() { return wt("builder.field.price"); }, ops: [{ id: "lt", get label() { return wt("builder.op.cheaper"); } }, { id: "gt", get label() { return wt("builder.op.pricier"); } }], input: "number", unit: "$", defaultValue: "5", requires: "priceRange",
-    build: (op, v) => { const n = num(v); return n && n > 0 ? (op === "lt" ? { type: "priceRange", min: n, max: null } : { type: "priceRange", min: null, max: n }) : null; },
-  },
-  {
-    id: "size", get label() { return wt("builder.field.size"); }, ops: [{ id: "lt", get label() { return wt("builder.op.less"); } }, { id: "gt", get label() { return wt("builder.op.more"); } }], input: "number", get unit() { return wt("builder.unit.shares"); }, defaultValue: "100", requires: "sizeRange",
-    build: (op, v) => { const n = num(v); return n && n > 0 ? (op === "lt" ? { type: "sizeRange", min: Math.round(n), max: null } : { type: "sizeRange", min: null, max: Math.round(n) }) : null; },
-  },
-  {
-    id: "side", get label() { return wt("builder.field.side"); }, ops: [{ id: "long", get label() { return wt("builder.op.long"); } }, { id: "short", get label() { return wt("builder.op.short"); } }], input: "none", defaultValue: "", requires: "excludeSide",
-    build: (op) => ({ type: "excludeSide", side: op === "short" ? "short" : "long" }),
-  },
-  {
-    id: "afterLoss", get label() { return wt("builder.field.afterLoss"); }, ops: [{ id: "within", get label() { return wt("builder.op.within"); } }], input: "number", get unit() { return wt("builder.unit.min"); }, defaultValue: "5", requires: "afterLoss",
-    build: (_op, v) => { const n = num(v); return n && n > 0 ? { type: "afterLoss", minutes: n } : null; },
-  },
-];
-
-const STOP_FIELDS: FieldDef[] = [
-  {
-    id: "dayLoss", get label() { return wt("builder.field.dayLoss"); }, ops: [], input: "number", unit: "$", defaultValue: "200", requires: "dailyLossLimit",
-    build: (_op, v) => { const n = num(v); return n && n > 0 ? { type: "dailyLossLimit", usd: n } : null; },
-  },
-  {
-    id: "lossRun", get label() { return wt("builder.field.lossRun"); }, ops: [], input: "number", get unit() { return wt("builder.unit.pcs"); }, defaultValue: "3", requires: "stopAfterLosses",
-    build: (_op, v) => { const n = num(v); return n && n >= 1 ? { type: "stopAfterLosses", n: Math.round(n) } : null; },
-  },
-  {
-    id: "maxTrades", get label() { return wt("builder.field.maxTrades"); }, ops: [], input: "number", get unit() { return wt("builder.unit.pcs"); }, defaultValue: "10", requires: "maxTradesPerDay",
-    build: (_op, v) => { const n = num(v); return n && n >= 1 ? { type: "maxTradesPerDay", n: Math.round(n) } : null; },
-  },
-];
-
-const CAP_FIELD: FieldDef = {
-  id: "cap", get label() { return wt("builder.field.cap"); }, ops: [], input: "number", unit: "$", defaultValue: "50", requires: "capLoss",
-  build: (_op, v) => { const n = num(v); return n && n > 0 ? { type: "capLoss", usd: n } : null; },
-};
 
 export function RuleBuilder({
   trades,
   supported,
   rules,
   presets,
+  team = false,
   onAdd,
   onApplyPreset,
 }: {
@@ -105,22 +32,24 @@ export function RuleBuilder({
   supported: ReadonlySet<RuleType>;
   rules: Rule[];
   presets: Preset[];
+  /** The whole team: personal tags are not offered. */
+  team?: boolean;
   onAdd: (r: Rule) => void;
   onApplyPreset: (p: Preset) => void;
 }) {
   const { t } = whatIfI18n.useT();
   const [mode, setMode] = useState<Mode>("exclude");
-  const excludeFields = useMemo(() => EXCLUDE_FIELDS.filter((f) => supported.has(f.requires)), [supported]);
-  const stopFields = useMemo(() => STOP_FIELDS.filter((f) => supported.has(f.requires)), [supported]);
-  const listed = mode === "exclude" ? excludeFields : mode === "stop" ? stopFields : [CAP_FIELD];
-  const fields = listed.length ? listed : [CAP_FIELD];
+  const fields = useMemo(() => fieldsFor(mode, trades, supported, team), [mode, trades, supported, team]);
 
   const [fieldId, setFieldId] = useState<Record<Mode, string>>({ exclude: "time", stop: "dayLoss", cap: "cap" });
   const field = fields.find((f) => f.id === fieldId[mode]) ?? fields[0];
+  const choices = useMemo(() => field.options?.(trades) ?? [], [field, trades]);
   const [ops, setOps] = useState<Record<string, string>>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const op = ops[field.id] ?? field.ops[0]?.id ?? "";
-  const value = values[field.id] ?? field.defaultValue;
+  const picked = values[field.id];
+  // A choice starts on the most frequent value (and falls back to it when the trades no longer have the picked one).
+  const value = field.input === "choice" ? choices.find((c) => c.value === picked)?.value ?? choices[0]?.value ?? "" : picked ?? field.defaultValue;
 
   const draft = useMemo(() => field.build(op, value), [field, op, value]);
   const preview = useMemo(() => (draft ? previewRule(trades, draft) : null), [draft, trades]);
@@ -188,12 +117,22 @@ export function RuleBuilder({
         {field.input === "number" && (
           <span className="inline-flex items-center gap-1.5">
             {field.unit === "$" && <span className="text-muted-foreground">$</span>}
-            <Input type="number" inputMode="decimal" min={0} step="any" value={value} onChange={(e) => setValue(e.target.value)} className="h-9 w-24 rounded-full tabular-nums" aria-label={field.label} />
+            <Input type="number" inputMode="decimal" min={field.min ?? 0} max={field.max} step={field.step ?? "any"} value={value} onChange={(e) => setValue(e.target.value)} className="h-9 w-24 rounded-full tabular-nums" aria-label={field.label} />
             {field.unit && field.unit !== "$" && <span className="text-muted-foreground">{field.unit}</span>}
           </span>
         )}
         {field.input === "tickers" && (
           <Input value={value} onChange={(e) => setValue(e.target.value.toUpperCase())} placeholder={field.placeholder} className="h-9 w-48 rounded-full uppercase" aria-label={t("builder.tickersAria")} />
+        )}
+        {field.input === "choice" && (
+          <Select value={value} onValueChange={setValue}>
+            <SelectTrigger className="h-9 w-auto min-w-[10rem] max-w-[16rem] rounded-full" aria-label={t("builder.choiceAria")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         )}
         {field.input === "time" && <span className="text-xs text-muted-foreground">ET</span>}
         <Button type="submit" size="sm" className="ml-auto rounded-full bg-primary-solid" disabled={!draft || already || (preview != null && preview.affected === 0)}>

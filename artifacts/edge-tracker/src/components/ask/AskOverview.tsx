@@ -38,7 +38,7 @@ export function AskOverview({ book, ctx, me, onAsk }: { book: AskBook | null; ct
   return (
     <section aria-label={t("overview.aria")} className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-foreground">{t("overview.title")}</h2>
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] md:grid-cols-2">
         {cards.map(({ text, answer }) => (
           <button
             key={text}

@@ -1,4 +1,5 @@
 import { getLang } from "@/i18n/state";
+import { SESSION_LOCKED_EVENT } from "@/lib/lock/lock-model";
 
 const TOKEN_KEY = "ws_lexx_token";
 const ORIG_FETCH = globalThis.fetch.bind(globalThis);
@@ -26,7 +27,7 @@ function isApiCall(input: RequestInfo | URL): boolean {
 function isAuthEndpoint(input: RequestInfo | URL): boolean {
   try {
     const u = new URL(requestUrl(input), window.location.origin);
-    return /\/api\/auth\/(login|logout|me|guest)$/.test(u.pathname);
+    return /\/api\/auth\/(login|logout|me|guest|unlock)$/.test(u.pathname);
   } catch {
     return false;
   }
@@ -56,6 +57,9 @@ export function installFetchAuth(): void {
     if (res.status === 401 && sentAuth && !isAuthEndpoint(input)) {
       window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
     }
+    // Screen lock: the server refuses a locked session (lib/lock: the lock screen comes up, e.g. locked in another browser
+    // window of the same session or after the local lock state was cleared).
+    if (res.status === 423 && sentAuth) window.dispatchEvent(new CustomEvent(SESSION_LOCKED_EVENT));
     return res;
   };
 }

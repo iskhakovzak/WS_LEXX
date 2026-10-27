@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, Bug, Database, Flag, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, SlidersHorizontal, Users } from "lucide-react";
+import { Activity, Bug, Database, Flag, Gauge, KeyRound, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/components/ds";
@@ -14,6 +14,8 @@ import { ModerationQueue } from "@/components/admin/ModerationQueue";
 import { RolesPanel } from "@/components/admin/RolesPanel";
 import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
+import { DataSection } from "@/components/settings/DataSection";
+import { TelegramBroadcast } from "@/components/settings/IntegrationsSection";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
 import { DeskGroupsPanel } from "@/components/settings/groups-panel";
@@ -26,7 +28,8 @@ import { RewardsAdminBlock } from "@/components/gamification/rewards-admin-block
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { adminI18n } from "@/i18n/ns/admin";
-import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useReviewLoad, useTiers } from "@/components/admin/console-api";
+import { useDataQuality, useEodStatus, useHealth, useReviewLoad, useTiers } from "@/components/admin/console-api";
+import { reviewQueueOf } from "@/components/admin/overview-model";
 
 const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "settings", "usage", "data", "audit", "errors"];
 // Old tab ids (links/bookmarks) map onto the new ones.
@@ -128,10 +131,12 @@ function AdminConsole() {
   const risk = useRiskDesk();
   const health = useHealth();
   const eod = useEodStatus();
-  const queue = useEodQueueCount();
   const tiers = useTiers();
   const quality = useDataQuality();
-  const reviewLoad = useReviewLoad(can("journal.review"));
+  const canReview = can("journal.review");
+  const reviewLoad = useReviewLoad(canReview);
+  // One variable for the review queue: KPI, «Требует действий» and the per-curator panel (design audit wave 2).
+  const queue = canReview ? reviewQueueOf(reviewLoad.data) : null;
 
   const tierNames = useMemo(
     () => Object.fromEntries((tiers.data ?? []).map((t) => [t.key, t.name])) as Record<string, string>,
@@ -145,6 +150,8 @@ function AdminConsole() {
       localStorage.setItem(TAB_KEY, t);
       const url = new URL(window.location.href);
       if (t === "overview") url.searchParams.delete("tab"); else url.searchParams.set("tab", t);
+      // ?period=&from=&to= belong to the tab that set them (Аудит, Использование).
+      for (const k of ["period", "from", "to"]) url.searchParams.delete(k);
       window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
   }, []);
@@ -203,7 +210,7 @@ function AdminConsole() {
   return (
     <Page>
       <PageHeader
-        icon={Shield}
+        icon={ShieldCheck}
         title={t("page.title")}
         description={t("page.description")}
         actions={
@@ -227,7 +234,7 @@ function AdminConsole() {
             { value: "moderation", label: t("page.tabs.moderation"), icon: Flag, count: openReports || undefined },
             ...(showRoles ? [{ value: "roles" as const, label: t("page.tabs.roles"), icon: KeyRound }] : []),
             ...(showSettings ? [{ value: "settings" as const, label: tSettings("tab"), icon: SlidersHorizontal }] : []),
-            ...(showUsage ? [{ value: "usage" as const, label: tUsage("tab"), icon: BarChart3 }] : []),
+            ...(showUsage ? [{ value: "usage" as const, label: tUsage("tab"), icon: Gauge }] : []),
             ...(showData ? [{ value: "data" as const, label: t("page.tabs.data"), icon: Database }] : []),
             ...(showAudit ? [{ value: "audit" as const, label: t("page.tabs.audit"), icon: ScrollText }] : []),
             ...(showErrors ? [{ value: "errors" as const, label: appErrorsI18n.t("tab"), icon: Bug }] : []),
@@ -244,14 +251,14 @@ function AdminConsole() {
         {tab === "overview" && (
           <div className="flex flex-col gap-[var(--grid-gap)]">
             <LoopYesterdayPanel showPilot={showUsage} onOpenUsage={showUsage ? () => setTab("usage") : undefined} onOpenPeople={() => setTab("people")} />
-            <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue.data} loading={pulse.isLoading} onGo={go} />
+            <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue} loading={pulse.isLoading} onGo={go} />
             <OverviewPanel
               pulse={pulse.data}
               overview={overview.data}
               risk={risk.data}
               health={health.data}
               eod={eod.data}
-              queue={queue.data}
+              queue={queue}
               quality={quality.data?.checks ?? (quality.data === null ? null : undefined)}
               pulseError={pulse.isError ? pulse.error : null}
               healthError={health.isError ? health.error : null}
@@ -260,7 +267,7 @@ function AdminConsole() {
               onGo={go}
               tierNames={tierNames}
               canAudit={showAudit}
-              reviewLoad={can("journal.review") ? (reviewLoad.isLoading ? undefined : reviewLoad.data ?? null) : null}
+              reviewLoad={canReview ? (reviewLoad.isLoading ? undefined : reviewLoad.data ?? null) : null}
               onGoNoCurator={goNoCurator}
               rewards={<RewardsAdminBlock enabled={showSettings} onOpenCatalog={() => setTab("settings")} />}
             />
@@ -292,7 +299,14 @@ function AdminConsole() {
           </div>
         )}
         {tab === "usage" && <UsagePanel enabled={showUsage} screenLabel={screenLabel} menu={TRADER_MENU} onOpenSettings={showSettings ? () => setTab("settings") : undefined} />}
-        {tab === "data" && <DataPanel actor={actor} isAdmin={isAdmin} />}
+        {tab === "data" && (
+          // Desk data tools and the Telegram broadcast moved here from /settings (personal settings only, wave 2B).
+          <div className="flex flex-col gap-section">
+            <DataPanel actor={actor} isAdmin={isAdmin} />
+            <DataSection />
+            {can("telegram.broadcast") && <TelegramBroadcast />}
+          </div>
+        )}
         {tab === "audit" && <AuditLog actor={actor} tierNames={tierNames} />}
         {tab === "errors" && <AppErrorsPanel />}
       </div>

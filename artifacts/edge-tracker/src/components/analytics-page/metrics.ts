@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { TIME_BUCKETS, timeBucketFor, dayOfWeek, tagsOf } from "@/lib/analytics-pro";
 import {
@@ -8,6 +7,7 @@ import {
 import { fmtNum, fmtWeekday } from "@/lib/format";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
+import { filtersRange, type Period } from "./period";
 
 /*
  * All R / P&L numbers on the analytics page come from @/lib/trade-math (signedR, netPnl …) — the one
@@ -16,7 +16,9 @@ import { personName } from "@/i18n";
 
 /* ───────────────────────── Global filters ───────────────────────── */
 
-export type Period = "7d" | "30d" | "90d" | "ytd" | "all";
+/** A preset, or «custom» = «Свой период» (AnalyticsFilters from / to). */
+export type { Period, PresetPeriod } from "./period";
+export { PERIODS, isoDay, periodRange, customRangeOf, filtersRange } from "./period";
 export type SideFilter = "" | "long" | "short";
 export type { Horizon };
 export type HorizonFilter = "" | Horizon;
@@ -33,11 +35,19 @@ export type AnalyticsFilters = {
   /** Broker account (PropReports `brokerAccount`); "" = all. */
   account: string;
   source: SourceFilter;
+  /** «Свой период» (period «custom»): YYYY-MM-DD, both ends inclusive; kept while a preset is picked. */
+  from?: string;
+  to?: string;
+  /**
+   * The «Разрезы» selection as x* params (components/shared/trade-facets) — set by the page on the view it hands the
+   * tabs (server-computed tabs send it), never stored with the filters.
+   */
+  facets?: string;
 };
 
-/** DEV-01: the page opens on 90 days; «Всё время» (the whole book) is loaded on demand only. */
+/** DEV-01: the page opens on «Квартал» (90 days); «Всё время» (the whole book) is loaded on demand only. */
 export const DEFAULT_FILTERS: AnalyticsFilters = {
-  period: "90d", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
+  period: "quarter", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
 };
 
 export const HORIZONS: Horizon[] = ["intraday", "overnight", "swing"];
@@ -57,32 +67,6 @@ export function accountOf(t: Trade): string {
 export function sourceOf(t: Trade): "manual" | "propreports" {
   const s = (t as { source?: string | null }).source;
   return s === "propreports" ? "propreports" : "manual";
-}
-
-export const PERIODS: Period[] = ["7d", "30d", "90d", "ytd", "all"];
-/** Period options for a Segmented — call in render (labels follow the UI language). */
-export function periodOptions(): { value: Period; label: string }[] {
-  return PERIODS.map((value) => ({ value, label: analyticsI18n.t(`period.${value}`) }));
-}
-
-export function isoDay(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-/** Inclusive [from, to] range for a period, plus the equal-length previous range for comparison. */
-export function periodRange(period: Period, now = new Date()): { from: string; to: string; prevFrom: string; prevTo: string } | null {
-  if (period === "all") return null;
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let start: Date;
-  if (period === "ytd") start = new Date(end.getFullYear(), 0, 1);
-  else start = new Date(end.getTime() - ((period === "7d" ? 7 : period === "30d" ? 30 : 90) - 1) * 86400000);
-  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
-  const prevEnd = new Date(start.getTime() - 86400000);
-  const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
-  return { from: isoDay(start), to: isoDay(end), prevFrom: isoDay(prevStart), prevTo: isoDay(prevEnd) };
 }
 
 /** Trading day a result belongs to: the close date (exit date for multi-day holds, else the trade date). */
@@ -108,7 +92,7 @@ export function applyNonPeriodFilters(trades: Trade[], f: AnalyticsFilters): Tra
 
 export function applyAnalyticsFilters(trades: Trade[], f: AnalyticsFilters): { current: Trade[]; previous: Trade[] | null } {
   const base = applyNonPeriodFilters(trades, f);
-  const r = periodRange(f.period);
+  const r = filtersRange(f);
   if (!r) return { current: base, previous: null };
   return {
     current: base.filter((t) => day(t) >= r.from && day(t) <= r.to),
@@ -123,9 +107,9 @@ export function withHotkeys<T extends object>(items: T[]): (T & { key: string })
   );
 }
 
+/** Filters inside «Фильтры (n)»; the period and the person are the scope (hooks/use-analytics-scope), not filters. */
 export function activeFilterCount(f: AnalyticsFilters): number {
-  return (f.period !== DEFAULT_FILTERS.period ? 1 : 0) + (f.trader ? 1 : 0) + (f.setup ? 1 : 0) + (f.ticker ? 1 : 0) + (f.side ? 1 : 0)
-    + (f.horizon ? 1 : 0) + (f.account ? 1 : 0) + (f.source ? 1 : 0);
+  return (f.setup ? 1 : 0) + (f.ticker ? 1 : 0) + (f.side ? 1 : 0) + (f.horizon ? 1 : 0) + (f.account ? 1 : 0) + (f.source ? 1 : 0);
 }
 
 /* ───────────────────────── Trade-level metrics (thin wrappers over @/lib/trade-math) ───────────────────────── */
@@ -656,16 +640,3 @@ export function downloadCsv(filename: string, header: string[], rows: (string | 
 
 /* ───────────────────────── Chart styling ───────────────────────── */
 
-export const CHART_TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
-export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.08)" };
-export const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
-export const GRID = "hsl(var(--border))";

@@ -14,6 +14,7 @@ export default {
   },
   daily: {
     title: "Daily challenge",
+    noDay: "No day with a big gap and a catalyst today — the challenge appears after the market close",
     pill: "Daily challenge",
     hint: "The same day for the whole desk. Ticker and date stay hidden until the end, the desk ranking is by R",
     closedHint: "This challenge is closed for ranking. The next one opens in the evening, after the market close ({time} NY)",
@@ -83,7 +84,7 @@ export default {
     loading: "Loading the drill…",
     loadError: "Could not load the drill",
     answerError: "Could not check the answer",
-    empty: "No drills for this setup yet",
+    empty: "Drills on days with a big gap and a catalyst ran out for this setup — new ones arrive after the market close",
     retry: "Try again",
     toHome: "Back to the trainer",
     exit: "Exit",

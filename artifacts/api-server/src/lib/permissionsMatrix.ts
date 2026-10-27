@@ -70,6 +70,7 @@ export const CAPABILITIES = [
   { key: "risk.read.own", group: "Риск", label: "Свой риск-профиль", own: true, description: "Лимиты, история, позиции, алерты по себе." },
   { key: "risk.read.team", group: "Риск", label: "Риск-деск", team: true, description: "Лимиты, просадки и история риска любого трейдера." },
   { key: "risk.limits.edit", group: "Риск", label: "Менять лимиты", team: true, description: "PUT /risk/limits/:trader." },
+  { key: "regime.set", group: "Риск", label: "Режим рынка деска", description: "Выбирать и менять режим рынка дня (подсказка системы подтверждается человеком)." },
   { key: "scaling.read.team", group: "Риск", label: "План масштабирования команды", team: true, description: "Оценка и история любого трейдера." },
   { key: "scaling.configure", group: "Риск", label: "Настраивать лестницу тиров", description: "PUT /scaling/tiers и /scaling/rules." },
   { key: "scaling.approve", group: "Риск", label: "Решать по тирам", team: true, description: "Создавать/одобрять/отклонять предложения, назначать тир напрямую." },
@@ -96,6 +97,8 @@ export const CAPABILITIES = [
   { key: "discussions.moderate", group: "Контент", label: "Модерация обсуждений", description: "Удалять чужие темы и комментарии, закрывать темы." },
   { key: "discussions.edit.any", group: "Контент", label: "Править чужие комментарии", adminOnly: true, description: "Редактировать чужие комментарии." },
   { key: "watchlist.manage", group: "Контент", label: "Вотчлист деска", description: "Править общий вотчлист (любой участник, не гость)." },
+  { key: "assistant.use", group: "Контент", label: "Ассистент WS", own: true,
+    description: "AI-помощник по сайту: отвечает по тем данным, которые человеку и так доступны, и готовит черновики (плейбук, план, итоги дня, правило). Сам ничего не сохраняет. Выключатель, модели и лимиты — Настройки деска → «Ассистент WS»." },
 
   // ── Users / admin ────────────────────────────────────────────────────────
   { key: "users.manage", group: "Администрирование", sensitive: true, label: "Управлять пользователями", description: "Добавлять, править, замораживать и архивировать трейдеров и кураторов, менять назначения." },
@@ -127,7 +130,7 @@ export function isCapability(cap: string): cap is Capability {
 /** Own-only capabilities every signed-in member (trader, curator, admin) holds. */
 const MEMBER_CAPS: readonly Capability[] = [
   "trades.read.own", "trades.write.own", "journal.write.own", "risk.read.own", "propreports.import",
-  "playbook.edit", "ideas.publish", "watchlist.manage",
+  "playbook.edit", "ideas.publish", "watchlist.manage", "assistant.use",
 ];
 
 /**
@@ -140,7 +143,7 @@ const CURATOR_CAPS: readonly Capability[] = [
   "team.read", "users.read.team",
   "trades.read.team", "trades.write.any", "trades.review",
   "journal.read.team", "journal.review", "gameplan.publish", "dailyfeed.manage", "errors.manage.team",
-  "risk.read.team", "risk.limits.edit", "scaling.read.team", "scaling.configure", "scaling.approve",
+  "risk.read.team", "risk.limits.edit", "regime.set", "scaling.read.team", "scaling.configure", "scaling.approve",
   "rules.manage.team",
   "propreports.read.team",
   "ratings.read.team", "ratings.write",

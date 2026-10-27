@@ -70,7 +70,7 @@ export function SetupWizard({ status, onGoTab }: { status: Status; onGoTab?: (ta
                 <div className={cn("text-xs", step.ok ? "text-muted-foreground" : "text-foreground")}>{step.detail}</div>
                 {!step.ok && <div className="mt-0.5 text-xs text-muted-foreground">{t(`setup.steps.${s.key}.hint`)}</div>}
                 {s.key === "env" && !step.ok && (
-                  <div className="mt-1 flex flex-wrap gap-1 font-mono text-[11px]">
+                  <div className="mt-1 flex flex-wrap gap-1 font-mono text-2xs">
                     {status.config.envVars.map((v) => <Kbd key={v}>{v}</Kbd>)}
                   </div>
                 )}
@@ -296,7 +296,7 @@ export function SetupPanel({ status, accounts, onGoTab }: { status: Status; acco
       <SetupWizard status={status} onGoTab={onGoTab} />
       <GroupPicker status={status} />
       {/* The fee table needs the width; the unmatched list is usually one line («всё сопоставлено») — don't stretch it. */}
-      <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <FeeSettings status={status} />
         <UnmatchedAccounts status={status} accounts={accounts} />
       </div>

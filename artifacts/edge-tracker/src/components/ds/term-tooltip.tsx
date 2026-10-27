@@ -127,7 +127,7 @@ export function TermTooltip({
             <button
               type="button"
               aria-label={commonI18n.t("ds.whatIs", { term: g.label })}
-              className="relative inline-grid h-4 w-4 shrink-0 place-items-center rounded-full text-muted-foreground/80 transition-colors after:absolute after:-inset-2.5 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring duration-[var(--dur-1)] hover:text-foreground"
+              className="relative [display:inline-grid] h-4 w-4 shrink-0 place-items-center rounded-full text-muted-foreground/80 transition-colors after:absolute after:-inset-2.5 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring duration-[var(--dur-1)] hover:text-foreground"
               onClick={(e) => e.preventDefault()}
             >
               <Info className="h-3 w-3" aria-hidden="true" />

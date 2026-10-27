@@ -221,6 +221,7 @@ export default {
       searchPlaceholder: "Tiker yoki matn…",
       searchAria: "Sharhlardan qidirish: tiker, matn yoki muallif",
       unread: "Oʻqilmaganlar",
+      authors: "Mualliflar",
       readAll: "Hammasini oʻqildi deb belgilash",
       teamSummaryCount: "Umumiy sharh · {count}",
       teamSummary: "Jamoa AI-sharhi",

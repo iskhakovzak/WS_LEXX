@@ -43,12 +43,12 @@ export function CoursesCard({ user }: { user?: string }) {
           </div>
           <PctBar pct={p.progress.pct} label={t("myPage.courses.progressAria", { title: p.title })} />
           {step.next ? (
-            <Button size="sm" className="mt-1 self-start" asChild>
+            <Button size="sm" className="mt-1 self-start" wrap asChild>
               <Link href={academyLinks.item(step.next.kind, step.next.id, { user })}>
                 <PlayCircle className="mr-1 h-4 w-4" aria-hidden="true" />
                 {(() => {
                   const label = step.mode === "continue" ? t("myPage.courses.continue", { title: step.next.title }) : t("myPage.courses.start", { title: step.next.title });
-                  return <span className="max-w-[22rem] truncate" title={label}>{label}</span>;
+                  return <span className="min-w-0" title={label}>{label}</span>;
                 })()}
               </Link>
             </Button>
@@ -112,7 +112,7 @@ function NextLessonCard({ user }: { user?: string }) {
 export function NotEnrolledPanel({ user, viewingOther, children }: { user: string; viewingOther: boolean; children?: ReactNode }) {
   const { t } = academyCohortsI18n.useT();
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <NextLessonCard user={viewingOther ? user : undefined} />
       <Panel title={viewingOther ? t("myPage.notEnrolledOther", { name: personName(user) }) : t("myPage.notEnrolled")} icon={Users}>
         <p className="text-sm text-muted-foreground">{t("myPage.notEnrolledDesc")}</p>

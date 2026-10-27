@@ -29,7 +29,7 @@ export function toneFill(tone: Tone): string {
   switch (tone) {
     case "up": return "hsl(var(--up))";
     case "down": return "hsl(var(--down))";
-    case "accent": return "hsl(var(--chart-1))";
+    case "accent": return "hsl(var(--primary))"; // same as ds TONE_BG (was the old blue)
     case "warn": return "hsl(var(--chart-3))";
     case "purple": return "hsl(var(--chart-5))";
     default: return "hsl(var(--muted-foreground))";

@@ -249,12 +249,13 @@ function RuleRow({
     <li className={cn("flex min-h-[60px] flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-2 py-2 transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]", muted && "opacity-70")}>
       <button type="button" onClick={onOpen} className="flex min-w-[min(100%,15rem)] flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground" title={r.name}>{r.name}</span>
+          {/* Long rule names wrap (2 lines) and the scope pills flow under them, instead of «2 losses in a row — done for the …» */}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="line-clamp-2 min-w-0 text-sm font-medium text-foreground [overflow-wrap:anywhere]" title={r.name}>{r.name}</span>
             {origin !== "personal" && <Pill tone={o.tone} title={o.hint}>{o.label}</Pill>}
             {stageChip(r.stage) && <Pill tone="neutral" title={stageChip(r.stage)!.hint} className="hidden sm:inline-flex">{stageChip(r.stage)!.label}</Pill>}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={status}>
+          <span className="mt-0.5 line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1" title={status}>
             {status}
           </span>
         </span>

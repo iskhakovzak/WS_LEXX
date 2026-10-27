@@ -8,18 +8,6 @@ import { personInitials } from "@/i18n";
 
 // Money / R / percent / signed numbers: @/lib/format (fmtUsd, fmtR, fmtPct, fmtNum).
 
-/** Glass tooltip style for recharts. */
-export const CHART_TOOLTIP: React.CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-};
-export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.1)" };
-
 /** localStorage-backed state (never throws). */
 export function useStoredState<T extends string>(key: string, initial: T, allowed?: readonly T[]): [T, (v: T) => void] {
   const [v, setV] = React.useState<T>(() => {
@@ -34,41 +22,6 @@ export function useStoredState<T extends string>(key: string, initial: T, allowe
     try { localStorage.setItem(key, nv); } catch { /* ignore */ }
   }, [key]);
   return [v, set];
-}
-
-/**
- * Wraps a horizontally scrolling bar (its first child is the scroller, e.g. ds Segmented at phone width) and fades the
- * edge that still has hidden options — the «there is more» hint a bare overflow-x lacks. No fade when it all fits.
- */
-export function ScrollEdgeHint({ children, className }: { children: React.ReactNode; className?: string }) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = React.useState({ left: false, right: false });
-  React.useLayoutEffect(() => {
-    const el = ref.current?.firstElementChild as HTMLElement | null;
-    if (!el) return;
-    const update = () => {
-      const max = el.scrollWidth - el.clientWidth;
-      setEdges((p) => {
-        const n = { left: el.scrollLeft > 2, right: max - el.scrollLeft > 2 };
-        return p.left === n.left && p.right === n.right ? p : n;
-      });
-    };
-    update();
-    el.addEventListener("scroll", update, { passive: true });
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    ro?.observe(el);
-    return () => { el.removeEventListener("scroll", update); ro?.disconnect(); };
-  }, []);
-  const mask = edges.left && edges.right
-    ? "linear-gradient(to right, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent)"
-    : edges.right ? "linear-gradient(to right, #000 calc(100% - 1.5rem), transparent)"
-    : edges.left ? "linear-gradient(to right, transparent, #000 1.5rem)"
-    : undefined;
-  return (
-    <div ref={ref} className={cn("flex min-w-0 max-w-full", className)} style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}>
-      {children}
-    </div>
-  );
 }
 
 /** Tiny inline SVG trend line. Tone follows last vs first value unless given. */
@@ -108,7 +61,7 @@ export function Sparkline({
     return [x, y] as const;
   });
   const t = tone ?? toneOf(values[values.length - 1] - values[0]);
-  const color = t === "up" ? "hsl(var(--up))" : t === "down" ? "hsl(var(--down))" : "hsl(var(--chart-1))";
+  const color = t === "up" ? "hsl(var(--up))" : t === "down" ? "hsl(var(--down))" : "hsl(var(--muted-foreground))"; // neutral = muted, like ds Sparkline (was the old blue)
   const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const area = `${d} L${pts[pts.length - 1][0].toFixed(1)},${height} L${pts[0][0].toFixed(1)},${height} Z`;
   const [lx, ly] = pts[pts.length - 1];
@@ -213,7 +166,7 @@ export function OutcomeBar({ wins, losses, be, open = 0, className }: { wins: nu
       <div className="bg-up" style={{ width: seg(wins) }} />
       <div className="bg-[hsl(var(--chart-3))]" style={{ width: seg(be) }} />
       <div className="bg-down" style={{ width: seg(losses) }} />
-      <div className="bg-[hsl(var(--chart-1)/0.5)]" style={{ width: seg(open) }} />
+      <div className="bg-muted-foreground/50" style={{ width: seg(open) }} />
     </div>
   );
 }

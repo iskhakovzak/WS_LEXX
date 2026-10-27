@@ -34,6 +34,7 @@ const TRADE_DEPENDENT_PREFIXES: readonly string[] = [
   "analytics",
   "analytics-psychology",
   "leaderboard",
+  "profile",
   "event-trades",
   "all-trades-for-link",
   "activity-feed",

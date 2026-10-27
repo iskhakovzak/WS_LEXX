@@ -11,18 +11,21 @@ import { ROOT, scanZ, newViolations, readBaseline } from "../../../scripts/check
 
 type Hit = { file: string; line: number; match: string };
 
+// Each scan reads every file under src (~2 s alone): under a loaded full parallel run that passed the 5 s default.
+const SCAN_TIMEOUT = 20_000;
+
 describe("z-index scale", () => {
   it("has no raw z-index values beyond the baseline", () => {
     const bad = newViolations() as Hit[];
     expect(bad.map((h) => `${h.file}:${h.line} ${h.match}`)).toEqual([]);
-  });
+  }, SCAN_TIMEOUT);
 
   it("keeps the shell, ui kit, ds and global overlays fully on tokens", () => {
     const owned = /^src\/(components\/(ui|ds|shell|notifications)\/|components\/(ds|layout|global-search|undo-toast|screenshot-fields|tag-selector|voice-[\w-]+)\.tsx$|index\.css$)/;
     const hits = (scanZ() as Hit[]).filter((h) => owned.test(h.file));
     expect(hits.map((h) => `${h.file}:${h.line} ${h.match}`)).toEqual([]);
     expect(Object.keys(readBaseline()).filter((f) => owned.test(f))).toEqual([]);
-  });
+  }, SCAN_TIMEOUT);
 
   it("orders the layer tokens: sticky < header < nav < sheet < modal < popover < toast < tooltip", () => {
     const css = fs.readFileSync(path.join(ROOT, "src/index.css"), "utf8");

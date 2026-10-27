@@ -145,7 +145,7 @@ export function EventFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full max-w-3xl overflow-y-auto">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>{editing ? t("form.titleEdit", { ticker: editing.ticker }) : t("form.titleNew")}</DialogTitle>
           <DialogDescription>{t("form.description")}</DialogDescription>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock, History } from "lucide-react";
+import { Radar, Search, AlertTriangle, RefreshCw, Archive, Eye, Flame, Clock, History } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
@@ -29,7 +29,7 @@ import { WatchlistDetailSheet } from "@/components/watchlist/WatchlistDetailShee
 import { WatchlistFormDialog, blankForm, itemToForm, type WatchlistFormData } from "@/components/watchlist/WatchlistFormDialog";
 import { IdeaFromWatchlistDialog } from "@/components/watchlist/IdeaFromWatchlistDialog";
 import {
-  DeleteTickersDialog, FILTERS, SelectionBar, WatchlistHeaderMenus, WatchlistSearch, WatchlistTabs, type Filter, type View,
+  DeleteTickersDialog, FILTERS, SelectionBar, WatchlistFilterBar, WatchlistHeaderMenus, WatchlistTabs, type Filter, type View,
 } from "@/components/watchlist/WatchlistToolbar";
 import { commonI18n } from "@/i18n/ns/common";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
@@ -748,8 +748,9 @@ export default function Watchlist() {
   return (
     <Page>
       <PageHeader
+        size="compact"
         title={t("page.title")}
-        icon={Radar}
+        icon={Eye}
         description={days.weekend ? t("page.descWeekend", { date: fmtDate(days.levelsDay, "dayMonthNumeric") }) : t("page.desc")}
         actions={
           <>
@@ -801,33 +802,23 @@ export default function Watchlist() {
         onToggleDensity={() => setDensity((d) => (d === "compact" ? "comfortable" : "compact"))}
       />
 
-      {/* Add · search · filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        {canEdit && (
+      <WatchlistFilterBar
+        add={canEdit ? (
           <AddTickerBar
-            inputRef={addRef}
-            active={activeInfo}
-            history={history.map}
-            archived={archivedTickers}
-            target={addTarget}
-            onTargetChange={setAddTarget}
-            onAdd={addTickers}
-            busy={adding}
-            prefill={prefill}
+            inputRef={addRef} active={activeInfo} history={history.map} archived={archivedTickers} target={addTarget}
+            onTargetChange={setAddTarget} onAdd={addTickers} busy={adding} prefill={prefill}
           />
-        )}
-        {/* Search + chips wrap as one group (no lone chip on a second line). */}
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-          <WatchlistSearch
-            inputRef={searchRef}
-            query={query}
-            onQuery={setQuery}
-            filters={filters}
-            onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
-            filterCounts={filterCounts}
-          />
-        </div>
-      </div>
+        ) : undefined}
+        inputRef={searchRef}
+        query={query}
+        onQuery={setQuery}
+        filters={filters}
+        onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
+        onClearFilters={() => setFilters(new Set())}
+        onReset={() => { setQuery(""); setFilters(new Set()); }}
+        filterCounts={filterCounts}
+        resultCount={visible.length}
+      />
 
       {canEdit && selectedItems.length > 0 && (
         <SelectionBar

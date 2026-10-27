@@ -1,0 +1,391 @@
+/*
+ * Dashboard composition (owner, 2026-10-25): labelled sections with one rhythm — one gap between sections
+ * (--dash-section-gap), one inside a section (--grid-gap, the same as between bento tiles). Cards are insight-tile
+ * shells (dash-card.tsx); these rules only adapt the tile shell to a card that is not in the bento.
+ */
+
+.dash-page {
+  --dash-section-gap: 1.75rem;
+  gap: var(--dash-section-gap);
+}
+.dash-board {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--dash-section-gap);
+}
+@media (min-width: 1024px) {
+  .dash-page { --dash-section-gap: 2.25rem; }
+}
+
+.dash-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--grid-gap);
+}
+
+.dash-section-head {
+  display: flex;
+  min-height: 2rem;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-inline: 0.25rem;
+}
+/* Section headings sit on the canvas (or a «Вид» scene): 15px, a step stronger than a tile's label. */
+.dash-section-head > .ins-label { font-size: var(--text-sm); color: hsl(var(--foreground) / 0.86); }
+.dash-section-hint {
+  margin-left: 0.625rem;
+  font-weight: 400;
+  color: hsl(var(--muted-foreground));
+}
+
+/* A card is a tile shell without the tile's minimum height. */
+.ins-tile.dash-card { min-height: 0; }
+.dash-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Hero KPI cells: equal columns, hairline dividers from lg (2 × 2 on phones / tablets). */
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1rem;
+}
+@media (min-width: 1024px) {
+  .dash-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+  .dash-kpis > * + * { border-left: 1px solid var(--glass-border); padding-left: 1.25rem; }
+}
+
+/* Opt-in extras (their own panels): the same radius as every other dashboard card. */
+.dash-section[data-section="extras"] .glass-panel.rounded-2xl { border-radius: 1.75rem; }
+
+/* ───────────── The board: packed section grids (board-section.tsx, pack.ts) ───────────── */
+
+/* Columns come from the packing (inline style); rows are auto, so tiles in one row share its height. */
+.dash-grid {
+  position: relative;
+  display: grid;
+  gap: var(--grid-gap);
+  grid-auto-rows: auto;
+  align-items: stretch;
+}
+.dash-tile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-radius: 1.75rem;
+}
+.dash-tile-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+.dash-tile-body > * { flex: 1 1 auto; min-height: 0; }
+
+/* ───────────── Edit mode («Настроить») ───────────── */
+
+.dash-editbar.glass-panel {
+  position: sticky;
+  top: var(--sticky-top, 0.5rem);
+  z-index: var(--z-sticky);
+  background: hsl(var(--popover) / 0.92);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem 0.625rem 1rem;
+  border-radius: 1.25rem;
+}
+.dash-editbar-icon {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: hsl(var(--foreground) / 0.07);
+}
+/* Phones: the title and the hint on their own line, the three buttons under them. */
+@media (max-width: 639px) {
+  .dash-editbar.glass-panel { flex-wrap: wrap; row-gap: 0.5rem; padding: 0.625rem 0.75rem; }
+  .dash-editbar > :first-child { flex: 1 1 100%; }
+  .dash-editbar > :last-child { flex: 1 1 100%; justify-content: flex-end; }
+}
+.dash-hint-touch { display: none; }
+@media (pointer: coarse) {
+  .dash-hint-pointer { display: none; }
+  .dash-hint-touch { display: block; }
+}
+
+/* Everything that is not a tile steps back a little; the hero is pinned. */
+.dash-board[data-editing] .dash-hero > :not(.dash-section-head) { opacity: 0.5; filter: saturate(0.7); }
+.dash-board[data-editing] .dash-section-head > .ins-label { opacity: 0.72; }
+.dash-fixed {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  color: hsl(var(--muted-foreground));
+}
+.dash-note { padding-inline: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+
+/* A tile in the edit mode: a quiet dashed outline just outside it, the content a touch quieter. */
+.dash-board[data-editing] .dash-tile {
+  cursor: grab;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.dash-board[data-editing] .dash-tile::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 1.5px dashed hsl(var(--foreground) / 0.24);
+  border-radius: calc(1.75rem + 5px);
+  pointer-events: none;
+  transition: border-color 150ms var(--ease, ease);
+}
+.dash-board[data-editing] .dash-tile:hover::after { border-color: hsl(var(--foreground) / 0.42); }
+.dash-board[data-editing] .dash-tile:focus-visible { outline: none; }
+.dash-board[data-editing] .dash-tile:focus-visible::after { border: 2px solid hsl(var(--ring)); }
+.dash-board[data-editing] .dash-tile-body { opacity: 0.92; }
+
+/* The dragged tile lifts; its slot shows where it will land. */
+.dash-tile[data-dragging] { z-index: var(--z-raised); cursor: grabbing; }
+.dash-tile[data-dragging] .dash-tile-body {
+  opacity: 1;
+  border-radius: 1.75rem;
+  transform: scale(1.02);
+  box-shadow: 0 28px 56px -16px rgb(0 0 0 / 0.38);
+  transition: transform 160ms var(--ease, ease), box-shadow 160ms var(--ease, ease);
+}
+.dash-tile[data-dragging]::after { border-style: solid; border-color: hsl(var(--ring) / 0.65); }
+.dash-slot {
+  border: 1.5px dashed hsl(var(--foreground) / 0.28);
+  border-radius: 1.75rem;
+  background: hsl(var(--foreground) / 0.035);
+  pointer-events: none;
+}
+body.dash-dragging,
+body.dash-dragging * { cursor: grabbing !important; user-select: none; }
+
+/* A tile just added (gallery, «Вернуть»): one soft ring. */
+.dash-tile[data-fresh] .dash-tile-body > * { animation: dash-fresh 1.3s var(--ease, ease) both; }
+@keyframes dash-fresh {
+  from { box-shadow: 0 0 0 3px hsl(var(--ring) / 0.7); }
+  to { box-shadow: 0 0 0 3px hsl(var(--ring) / 0); }
+}
+
+/* Tile chrome floats on the tile's edge (the tile stays readable): handle top centre, «×» top left, sizes top right. */
+.dash-handle,
+.dash-remove,
+.dash-sizes,
+.dash-badge {
+  position: absolute;
+  z-index: 1;
+  border: 1px solid var(--glass-border);
+  background: hsl(var(--popover));
+  color: hsl(var(--muted-foreground));
+  box-shadow: 0 4px 14px -4px rgb(0 0 0 / 0.22);
+}
+.dash-handle {
+  top: -0.75rem;
+  left: 50%;
+  display: inline-flex;
+  width: 3rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  cursor: grab;
+  touch-action: none;
+}
+.dash-handle:hover { color: hsl(var(--foreground)); }
+.dash-remove {
+  top: -0.625rem;
+  left: -0.625rem;
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: background-color 120ms, color 120ms;
+}
+.dash-remove:hover { background: hsl(var(--down)); color: hsl(var(--background)); border-color: transparent; }
+.dash-sizes {
+  top: -0.875rem;
+  right: 0.875rem;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  cursor: default;
+}
+.dash-sizes > button {
+  display: inline-flex;
+  min-width: 1.75rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-family: var(--app-font-code);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+  transition: background-color 120ms, color 120ms;
+}
+.dash-sizes > button:hover { background: var(--glass-hover-bg); color: hsl(var(--foreground)); }
+.dash-sizes > button[aria-pressed="true"] { background: hsl(var(--foreground)); color: hsl(var(--background)); }
+.dash-sizes > .dash-rows { margin-left: 2px; }
+.dash-badge {
+  bottom: -0.625rem;
+  right: 1rem;
+  display: inline-flex;
+  height: 1.375rem;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 500;
+}
+.dash-handle:focus-visible,
+.dash-remove:focus-visible,
+.dash-sizes > button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+@media (pointer: coarse) {
+  .dash-handle { top: -1rem; width: 3.5rem; height: 2rem; }
+  .dash-remove { top: -0.875rem; left: -0.5rem; width: 2.25rem; height: 2.25rem; }
+  .dash-sizes { top: -1.125rem; right: 0.5rem; }
+  .dash-sizes > button { min-width: 2.25rem; height: 2rem; }
+  .dash-board[data-editing] .dash-grid { row-gap: calc(var(--grid-gap) + 1rem); }
+}
+
+/* An empty section in the edit mode: a drop zone with «Добавить»; a tile can be dropped on any section grid. */
+.dash-empty {
+  display: flex;
+  min-height: 6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1.5px dashed hsl(var(--foreground) / 0.2);
+  border-radius: 1.75rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+.dash-empty-add {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+}
+.dash-empty-add:hover { background: var(--glass-hover-bg); }
+.dash-grid[data-dropping],
+.dash-empty[data-dropping] { outline: 2px dashed hsl(var(--ring)); outline-offset: 6px; border-radius: 1.75rem; }
+.dash-placeholder { min-height: 8rem; justify-content: flex-start; border-style: dashed; opacity: 0.85; }
+
+/* «Добавить плитку»: a non-modal panel on the right (a bottom sheet on phones) with live, scaled-down previews. */
+.dash-gallery.glass-panel {
+  position: fixed;
+  z-index: var(--z-sheet);
+  top: calc(var(--header-h) + 0.75rem);
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  width: min(24rem, calc(100vw - 1.5rem));
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background: hsl(var(--popover));
+  box-shadow: 0 28px 72px -18px rgb(0 0 0 / 0.42);
+}
+.dash-gallery.glass-panel[data-touch] {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  max-height: 78dvh;
+  border-radius: 1.5rem 1.5rem 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.dash-gallery-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 0.75rem 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+.dash-gallery-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+}
+.dash-gallery-card {
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 1.125rem;
+  background: hsl(var(--foreground) / 0.02);
+  cursor: pointer;
+  transition: border-color 150ms var(--ease, ease), background-color 150ms var(--ease, ease);
+}
+.dash-gallery-card[draggable="true"] { cursor: grab; }
+.dash-gallery-card:hover { border-color: hsl(var(--foreground) / 0.3); background: var(--glass-hover-bg); }
+.dash-gallery-preview {
+  position: relative;
+  height: 8.5rem;
+  overflow: hidden;
+  border-bottom: 1px solid var(--glass-border);
+  background: hsl(var(--background) / 0.5);
+  pointer-events: none;
+}
+.dash-gallery-preview::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 2rem;
+  background: linear-gradient(transparent, hsl(var(--popover)));
+}
+.dash-gallery-scale { width: 200%; padding: 1rem; transform: scale(0.5); transform-origin: 0 0; }
+
+html[data-motion="off"] .dash-tile[data-dragging] .dash-tile-body, html[data-motion="off"] .dash-board[data-editing] .dash-tile::after, html[data-motion="off"] .dash-gallery-card { transition: none; }
+html[data-motion="off"] .dash-tile[data-fresh] .dash-tile-body > * { animation: none; box-shadow: 0 0 0 3px hsl(var(--ring) / 0.5); }

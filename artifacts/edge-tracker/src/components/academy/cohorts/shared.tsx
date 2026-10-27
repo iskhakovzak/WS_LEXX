@@ -5,6 +5,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { ExternalLink, MapPin, Video } from "lucide-react";
 import { Pill, ProgressRing, StatRow, type Tone } from "@/components/ds";
+import { StageBadge, medalStageOf } from "@/components/shared/medals";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -82,9 +83,11 @@ export function withNodes(text: string, nodes: Record<string, ReactNode>): React
   });
 }
 
-const STAGE_TONE: Record<Stage, Tone> = { junior: "accent", trader: "purple", senior: "up" };
+/** The stage as its medal + name (Джун bronze, Трейдер silver, Сеньор gold). */
 export function StagePill({ stage, title }: { stage: Stage; title?: string }) {
-  return <Pill tone={STAGE_TONE[stage] ?? "neutral"} title={title}>{stageLabel(stage)}</Pill>;
+  const medal = medalStageOf(stage);
+  if (!medal) return <Pill tone="neutral" title={title}>{stageLabel(stage)}</Pill>;
+  return <StageBadge stage={medal} label={stageLabel(stage)} title={title} className="min-h-5.5 rounded-full bg-foreground/[0.05] py-0.5 pl-0.5 pr-2" />;
 }
 const STATUS_TONE: Record<EnrollmentStatus, Tone> = { active: "up", paused: "warn", graduated: "accent", dropped: "down" };
 export function StatusPill({ status }: { status: EnrollmentStatus }) {

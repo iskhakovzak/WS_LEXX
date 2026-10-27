@@ -7,6 +7,7 @@ import { pool } from "@workspace/db";
 import { readScope } from "./permissions";
 import { groupMembersOf } from "./people/deskGroups";
 import type { NextAction, WeekPoint } from "./curatorLogic";
+import type { PlateauSignal } from "./plateauStore";
 
 /** Read from an optional module's table: any SQL error (table not created yet) → no rows. */
 export async function safe<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -49,6 +50,22 @@ export async function loadRoster(req: Request, wanted: unknown): Promise<Roster>
   return { traders: list.sort((a, b) => a.localeCompare(b, "ru")), scope, wards };
 }
 
+/**
+ * A curator's people without a request (jobs, the 17:30 digest): active traders assigned to him (curator / mentor /
+ * risk manager) plus the traders of the desk groups he leads — the same «Моя группа» as loadRoster.
+ */
+export async function wardsOf(curator: string): Promise<string[]> {
+  const [assigned, group] = await Promise.all([
+    safe<{ name: string }>(
+      `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false AND role = 'trader'
+          AND (assigned_curator = $1 OR assigned_mentor = $1 OR assigned_risk_manager = $1)`,
+      [curator],
+    ),
+    groupMembersOf(curator).catch(() => [] as string[]),
+  ]);
+  return [...new Set([...assigned.map((r) => r.name), ...group])].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
 // ─── per-trader signals ─────────────────────────────────────────────────────
 
 export type TraderSignal = {
@@ -85,4 +102,6 @@ export type TraderSignal = {
   month: { pnl: number | null; trades: number };
   /** Latest sign of life: activity log, closed day, weekly report or trade day (ISO / YYYY-MM-DD). */
   lastActivityAt: string | null;
+  /** R6 plateau (staff-only): not at the stage's pace yet; null = no current plateau. */
+  plateau: PlateauSignal | null;
 };

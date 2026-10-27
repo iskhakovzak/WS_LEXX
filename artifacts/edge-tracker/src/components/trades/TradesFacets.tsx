@@ -1,12 +1,12 @@
 /**
- * «Улучшенный поиск» on /trades: the «Фильтры» panel (components/shared/trade-facets) over the page's current filters,
- * the hidden-value chips, «Исключить IMX» and the «из них IMX» line. The selection reaches the book as `filters.facets`
- * (x* params of /api/trades/page|days, hooks/use-trades-page buildTradesPageParams).
+ * «Разрезы» on /trades: the page filters with the facet selection attached (what the book queries are built from) and
+ * the buckets of the current filters. The grid and «Исключить IMX» live in «Фильтры (n)» (TradeFilterBar →
+ * FacetFilterSections), the hidden values are chips under the toolbar (facetChips) and the «из них IMX» line ends the
+ * KPI line. The selection reaches the book as `filters.facets` (x* params of /api/trades/page|days,
+ * hooks/use-trades-page buildTradesPageParams).
  */
 import { useMemo } from "react";
 import { buildTradesPageParams } from "@/hooks/use-trades-page";
-import { FacetPanel } from "@/components/shared/trade-facets/FacetPanel";
-import { FacetSummary } from "@/components/shared/trade-facets/FacetSummary";
 import { useTradeFacets, type useFacetView } from "@/components/shared/trade-facets/api";
 import { facetQuery, type FacetView } from "@/lib/trade-facets";
 import type { TradeFilters } from "./trade-utils";
@@ -24,13 +24,8 @@ export function facetsBaseQuery(filters: TradeFilters): string {
   return p.toString();
 }
 
-export function TradesFacets({ filters, fv }: { filters: TradeFilters; fv: ReturnType<typeof useFacetView> }) {
+/** The buckets (and total / IMX lines) for the page's current filters. */
+export function useTradesFacets(filters: TradeFilters, fv: ReturnType<typeof useFacetView>, enabled = true) {
   const base = useMemo(() => facetsBaseQuery(filters), [filters]);
-  const q = useTradeFacets(base, fv.view, fv.ready);
-  return (
-    <div className="flex flex-col gap-2">
-      <FacetPanel view={fv.view} onChange={fv.update} data={q.data} loading={q.isFetching} error={q.isError} />
-      <FacetSummary view={fv.view} onChange={fv.update} data={q.data} />
-    </div>
-  );
+  return useTradeFacets(base, fv.view, enabled && fv.ready);
 }

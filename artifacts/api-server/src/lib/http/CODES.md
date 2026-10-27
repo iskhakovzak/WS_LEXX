@@ -147,7 +147,8 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `ACCOUNT_LINKED_TO_OTHER` | 400 | PropReports import: the account belongs to another trader. | — |
 | `INVALID_LOCALE` | 400 | PATCH /users/me/locale with an unsupported locale. | — |
 | `ADMIN_ONLY` | 403 | Creating / changing / deactivating admins, granting the admin role. | — |
-| `USER_NAME_TAKEN` | 409 | Create / rename a user to an existing name. | — |
+| `USER_NAME_TAKEN` | 409 | Create / rename a user to an existing name (rename: also another user's Latin name, compared like the sign-in). | — |
+| `RENAME_DATA_CONFLICT` | 409 | Rename: rows already carry the new name (orphans, an import under that name); nothing was renamed. | `{ rows: { "table.column": n } }` |
 | `CANNOT_DEACTIVATE_SELF` | 400 | Users: deactivate your own account. | — |
 | `PASSWORD_CHANGE_REQUIRED` | 403 | The account must change its password before using the API (token flag `pwc`). The login screen branches on it. | — |
 | `GUEST_NO_PERSONAL` | 403 | A guest asked for a trader's personal data (check-ins, psychology report…). | — |
@@ -200,6 +201,9 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `PROPOSAL_NOT_FOUND` | 404 | Scaling proposal. | — |
 | `PROPOSAL_DECIDED` | 409 | Approve / reject of a decided proposal. | `{ proposal }` |
 | `PROPOSAL_TIER_GONE` | 400 | Approving a proposal whose target tier was removed. | — |
+| `CAPITAL_LIMITS_CHANGED` | 409 | Approving / reverting a capital allocation change after the trader's daily limit changed. | — |
+| `CAPITAL_ALREADY_REVERTED` | 409 | Reverting a capital allocation change twice. | — |
+| `CAPITAL_NOT_REVERTIBLE` | 400 | Reverting a history row that is not a capital allocation change. | — |
 | `AUDIENCE_INVALID` | 400 | Discussions: the audience value is not a list / string. | — |
 | `AUDIENCE_UNKNOWN` | 400 | Discussions: an unknown audience token. | — |
 | `AUDIENCE_TOO_MANY` | 400 | Discussions: more than 12 audience tokens. | — |
@@ -216,6 +220,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `EOD_OWN_ONLY` | 403 | End of day: another trader's day without journal.read.team. | — |
 | `INVALID_RANGE` | 400 | A from/to range that is malformed, reversed or too long. | — |
 | `TRADE_REVIEW_OWN_ONLY` | 403 | End of day: reviewing someone else's trade. | — |
+| `WHATIF_FEE_PLAN_STAFF_ONLY` | 403 | What-if: a commission-plan (tariff) rule from a non-staff viewer (roadmap R2: staff only). | — |
 | `EOD_DAY_CLOSED` | 409 | Editing a trade review / day summary of a closed day. | `{ date }` |
 | `EOD_ALREADY_CLOSED` | 409 | Closing a closed day. | `{ day }` |
 | `EOD_FUTURE_DAY` | 422 | Closing a day after today (NY). | — |
@@ -365,7 +370,15 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `DESK_GROUP_NOT_FOUND` | 404 | PUT /api/desk-groups (group id that does not exist or is archived when a trader is moved into it). | — |
 | `DESK_GROUP_NAME_TAKEN` | 409 | PUT /api/desk-groups: another active group has this name (case-insensitive). | `params.name` |
 | `DESK_GROUP_CURATOR_INVALID` | 400 | PUT /api/desk-groups: `curatorId` is not an active curator / admin. | — |
+| `SESSION_LOCKED` | 423 | The caller's session is screen-locked («Заблокировать», `lib/security/screenLock.ts`). Answered by the global gate (`lib/auth.ts` apiAuthGate) on every route except `POST /auth/unlock`, `POST\|GET /auth/lock`, `POST /auth/logout`, `GET /permissions/me` (and the public routes). The client shows its lock screen. | — |
+| `UNLOCK_CODE_INVALID` | 403 | `POST /auth/unlock`: wrong quick code (or account password when no code is set). | `{ attemptsLeft }` |
+| `UNLOCK_SIGNED_OUT` | 401 | `POST /auth/unlock`: the 5th wrong answer since the lock — this session is signed out (revoked). | — |
+| `QUICK_CODE_INVALID` | 400 | `PUT /auth/quick-code`: not 4–8 digits and not a 6–32 character phrase. | — |
 | `SECTION_BLOCKED` | 403 | The section is closed for the caller's ladder stage (desk setting `access.sections`, admin → «Роли и права» → «Доступ по ступеням»). Answered by one middleware (`lib/access/sections.ts`, table `SECTION_API`) on the section's data endpoints: top of the day, leaderboard, discussions, daily feed (not `/dailyfeed/stream`), desk-day, office stats, benchmark, trade ideas (+ stats), activity. Staff are never blocked. | `{ section, stage }` |
+| `AI_NOT_CONFIGURED` | 503 | «Ассистент WS» (`/api/ai/assistant/*`): no `AI_INTEGRATIONS_ANTHROPIC_API_KEY` on the server (docs/AI_ASSISTANT.md). The panel shows how the admin enables it. The older AI helpers keep the lower-case `ai_not_configured`. | — |
+| `AI_ASSISTANT_OFF` | 403 | The assistant is switched off (desk setting `assistant.enabled`). | — |
+| `AI_ASSISTANT_STAGE` | 403 | The assistant is closed for juniors (desk setting `assistant.juniorsEnabled`). | — |
+| `AI_BUDGET_EXCEEDED` | 429 | The caller's daily assistant budget is used up (desk setting `assistant.dailyUnits`, default 1,000,000 units: default-model tokens 1x, boost / escalation / advisor tokens x `assistant.boostMultiplier`). Chat, «Help» and AI reviews share it. No model name in the body. | `{ used, limit }` |
 | `JUNIOR_NOTES_RETIRED` | 410 | Any non-GET /api/junior-notes/*: the juniors' summary is read-only history now (the evening form in the journal replaced it). | — |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.

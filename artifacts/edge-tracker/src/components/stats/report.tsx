@@ -2,12 +2,11 @@
  * /stats report body: the numbers (useReportData — from the viewer's own trades, or from the server aggregate in the
  * staff view, Волна 2 п. 2.5) and the panels under the KPI cards (ReportPanels). Split out of pages/stats.tsx.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { statsI18n } from "@/i18n/ns/stats";
 import { KpiGrid } from "./kpi-grid";
-import { EquityPanel } from "./equity-panel";
 import { CalendarPanel } from "./calendar-panel";
 import { TimeHeatmap } from "./time-heatmap";
 import { BreakdownPanel, type Dimension } from "./breakdown-panel";
@@ -79,24 +78,24 @@ export function useWindowExport(o: {
 }
 
 /** KPI cards and every panel of the report. */
-export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windowLabel, trader, horizon, dim, oneTrader, solo, onHorizon, onDim, onPickTrader }: {
+export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windowLabel, trader, horizon, dim, oneTrader, solo, onHorizon, onDim, onPickTrader, insights }: {
   d: ReportData; staff: boolean; agg: StatsAggregate | undefined; trades: Trade[]; horizonBase: Trade[]; metric: Metric; windowLabel: string;
   trader: string; horizon: HorizonFilter; dim: Dimension; oneTrader: boolean; solo: boolean;
   onHorizon: (h: HorizonFilter) => void; onDim: (d: Dimension) => void; onPickTrader?: (name: string) => void;
+  /** Compact insight cards (streaks, trade number in the day…) under the equity row; raw-trade views only. */
+  insights?: ReactNode;
 }) {
   const a = staff ? agg : undefined;
   return (
     <>
       <KpiGrid k={d.kpis} prev={d.prevKpis} metric={metric} windowLabel={windowLabel} />
 
-      <div className="grid gap-4 xl:grid-cols-5">
-        <div className="min-w-0 xl:col-span-3">
-          <EquityPanel equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff} />
-        </div>
-        <div className="min-w-0 xl:col-span-2"><InsightsPanel insights={d.insights} /></div>
-      </div>
+      {/* The equity curve renders above (pages/stats.tsx: right under the cuts, full width). */}
+      <InsightsPanel insights={d.insights} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {insights}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <HorizonPanel
           trades={staff ? undefined : horizonBase}
           groupsFor={a ? (m) => (a.horizonAll ?? []).map((g) => groupStat(g.key, g.b, m)) : undefined}
@@ -105,12 +104,12 @@ export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windo
         <FeesPanel fees={d.fees} prev={d.prevFees} trades={staff ? undefined : trades} counts={d.staffFees ?? undefined} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CalendarPanel days={d.days} metric={metric} trader={trader} hideTrader={oneTrader} />
         <TimeHeatmap trades={staff ? undefined : trades} cells={a ? heatOf(a, metric) : undefined} metric={metric} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BreakdownPanel
           trades={staff ? undefined : trades}
           groupsFor={a ? (x, m) => groupsOf(a, x, m) : undefined}

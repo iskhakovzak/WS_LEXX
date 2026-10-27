@@ -105,6 +105,9 @@ export type Proposal = {
   decidedBy: string | null;
   decidedAt: string | null;
   decisionComment: string | null;
+  /** 'limits' = a capital allocation proposal (lib/capital): `limits` holds before / after, `action` is raise / cut. */
+  kind?: "tier" | "limits";
+  limits?: unknown;
 };
 
 export type HistoryEntry = {

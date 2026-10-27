@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
-  AlertTriangle, BarChart3, CalendarDays, CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Layers, RefreshCw, Sun, UserCheck,
+  AlertTriangle, CalendarDays, CalendarRange, ChevronDown, Layers, RefreshCw, Sun, User, UserCheck,
 } from "lucide-react";
 import {
   EmptyState, Page, PageHeader, Panel, SectionTabs, Segmented, StatCard, StatGrid, TableSkeleton, TermTooltip, UpdatedAgo,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { DayStepper } from "@/components/shared/day-stepper";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { FilterBar } from "@/components/offerings/FilterBar";
@@ -28,7 +29,7 @@ import {
   fetchOfferingsFresh, useAddToPlan, useAddToWatchlist, useExposure, useOfferings, useOfferingsDays,
 } from "@/components/offerings/use-offerings-data";
 import {
-  addBusinessDays, dayTitle, fmtDay, fmtM, marketDay, offeringKey, pctOfMcap, todayNY,
+  addBusinessDays, fmtDay, fmtM, marketDay, offeringKey, pctOfMcap, todayNY,
   type Offering,
 } from "@/components/offerings/types";
 import { fmtDeskTime, fmtPct } from "@/lib/format";
@@ -143,7 +144,6 @@ export default function OfferingsPage() {
   const addWatch = useAddToWatchlist();
   const addPlan = useAddToPlan();
   const todayMarket = marketDay();
-  const isLatest = day >= todayMarket;
 
   // Keep ?day= / ?tab= in the URL so a link to a session can be shared in the desk chat.
   useEffect(() => {
@@ -272,10 +272,7 @@ export default function OfferingsPage() {
 
   // ── Actions ──
   const onSort = useCallback((k: SortKey) => setSort((p) => (p.key === k ? { key: k, dir: p.dir === "desc" ? "asc" : "desc" } : { key: k, dir: "desc" })), [setSort]);
-  const goDay = useCallback((dir: 1 | -1) => {
-    setDay((d) => { const n = addBusinessDays(d, dir); return n > marketDay() ? d : n; });
-    setActive(0);
-  }, []);
+  const pickDay = useCallback((d: string) => { setDay(d > marketDay() ? marketDay() : d); setActive(0); }, []);
   const hardRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -313,7 +310,7 @@ export default function OfferingsPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  // ── Keyboard: / search, j/k ↑/↓ move, Enter open, W watchlist, P plan, I idea, [ ] days, R refresh ──
+  // ── Keyboard: / search, j/k ↑/↓ move, Enter open, W watchlist, P plan, I idea, R refresh ([ ] T days: DayStepper) ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -336,15 +333,13 @@ export default function OfferingsPage() {
         case "w": case "W": if (cur) onAddWatch(cur); break;
         case "p": case "P": if (cur) onAddPlan(cur); break;
         case "i": case "I": if (cur) navigate(links.newIdea(cur.ticker)); break;
-        case "[": goDay(-1); break;
-        case "]": goDay(1); break;
         case "r": case "R": if (!refreshing) void hardRefresh(); break;
         default: break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deals, active, selected, isList, goDay, hardRefresh, onAddWatch, onAddPlan, refreshing, navigate]);
+  }, [deals, active, selected, isList, hardRefresh, onAddWatch, onAddPlan, refreshing, navigate]);
 
   useEffect(() => {
     if (!isList) return;
@@ -378,27 +373,15 @@ export default function OfferingsPage() {
         }
         actions={
           <>
-            <div className="glass-field flex h-9 items-center gap-0.5 p-[3px]">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goDay(-1)} aria-label={t("page.prevDay")}>
-                <ChevronLeft aria-hidden="true" />
-              </Button>
-              <label className="relative">
-                <span className="sr-only">{t("page.date")}</span>
-                <span className={cn("block min-w-[9.5rem] px-2 text-center text-sm font-medium tabular-nums", day === todayMarket ? "text-primary" : "text-foreground")}>{dayTitle(day)}</span>
-                <input
-                  type="date"
-                  value={day}
-                  max={todayMarket}
-                  onChange={(e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) { setDay(e.target.value > todayMarket ? todayMarket : e.target.value); setActive(0); } }}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  aria-label={t("page.pickDate")}
-                />
-              </label>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goDay(1)} disabled={isLatest} aria-label={t("page.nextDay")}>
-                <ChevronRight aria-hidden="true" />
-              </Button>
-            </div>
-            {!isLatest && <Button variant="outline" onClick={() => { setDay(todayMarket); setActive(0); }}>{t("page.latestDay")}</Button>}
+            <DayStepper
+              value={day}
+              onChange={pickDay}
+              max={todayMarket}
+              home={todayMarket}
+              homeLabel={commonI18n.t("dayStepper.lastDay")}
+              homeTitle={commonI18n.t("dayStepper.lastDayKey")}
+              hotkeys={!selected}
+            />
             <Button variant="ghost" size="icon" onClick={() => void hardRefresh()} disabled={busy} aria-busy={busy} aria-label={t("page.refresh")} title={t("page.refresh")}>
               <RefreshCw className={cn(busy && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
@@ -414,7 +397,7 @@ export default function OfferingsPage() {
             { value: "week", label: t("page.tab.week"), icon: CalendarRange },
             { value: "ipo", label: t("page.tab.ipo"), icon: CalendarDays },
             { value: "insiders", label: t("page.tab.insiders"), icon: UserCheck },
-            { value: "mine", label: t("page.tab.mine"), icon: BarChart3 },
+            { value: "mine", label: t("page.tab.mine"), icon: User },
           ]}
         />
       </PageHeader>
@@ -467,19 +450,7 @@ export default function OfferingsPage() {
           canExport={deals.length + overhang.length > 0}
           shown={deals.length}
           total={tab === "today" && when !== "all" ? whenCounts[when] : dealsTotal}
-        />
-      )}
-
-      {isList && (
-        <Panel
-          title={tab === "week" ? t("page.dealsWeek") : t("page.deals")}
-          description={tab === "week"
-            ? t("page.weekDescription", { from: fmtDay(weekDays[0]), to: fmtDay(day) })
-            : t("page.dayDescription")}
-          padded={false}
-          bodyClassName="px-2 pb-2 pt-2 sm:px-3"
-          className="min-w-0"
-          actions={tab === "today" && data && !noData ? (
+          mode={tab === "today" && data && !noData ? (
             <Segmented<When>
               ariaLabel={t("page.whenAria")}
               size="sm"
@@ -492,11 +463,24 @@ export default function OfferingsPage() {
                 { value: "all", label: commonI18n.t("states.all"), count: whenCounts.all },
               ]}
             />
-          ) : (
+          ) : undefined}
+        />
+      )}
+
+      {isList && (
+        <Panel
+          title={tab === "week" ? t("page.dealsWeek") : t("page.deals")}
+          description={tab === "week"
+            ? t("page.weekDescription", { from: fmtDay(weekDays[0]), to: fmtDay(day) })
+            : t("page.dayDescription")}
+          padded={false}
+          bodyClassName="px-2 pb-2 pt-2 sm:px-3"
+          className="min-w-0"
+          actions={
             <span className="hidden items-center gap-1.5 text-xs text-muted-foreground xl:flex">
               <Kbd>J</Kbd><Kbd>K</Kbd> {t("page.keysSelect")} <Kbd>↵</Kbd> {t("page.keysCard")} <Kbd>W</Kbd> {t("page.keysWatch")} <Kbd>P</Kbd> {t("page.keysPlan")}
             </span>
-          )}
+          }
         >
           {listLoading ? (
             <div className="min-h-[420px]" aria-busy="true" aria-label={t("page.loadingList")}>

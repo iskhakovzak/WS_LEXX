@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock, Archive, ArrowRight, BookCheck, CalendarX, ClipboardList, History, Inbox, Layers, ListChecks, ShieldAlert, Users,
 } from "lucide-react";
-import { BentoGrid, EmptyState, FilterChip, LimitBar, Panel, Pill, StatCard, StatGrid, Tile, usePersistentState } from "@/components/ds";
+import { BentoGrid, EmptyState, LimitBar, Panel, Pill, Segmented, StatCard, StatGrid, Tile, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -21,11 +21,17 @@ import { TemplateDialog } from "./template-dialog";
 import { AttentionPanel } from "./attention-panel";
 import { QuestEventChips } from "./quest-events";
 import { CuratorRequestsPanel } from "./requests-panel";
+import { StuckPanel } from "./coach-stuck";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /** Which limit the risk tile should show: the one that triggered the state (drawdown / week), otherwise the daily one. */
+/** Queue item title with its ISO dates as «Oct 19» (shown and in the tooltip; the tooltip used to keep raw ISO). */
+function queueTitle(title: string): string {
+  return title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"));
+}
+
 function riskBar(r: TodayPayload["risk"]["halted"][number]): { label: string; pct: number | null } {
   const t = curatorI18n.t;
   if (r.state === "drawdown") return { label: t("today.bar.drawdown"), pct: r.drawdownPct };
@@ -100,7 +106,8 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <StatGrid cols={6}>
+      {/* Zero counters (reviews, unclosed days, no plan …) fold into «Всё чисто: …»; only what needs doing stays big. */}
+      <StatGrid cols={6} allClear>
         <StatCard label={t("today.trading")} value={t("today.tradingValue", { n: c.trading, total: c.traders })} icon={Users} hint={data.phase === "weekend" ? t("today.weekend") : undefined} />
         <StatCard
           label={t("today.stopNear")}
@@ -229,19 +236,13 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           )}
           <QuestEventChips events={data.questEvents} onOpenTrader={onOpenTrader} />
           {fullQueue.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t("today.kindAria")}>
-              <FilterChip size="sm" active={activeKind === "all"} onClick={() => setKindFilter("all")} count={fullQueue.length}>{t("today.all")}</FilterChip>
-              {QUEUE_KIND_ORDER.filter((k) => kindCounts[k] > 0).map((k) => (
-                <FilterChip key={k} size="sm" active={activeKind === k} onClick={() => setKindFilter(activeKind === k ? "all" : k)} count={kindCounts[k]}>
-                  {t(`queueFilter.${k}`)}
-                </FilterChip>
-              ))}
+            <QueueKindBar value={activeKind} onChange={setKindFilter} total={fullQueue.length} counts={kindCounts}>
               {activeKind === "eod" && eodTargets.length > 1 && (
                 <Button type="button" size="sm" className="ml-auto h-8" onClick={() => review.open(eodTargets[0])}>
                   <BookCheck className="h-3.5 w-3.5" /> {t("today.reviewInOrder")}
                 </Button>
               )}
-            </div>
+            </QueueKindBar>
           )}
           {queue.length === 0 ? (
             <EmptyState
@@ -257,7 +258,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
                   <Pill tone={QUEUE_TONE[q.kind]} className="min-w-0 max-w-[7rem] justify-center sm:w-full" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground sm:flex-none" title={personName(q.trader)}>{personName(q.trader)}</span>
                   <span className="order-last flex min-w-0 basis-full flex-col sm:order-none sm:basis-auto">
-                    <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
+                    <span className="line-clamp-2 text-sm leading-snug text-muted-foreground" title={queueTitle(q.title)}>{queueTitle(q.title)}</span>
                     {q.note && <span className="truncate text-xs text-muted-foreground/80" title={q.note}>«{q.note}»</span>}
                   </span>
                   <span
@@ -339,6 +340,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
             </div>
           </div>
         </Panel>
+        <StuckPanel className="lg:col-span-7" scope={scope} onOpenTrader={onOpenTrader} />
       </BentoGrid>
 
       <TemplateDialog open={!!templateFor} onOpenChange={(v) => { if (!v) setTemplateFor(null); }} traders={templateFor ?? []} />
@@ -358,6 +360,28 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
 
 const RISK_VISIBLE = 4;
 const QUEUE_KIND_ORDER: QueueKind[] = ["breach", "eod", "weekly", "academy"];
+
+/** The queue's main mode: all / one kind (only kinds that have items), with counts. */
+function QueueKindBar({ value, onChange, total, counts, children }: {
+  value: QueueKind | "all"; onChange: (v: QueueKind | "all") => void; total: number; counts: Record<QueueKind, number>; children?: React.ReactNode;
+}) {
+  const { t } = curatorI18n.useT();
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      <Segmented
+        size="sm"
+        ariaLabel={t("today.kindAria")}
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: "all", label: t("today.all"), count: total },
+          ...QUEUE_KIND_ORDER.filter((k) => counts[k] > 0).map((k) => ({ value: k, label: t(`queueFilter.${k}`), count: counts[k] })),
+        ]}
+      />
+      {children}
+    </div>
+  );
+}
 
 function GapList({ title, items, empty, onOpen }: {
   title: string;

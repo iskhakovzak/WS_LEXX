@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { CalendarDays, Download, Flag, Lightbulb, MousePointerClick, TrendingDown, TrendingUp, AlertTriangle, Info } from "lucide-react";
-import { EmptyState, Panel, Pill, ProgressRing, StatCard, StatGrid, toneOf, type Tone } from "@/components/ds";
+import { EmptyState, LiveNumber, Panel, Pill, ProgressRing, Segmented, StatCard, StatGrid, toneOf, usePersistentState, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -13,28 +13,48 @@ import {
 } from "./api";
 import { LineCanvas, monthTicks, downloadCanvasPng, type LineSeries } from "./line-canvas";
 import { divergingCell, strategyColor, tokenColor, useDark, yearColor } from "./palette";
+import { paceBand, PACE_MIN_DAYS } from "./pulse";
+import { HEAT_CELL, heatCellStyle } from "@/components/shared/charts";
+import { officeRecsI18n } from "@/i18n/ns/officeRecs";
 import { fmtRate, fmtRatio, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { officeI18n } from "@/i18n/ns/officeStats";
 
-export type Ctx = { unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean };
+export type Ctx = {
+  unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean;
+  /** Context of the shown numbers (unit, years, period, facets; a fixed value while the next answer loads): a change
+   *  re-bases the KPI live numbers instead of flashing them. */
+  liveKey?: string;
+};
 
 const TONE_ICON: Record<Insight["tone"], typeof Info> = { up: TrendingUp, down: TrendingDown, warn: AlertTriangle, neutral: Info };
 const TONE_CLASS: Record<Insight["tone"], string> = {
   up: "text-up bg-up/12", down: "text-down bg-down/12", warn: "text-warn bg-warn/12", neutral: "text-primary bg-primary/12",
 };
 
+/** Insights shown before «Ещё N» (fewer choices; the rest is one click away). */
+const INSIGHTS_FIRST = 4;
+
 export function InsightsStrip({ insights }: { insights: Insight[] }) {
   const { t } = officeI18n.useT();
+  const tr = officeRecsI18n.useT().t;
+  const [all, setAll] = React.useState(false);
   if (!insights.length) return null;
+  const shown = all ? insights : insights.slice(0, INSIGHTS_FIRST);
   return (
-    <section aria-label={t("insights.title")} className="glass-panel rounded-2xl p-[var(--panel-p)]">
+    <section aria-label={t("insights.title")} className="glass-panel h-full rounded-2xl p-[var(--panel-p)]">
       <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-foreground">
         <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("insights.title")}
         <span className="text-xs font-normal text-muted-foreground">{t("insights.hint")}</span>
+        {insights.length > INSIGHTS_FIRST && (
+          <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs font-normal" aria-expanded={all} onClick={() => setAll(!all)}>
+            {all ? tr("insights.less") : tr("insights.more", { count: insights.length - INSIGHTS_FIRST })}
+          </Button>
+        )}
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {insights.map((i) => {
+      {/* Two per row: the strip shares its row with «Пульс недели», four narrow columns wrapped every line. */}
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {shown.map((i) => {
           const Icon = TONE_ICON[i.tone];
           return (
             <li key={i.key} className="tile flex min-w-0 items-start gap-2.5 p-3">
@@ -66,6 +86,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
   const { focus, unit, view, isAdmin } = ctx;
   const { t } = officeI18n.useT();
   const tot = focus.totals;
+  const liveKey = `${ctx.liveKey ?? ""}:${focus.year}`;
+  const live = (v: number) => <LiveNumber value={v} format={(n) => fmtV(n, unit)} resetKey={liveKey} countIn countInDuration={600} />;
   const last = focus.days[focus.days.length - 1];
   const prevY = view.years.find((y) => y.year === focus.year - 1);
   const yoy = last ? sameDayValue(prevY, last.doy) : null;
@@ -76,18 +98,25 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
   const goalShare = pace && pace.goal > 0 ? pace.actual / pace.goal : null;
   const greenShare = tot.tradingDays ? tot.greenDays / tot.tradingDays : null;
   const st = focus.streaks.current;
+  const tr = officeRecsI18n.useT().t;
+  const prevTot = view.prev?.totals ?? null;
+  const prevYear = view.prev?.from.slice(0, 4) ?? "";
+  const tradesDelta = prevTot && prevTot.trades > 0 ? period.totals.trades - prevTot.trades : null;
+  const avgDelta = prevTot && prevTot.avgDay != null && period.totals.avgDay != null ? period.totals.avgDay - prevTot.avgDay : null;
   return (
     <StatGrid cols={4} min="9rem">
       <StatCard
         label={t("kpi.netYear", { year: focus.year })}
-        value={fmtV(tot.net, unit)}
+        value={live(tot.net)}
+        valueTitle={fmtV(tot.net, unit)}
         tone={toneOf(tot.net)}
         delta={yoy != null && prevY ? t("kpi.vsYear", { value: fmtV(tot.net - yoy, unit), year: prevY.year }) : undefined}
         deltaTone={yoy != null ? toneOf(tot.net - yoy) : undefined}
         hint={t("kpi.tradesDays", { trades: commonI18n.t("units.trades", { count: tot.trades }), days: commonI18n.t("time.daysShort", { count: tot.tradingDays }) })}
         spark={focus.days.map((d) => d.cum)}
       />
-      <div className="glass-panel flex h-full min-h-[104px] min-w-0 items-center gap-3 rounded-2xl p-4">
+      {/* Phones: the goal card takes the whole row (a 56 px ring + three lines do not fit half a phone). */}
+      <div className="glass-panel flex h-full min-h-[104px] min-w-0 items-center gap-3 rounded-2xl p-4 max-md:col-[1/-1]">
         <ProgressRing
           value={goalShare != null ? Math.max(0, goalShare * 100) : 0}
           size={56}
@@ -130,6 +159,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
         label={t("kpi.tradesPeriod")}
         value={fmtNum(period.totals.trades)}
         valueTitle={commonI18n.t("units.trades", { count: period.totals.trades })}
+        delta={tradesDelta != null ? tr("kpi.vsPrev", { year: prevYear, value: `${tradesDelta > 0 ? "+" : tradesDelta < 0 ? "−" : ""}${fmtNum(Math.abs(tradesDelta))}` }) : undefined}
+        deltaTone="neutral"
         hint={`WR ${fmtShare(period.totals.winRate)} · PF ${fmtRatio(period.totals.profitFactor)}`}
       />
       {isAdmin && period.totals.volume != null ? (
@@ -137,8 +168,11 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
       ) : (
         <StatCard
           label={t("kpi.avgDay")}
-          value={fmtV(period.totals.avgDay, unit)}
+          value={period.totals.avgDay != null ? live(period.totals.avgDay) : fmtV(period.totals.avgDay, unit)}
+          valueTitle={fmtV(period.totals.avgDay, unit)}
           tone={toneOf(period.totals.avgDay)}
+          delta={avgDelta != null ? tr("kpi.vsPrev", { year: prevYear, value: fmtV(avgDelta, unit) }) : undefined}
+          deltaTone={avgDelta != null ? toneOf(avgDelta) : undefined}
           hint={commonI18n.t("units.tradingDays", { count: period.totals.tradingDays })}
         />
       )}
@@ -151,7 +185,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
       />
       <StatCard
         label={t("kpi.maxDrawdown")}
-        value={fmtV(focus.drawdown.max, unit)}
+        value={live(focus.drawdown.max)}
+        valueTitle={fmtV(focus.drawdown.max, unit)}
         tone={focus.drawdown.max < 0 ? "down" : "neutral"}
         hint={focus.drawdown.recoveryDays != null ? t("kpi.recovered", { count: focus.drawdown.recoveryDays }) : focus.drawdown.max < 0 ? t("kpi.notRecovered") : t("kpi.noDrawdown")}
         onClick={() => onJump("risk")}
@@ -165,7 +200,7 @@ export function useYearSeries(view: OfficeView, focusYear: number, pick: (y: Yea
   return React.useMemo(() => {
     const ys = [...view.years].filter((y) => y.year <= focusYear && y.hasData).sort((a, b) => b.year - a.year);
     return ys.map((y, rank) => ({
-      key: String(y.year), label: String(y.year), color: yearColor(rank, dark), width: rank === 0 ? 2.25 : 1.75, fromZero: true, points: pick(y),
+      key: String(y.year), label: String(y.year), color: yearColor(rank, dark), width: rank === 0 ? 2 : 1.5, fromZero: true, points: pick(y),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, focusYear, dark]);
@@ -178,6 +213,13 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
   const series = useYearSeries(view, focus.year, (y) => y.days.map((d) => ({ x: d.doy, y: d.cum, date: d.date })));
   const dayBy = React.useMemo(() => new Map(view.years.flatMap((y) => y.days.map((d) => [d.date, d] as const))), [view]);
   const fmtY = React.useCallback((v: number) => fmtAxis(v, unit), [unit]);
+  const tr = officeRecsI18n.useT().t;
+  // A far goal (+40% while the year is at +1%) squashes every curve to a flat line: by default the scale fits the
+  // data and a chip at the top says where the goal is; «С целью» brings the goal line back on scale.
+  const extent = React.useMemo(() => Math.max(1e-9, ...series.flatMap((s) => s.points.map((p) => Math.abs(p.y)))), [series]);
+  const squashes = focus.goal != null && Math.abs(focus.goal) > 3 * extent;
+  const [scale, setScale] = usePersistentState<"data" | "goal">("office-stats.chart-scale", "data");
+  const fitGoal = !squashes || scale === "goal";
   const [h, setH] = React.useState(340);
   React.useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px)");
@@ -193,6 +235,16 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
       fill
       className="lg:col-span-8"
       actions={series.length > 0 && (
+        <>
+        {squashes && (
+          <Segmented<"data" | "goal">
+            ariaLabel={tr("chart.scale")}
+            size="sm"
+            value={scale}
+            onChange={setScale}
+            options={[{ value: "data", label: tr("chart.scaleData") }, { value: "goal", label: tr("chart.scaleGoal") }]}
+          />
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -209,6 +261,7 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
         >
           <Download className="h-4 w-4" /> PNG
         </Button>
+        </>
       )}
     >
       {series.length === 0 ? (
@@ -220,7 +273,10 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
             xMin={0}
             xMax={366}
             xTicks={monthTicks()}
-            goal={focus.goal != null ? { y: focus.goal, label: t("chart.goalLine", { value: fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined }) }), pace: true } : null}
+            goal={focus.goal != null ? {
+              y: focus.goal, label: t("chart.goalLine", { value: fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined }) }), pace: true,
+              fit: fitGoal, offLabel: tr("chart.goalAbove", { value: fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined }) }),
+            } : null}
             fmtY={fmtY}
             height={h}
             endLabels
@@ -305,10 +361,13 @@ export function DayDetail({ ctx, date, onClear }: { ctx: Ctx; date: string | nul
   );
 }
 
-export function PacePanel({ ctx }: { ctx: Ctx }) {
+export function PacePanel({ ctx, today }: { ctx: Ctx; today: string }) {
   const { focus, unit, isAdmin } = ctx;
   const { t } = officeI18n.useT();
+  const tr = officeRecsI18n.useT().t;
   const p = focus.pace;
+  const thisYear = focus.year === Number(today.slice(0, 4));
+  const band = React.useMemo(() => (p && thisYear && p.status !== "done" ? paceBand(focus.days, p.actual, p.goal, today) : null), [p, thisYear, focus.days, today]);
   return (
     <Panel title={t("pace.title", { pct: focus.goalPct })} icon={Flag} fill>
       {!p ? (
@@ -326,9 +385,47 @@ export function PacePanel({ ctx }: { ctx: Ctx }) {
             {p.status !== "done" && (<><dt className="text-muted-foreground">{t("pace.needPerMonth")}</dt><dd className="text-right font-medium tabular-nums">{fmtV(p.needPerMonth, unit)}</dd></>)}
             {p.projected != null && (<><dt className="text-muted-foreground">{t("pace.projected")}</dt><dd className={cn("text-right tabular-nums", p.projected >= p.goal ? "text-up" : "text-muted-foreground")}>{fmtV(p.projected, unit)}</dd></>)}
           </dl>
+          {thisYear && p.status !== "done" && (band ? <PaceBandBar band={band} goal={p.goal} actual={p.actual} unit={unit} /> : (
+            <p className="text-2xs text-muted-foreground">{tr("band.few", { n: PACE_MIN_DAYS })}</p>
+          ))}
         </div>
       )}
     </Panel>
+  );
+}
+
+/**
+ * Year-end range: the 10–90% band of the bootstrap projection on one axis with today's result and the goal, the median
+ * tick, and the share of draws that reach the goal (pulse.ts paceBand).
+ */
+function PaceBandBar({ band, goal, actual, unit }: { band: NonNullable<ReturnType<typeof paceBand>>; goal: number; actual: number; unit: Unit }) {
+  const tr = officeRecsI18n.useT().t;
+  // A goal far beyond the band would squash it to a dot: then the axis ends a little past the band and the goal is
+  // a label at the right edge instead of a tick.
+  const near = Math.max(band.p90, actual);
+  const goalOn = goal <= near + 1.5 * Math.max(1e-9, band.p90 - Math.min(band.p10, actual, 0));
+  const lo = Math.min(band.p10, actual, 0), hi = goalOn ? Math.max(near, goal) : near + 0.35 * Math.max(1e-9, near - Math.min(band.p10, actual, 0));
+  const span = Math.max(1e-9, hi - lo);
+  const x = (v: number) => `${((v - lo) / span) * 100}%`;
+  const range = tr("band.value", { lo: fmtV(band.p10, unit), hi: fmtV(band.p90, unit) });
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-[var(--glass-border)] pt-2.5">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">{tr("band.label")}</span>
+        <span className="tabular-nums text-foreground">{range}</span>
+      </div>
+      <div className="relative h-4" role="img" aria-label={`${range}; ${tr("band.chance", { p: fmtRate(band.pGoal) })}`}>
+        <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-foreground/15" aria-hidden="true" />
+        <span className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-primary/25 ring-1 ring-inset ring-primary/40" style={{ left: x(band.p10), width: `calc(${x(band.p90)} - ${x(band.p10)})` }} aria-hidden="true" />
+        <span className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-primary" style={{ left: x(band.p50) }} aria-hidden="true" />
+        <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground" style={{ left: x(actual) }} title={fmtV(actual, unit)} aria-hidden="true" />
+        {goalOn
+          ? <span className="absolute top-0 h-4 border-l border-dashed border-foreground/60" style={{ left: x(goal) }} title={fmtV(goal, unit)} aria-hidden="true" />
+          : <span className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-[var(--glass-bg)] px-1.5 text-2xs leading-4 text-muted-foreground" aria-hidden="true">{fmtV(goal, unit, { digits: 0 })} →</span>}
+      </div>
+      <p className="text-xs text-foreground">{tr("band.chance", { p: fmtRate(band.pGoal) })}</p>
+      <p className="text-2xs leading-snug text-muted-foreground">{tr("band.note")}</p>
+    </div>
   );
 }
 
@@ -396,10 +493,12 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
                         title={d ? t("calendar.dayTitle", { date: fmtDay(ymd), value: fmtV(d.v, unit), trades: commonI18n.t("units.trades", { count: d.trades }) }) : t("calendar.dayNoTrades", { date: fmtDay(ymd) })}
                         aria-label={d ? t("calendar.dayAria", { date: fmtDay(ymd), value: fmtV(d.v, unit) }) : t("calendar.dayAriaEmpty", { date: fmtDay(ymd) })}
                         className={cn(
-                          "aspect-square w-full max-w-[22px] rounded-[3px] transition-transform enabled:hover:scale-125 disabled:cursor-default",
+                          "aspect-square w-full max-w-[22px] border border-transparent disabled:cursor-default",
+                          HEAT_CELL, "rounded-[3px] sm:rounded-[5px]",
+                          !d && "bg-muted-foreground/[0.07] hover:translate-y-0 hover:shadow-none",
                           selected === ymd && "ring-2 ring-foreground ring-offset-1 ring-offset-background",
                         )}
-                        style={{ background: d ? divergingCell(d.v, max) : "hsl(var(--muted-foreground) / 0.08)" }}
+                        style={d ? { background: divergingCell(d.v, max), ...heatCellStyle(divergingCell(d.v, max)) } : undefined}
                       />
                     );
                   })}
@@ -422,7 +521,7 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
                 className="tile tile-interactive press flex min-w-0 flex-col gap-0.5 p-2 text-left disabled:opacity-50"
                 title={m.days ? t("calendar.monthTitle", { month: monthLong(m.month - 1), value: fmtV(m.v, unit), green: m.green, red: m.red }) : t("calendar.monthEmpty", { month: monthLong(m.month - 1) })}
               >
-                <span className="text-2xs uppercase tracking-wide text-muted-foreground">{monthShort(m.month - 1)}</span>
+                <span className="text-2xs text-muted-foreground">{monthShort(m.month - 1)}</span>
                 <span className={cn("truncate text-sm font-semibold tabular-nums", (m.v ?? 0) > 0 ? "text-up" : (m.v ?? 0) < 0 ? "text-down" : "text-muted-foreground")}>{m.days ? fmtMonthTile(m.v, unit) : "—"}</span>
                 <span className="h-1 rounded-full" style={{ background: divergingCell(m.v, monthMax) }} aria-hidden="true" />
               </button>

@@ -65,6 +65,8 @@ accounts.db
 *.sql
 !lib/db/**/*.sql
 !artifacts/api-server/src/db/migrations/**/*.sql
+# Schema-only snapshot (no data): the rename guard test reads it (renameUserColumns.test.ts).
+!artifacts/api-server/db/schema.sql
 
 # Local tool/user state (Replit/VS Code server, agent worktrees, per-user configs)
 .config/

@@ -1,32 +1,24 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, ArrowUpRight, Lightbulb, ListChecks, ShieldAlert, Sparkles, Tag } from "lucide-react";
 import { Panel, toneOf, toneText } from "@/components/ds";
+import { ACTIVE_DOT, CHART, DRAW_MS, GlassTooltip, STROKE, ZERO_LINE, pnlPaint, prefersReducedMotion, tooltipProps } from "@/components/shared/charts";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { links } from "@/lib/links";
 import { useDayReport, type DayReport } from "@/components/day-report/api";
 import { dayHints, type DayHint, type HintTone } from "./day-hints";
 import { netPnl, type DayStats } from "./utils";
-import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
 import { dayHref } from "@/lib/period-links";
 import { rich as withNodes } from "@/i18n/rich";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
-
-const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
 
 /** «Разбор дня» page (/day-report) for this trader + date. */
 export function dayReportHref(date: string, trader?: string | null): string {
@@ -71,27 +63,32 @@ export function DaySummary({
   const net = stats.pnl;
   const best = stats.best ? netPnl(stats.best) : null;
   const worst = stats.worst && stats.worst !== stats.best ? netPnl(stats.worst) : null;
+  // Phones (design audit wave 2B): the day's P&L is the first thing read — the status / IMX / «Разбор дня» controls
+  // move under the number, and the panel names its day (the date switcher sits below it there).
+  const isMobile = useIsMobile();
+  const controls = (
+    <div className="flex flex-wrap items-center gap-2">
+      {status}
+      {hasTrades && <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />}
+      {trader && hasTrades && (
+        <Button asChild variant="outline" size="sm">
+          <Link href={dayReportHref(date, trader)}>
+            {t("summary.dayReport")}<ArrowUpRight aria-hidden="true" />
+          </Link>
+        </Button>
+      )}
+    </div>
+  );
 
   return (
     <Panel
       title={t("summary.title")}
+      description={isMobile ? fmtDate(date, "weekdayDayMonthLong") : undefined}
       icon={ListChecks}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          {status}
-          {hasTrades && <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />}
-          {trader && hasTrades && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={dayReportHref(date, trader)}>
-                {t("summary.dayReport")}<ArrowUpRight aria-hidden="true" />
-              </Link>
-            </Button>
-          )}
-        </div>
-      }
+      actions={isMobile && hasTrades ? undefined : controls}
     >
       {isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
         </div>
@@ -99,8 +96,8 @@ export function DaySummary({
         empty ?? null
       ) : (
         <div className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div className="min-w-0 space-y-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <div className="@container min-w-0 space-y-3">
               <div>
                 <div className="text-xs text-muted-foreground">{tc("trading.netPnl")}</div>
                 <div className={cn("text-3xl font-semibold tabular-nums tracking-tight", toneText(toneOf(net)))}>
@@ -113,7 +110,9 @@ export function DaySummary({
                   </div>
                 )}
               </div>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+              {isMobile && controls}
+              {/* 4 columns only when the column is wide enough (was 4 × ~50px at 1440: «+$2…», «5 green…») */}
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 @md:grid-cols-4">
                 <Mini label={tc("trading.trades")} value={stats.trades} hint={stats.open ? t("summary.winsLossesOpen", { wins: stats.wins, losses: stats.losses, open: stats.open }) : t("summary.winsLosses", { wins: stats.wins, losses: stats.losses })} />
                 <Mini label={tc("trading.winRate")} value={decided ? fmtRate(stats.wins / decided) : "—"} hint={decided ? t("summary.winsOf", { wins: stats.wins, decided }) : undefined} />
                 <Mini
@@ -139,12 +138,12 @@ export function DaySummary({
           </div>
 
           {report.isLoading && !doc && trader ? (
-            <div className="grid gap-2 md:grid-cols-2" aria-hidden="true">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2" aria-hidden="true">
               <Skeleton className="h-14 w-full rounded-xl" />
               <Skeleton className="h-14 w-full rounded-xl" />
             </div>
           ) : hints.length > 0 && (
-            <ul className="grid gap-2 md:grid-cols-2" aria-label={t("summary.hintsAria")}>
+            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2" aria-label={t("summary.hintsAria")}>
               {hints.map((h) => (
                 <HintRow key={h.id} hint={h} href={h.id === "untagged" ? links.trades({ ids: untaggedIds }) : h.tradeIds?.length ? links.trades({ ids: h.tradeIds }) : undefined} />
               ))}
@@ -220,7 +219,7 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
   }
   const timed = e.points.every((p) => p.t != null);
   const data = e.points.map((p, i) => ({ ...p, x: timed ? (p.t as number) : i }));
-  const color = e.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
+  const paint = pnlPaint("jn-eq", data.map((d) => d.cum));
   const first = data[0], last = data[data.length - 1];
   return (
     <div className="tile min-w-0 p-3">
@@ -239,24 +238,20 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
-            <defs>
-              <linearGradient id="jn-eq" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
+            {paint.defs}
             <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} hide />
             <YAxis hide domain={["dataMin", "dataMax"]} />
-            <ReferenceLine y={0} stroke="hsl(var(--border))" strokeDasharray="2 3" />
+            <ReferenceLine {...ZERO_LINE} />
             <Tooltip
-              contentStyle={TOOLTIP_STYLE}
+              {...tooltipProps("line")}
+              content={<GlassTooltip tone="pnl" />}
               labelFormatter={(x: number) => {
                 const p = data.find((d) => d.x === x);
                 return p ? `${p.time?.slice(0, 5) ?? ""} · ${p.ticker || t("summary.start")}` : "";
               }}
               formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: "auto" }), t("summary.cumulative")]}
             />
-            <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#jn-eq)" isAnimationActive={false} />
+            <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" fill={paint.fill} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} isAnimationActive={!prefersReducedMotion()} animationDuration={DRAW_MS} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

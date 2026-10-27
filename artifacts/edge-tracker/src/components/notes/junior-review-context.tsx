@@ -179,7 +179,7 @@ export function ReviewContextRail({
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-muted-foreground">{t("junior.review.repeatedHint")}</p>
+          <p className="text-2xs text-muted-foreground">{t("junior.review.repeatedHint")}</p>
         </section>
       )}
 

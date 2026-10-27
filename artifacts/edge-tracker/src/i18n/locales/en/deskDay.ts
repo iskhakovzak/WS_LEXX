@@ -25,6 +25,12 @@ export default {
     title: "Desk members only",
     desc: "Sign in with your account to see colleagues' trades.",
   },
+  top: {
+    label: "The desk traded on {date}",
+    aria: "The desk's most traded tickers on {date}",
+    chipTitle: "{traders} · {trades}",
+    mine: "you traded it too",
+  },
   legend: {
     title: "Traders",
     count: { one: "{count} trader", other: "{count} traders" },

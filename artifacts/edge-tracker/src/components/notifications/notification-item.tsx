@@ -48,7 +48,7 @@ export const NotificationItem = React.memo(function NotificationItem({
       )}
     >
       {full && onToggleSelect && (
-        <label className="mt-1.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        <label className="mt-1.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center pointer-coarse:-m-2 pointer-coarse:-mt-0.5 pointer-coarse:h-9 pointer-coarse:w-9" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             checked={selected}
@@ -110,7 +110,8 @@ export const NotificationItem = React.memo(function NotificationItem({
           )}
         </div>
       )}
-      {full && !n.isRead && <span className="absolute left-0 top-3 h-[calc(100%-1.5rem)] w-0.5 rounded-full bg-primary" aria-hidden="true" />}
+      {/* Unread: a dot, not a coloured side stripe. */}
+      {full && !n.isRead && <span className="absolute left-1 top-[1.15rem] h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
     </div>
   );
 });

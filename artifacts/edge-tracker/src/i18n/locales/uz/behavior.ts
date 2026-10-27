@@ -4,7 +4,6 @@ import type ru from "../ru/behavior";
 export default {
   title: "Xulq va setaplar",
   description: "Xulq qayerda pul yoʻqotadi, bunga nima qilish kerak va savdo ortida qaysi setap turibdi. Qoidalar AI siz, pul — sof.",
-  period: { "30d": "30 kun", "90d": "90 kun", ytd: "Yil boshidan", all: "Butun davr" },
   periodAria: "Davr",
   traderAria: "Treyder",
   sectionsAria: "Boʻlimlar",
@@ -49,7 +48,7 @@ export default {
   dur: { seconds: "{count} s", minutes: "{count} daq", hm: "{h} soat {m} daq", days: "{value} kun" },
   severity: { none: "pul yoʻqotmaydi", few: "holatlar kam", low: "past", medium: "oʻrtacha", high: "yuqori" },
   pattern: {
-    revenge: "revenge", martingale: "martingeyl", overtrading: "overtrading", tilt: "tilt", chase: "qaytarib olish",
+    revenge: "tez qayta kirish", martingale: "martingeyl", overtrading: "overtrading", tilt: "tilt", chase: "qaytarib olish",
     euphoria: "eyforiya", fatigue: "charchoq", disposition: "zararni ushlab turish", firstTrade: "birinchi savdo",
   },
   marker: { revenge: "R", tilt: "T", martingale: "M", euphoria: "E", chase: "Q", overtrading: "+", disposition: "U" },
@@ -199,6 +198,12 @@ export default {
   },
 
   aggregates: {
+    rowToggle: "«{setup}» setap savdolari: koʻrsatish yoki yashirish",
+    drillTitle: "«{setup}» setap savdolari: {trades}",
+    drillAria: "«{setup}» setap savdolari",
+    drillOpen: "{ticker} savdosini ochish ({date})",
+    drillAll: "Hammasi Savdolarda",
+    drillHint: "Jadval qatori oʻz savdolarini ochadi",
     few: "maʼlumot kam",
     fewTitle: "5 tadan kam savdo",
     edge: "edge",
@@ -296,7 +301,7 @@ export default {
     fromPatternTitle: "Pattern kartasidagi «Qoidaga aylantirish» tugmasi bilan yaratilgan",
     fromPattern: "«{pattern}» patternidan",
     editAria: "«{name}» chegarasini oʻzgartirish",
-    deleteAria: "«{name}» triggerini oʻchirish",
+    moreAria: "Boshqa amallar: {name}",
     save: "Saqlash",
     fires: { one: "Davr ichida {days} davomida {count} marta ishga tushgan boʻlardi;", other: "Davr ichida {days} davomida {count} marta ishga tushgan boʻlardi;" },
     under: "trigger ostida {trades}, sofi",

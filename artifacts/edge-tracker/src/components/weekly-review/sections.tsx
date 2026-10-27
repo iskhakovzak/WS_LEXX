@@ -4,9 +4,9 @@
  * discipline, risk events and the book carried into the weekend.
  */
 import * as React from "react";
-import type { CSSProperties } from "react";
 import { Link } from "wouter";
-import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import {
   AlertTriangle, ArrowUpRight, BookMarked, CandlestickChart, CheckCircle2, ListChecks, MoonStar, NotebookPen, ShieldAlert, Trophy,
 } from "lucide-react";
@@ -23,17 +23,6 @@ import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 
 const trades = (count: number) => commonI18n.t("units.trades", { count });
 const daysShort = (count: number) => commonI18n.t("time.daysShort", { count });
-
-const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
 
 const HORIZON_TONE: Record<Horizon, Tone> = { intraday: "neutral", overnight: "accent", swing: "purple" };
 
@@ -137,6 +126,7 @@ export function WeekDaysChart({ doc }: { doc: WeeklyReview }) {
   const data = doc.days.map((d) => ({ ...d, label: weekdayShort(d.date), value: u === "usd" ? d.net : d.r }));
   const any = data.some((d) => d.value != null);
   const fmt = (v: number) => fmtValue(v, u);
+  const motion = useChartMotion();
   return (
     <Panel title={t("sections.byDay")} description={u === "usd" ? t("sections.byDayUsd") : t("sections.byDayR")} icon={CandlestickChart} className="min-w-0">
       {!any ? (
@@ -144,26 +134,27 @@ export function WeekDaysChart({ doc }: { doc: WeeklyReview }) {
       ) : (
         <div className="h-44 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="28%">
-              <XAxis dataKey="label" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <YAxis width={52} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => (u === "usd" ? fmtUsd(v, { decimals: "auto", compact: 10_000 }) : fmtR(v, { signed: false }))} />
-              <ReferenceLine y={0} stroke="hsl(var(--border))" />
+            <BarChart data={data} margin={MARGIN} barCategoryGap="28%">
+              <CartesianGrid {...GRID} />
+              <XAxis dataKey="label" {...X_AXIS} />
+              <YAxis {...Y_AXIS} width={52} tickFormatter={(v: number) => (u === "usd" ? fmtUsd(v, { decimals: "auto", compact: 10_000 }) : fmtR(v, { signed: false }))} />
+              <ReferenceLine {...ZERO_LINE} />
               <Tooltip
-                contentStyle={TOOLTIP_STYLE}
-                cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
+                {...tooltipProps("bar")}
+                content={<GlassTooltip tone="pnl" />}
                 labelFormatter={(_, pl) => (pl?.[0]?.payload?.date ? fmtDay(String(pl[0].payload.date), true) : "")}
                 formatter={(v: number, _n, item) => [t("sections.dayTip", { value: fmt(v), trades: trades(item?.payload?.trades ?? 0), wins: item?.payload?.wins ?? 0, losses: item?.payload?.losses ?? 0 }), u === "usd" ? t("sections.net") : "R"]}
               />
-              <Bar dataKey="value" radius={[6, 6, 2, 2]} isAnimationActive={false}>
+              <Bar dataKey="value" radius={BAR_RADIUS} {...motion}>
                 {data.map((d) => (
-                  <Cell key={d.date} fill={d.value == null ? "transparent" : d.value >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"} fillOpacity={0.85} />
+                  <Cell key={d.date} fill={d.value == null ? "transparent" : d.value >= 0 ? CHART.up : CHART.down} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
-      <div className="mt-2 grid grid-cols-5 gap-1 text-center text-2xs text-muted-foreground tabular-nums">
+      <div className="mt-2 grid grid-cols-5 gap-1 text-center text-2xs text-muted-foreground tabular-nums" style={{ paddingLeft: 52 + MARGIN.left, paddingRight: MARGIN.right }}>
         {data.map((d) => (
           <span key={d.date} className={cn(d.trades === 0 && "opacity-60")}>{commonI18n.t("units.tradesShort", { count: d.trades })}</span>
         ))}
@@ -275,7 +266,7 @@ export function BestWorstPanel({ doc }: { doc: WeeklyReview }) {
       {empty ? (
         <p className="py-4 text-sm text-muted-foreground">{t("sections.noResult")}</p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <p className="micro-label mb-1 text-up">{t("sections.winners")}</p>
             {doc.bestTrades.length ? <ul className="-mx-2">{doc.bestTrades.map((t) => <TradeRow key={t.id} t={t} unit={u} />)}</ul> : <p className="px-2 py-2 text-sm text-muted-foreground">{t("sections.noWinners")}</p>}

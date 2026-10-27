@@ -54,7 +54,7 @@ export function CompareView({
   return (
     <div className="flex flex-col gap-4">
       {header}
-      <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
         <Panel title={t("compare.radar")} description={t("compare.radarHint")}>
           <div className="grid place-items-center">
             <Radar axes={radarAxes} series={[
@@ -65,7 +65,7 @@ export function CompareView({
         </Panel>
         <Panel title={t("compare.curves")} description={mixedUnits ? t("compare.mixed") : ra.equityUnit === "r" ? t("compare.cumR") : t("compare.cumNet")}>
           {mixedUnits ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <EquityLines height={200} series={[{ name: ra.trader, color: SERIES_COLORS[0], unit: ra.equityUnit, points: ra.equity }]} />
               <EquityLines height={200} series={[{ name: rb.trader, color: SERIES_COLORS[1], unit: rb.equityUnit, points: rb.equity }]} />
             </div>

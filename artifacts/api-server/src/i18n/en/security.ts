@@ -23,8 +23,8 @@ export default {
     tooLarge: "Request too large (over {limit})",
   },
   alert: {
-    title: "WS_LEXX: new server error",
-    titleClient: "WS_LEXX: new app error",
+    title: "WS_Desk: new server error",
+    titleClient: "WS_Desk: new app error",
     route: "Route: {route}",
     count: "Occurrences: {count}",
     open: "Open: {url}",

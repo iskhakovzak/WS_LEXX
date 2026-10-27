@@ -10,8 +10,10 @@
  *                  old drawdown does not top the queue every day; a green day keeps the chip without $.
  *   focus_broken — the day's focus was broken (lib/daily/service eveningFor → FocusVerdict.costNet).
  *   disputed     — the trader pressed «not a mistake» on the focus hit: the curator should look (instead of focus_broken).
- *   fees         — fees ≥ 50 % of a positive gross (and ≥ $5): the commissions ate the profit; priced like the engine's
- *                  «day:fees» (lib/daily/detectors): cost = −(fees above a healthy 25 % of the gross).
+ *   fees         — the engine's «day:fees» rule (lib/daily/detectors feeCost): fees ≥ max($, 50 % of max(gross, 0)), so
+ *                  a week / day with gross ≤ 0 counts (roadmap R2); cost = −(fees above a healthy 25 % of the gross).
+ *                  Weekly by default (daily.feesWeekly): the week to date (Mon … day), on the newest traded day of each
+ *                  week in the window only, so one week is never counted on two rows.
  *   loss_streak  — ≥ 3 losing trading days in a row ending on the day (cost = Σ net of the streak).
  *   giveback     — the day's running net peaked ≥ $50 and closed at ≤ 20 % of the peak (cost = close − peak); the
  *                  engine's «day:giveback» thresholds (lib/daily/detectors).
@@ -39,7 +41,7 @@ import { violationDaySql } from "../violationWindow";
 import { mondayOf, prevTradingDay, tradingPhase } from "../curatorLogic";
 import { logger } from "../logger";
 import { setting } from "../settings/registry";
-import { dayThresholds } from "./detectors";
+import { dayThresholds, feeCost } from "./detectors";
 import type { CostQueueItem, EveningCard, FocusVerdict, TextItem } from "./types";
 
 export const COST_QUEUE = {
@@ -117,13 +119,24 @@ export function stopBreachReason(dayNet: number | null, dailyLimit: number | nul
   };
 }
 
-/** Fees ≥ 50 % of a positive gross: the commissions ate the profit. Cost = the fees above a healthy 25 % of the gross
- * (what trading less would have saved), the same price as the engine's «day:fees». */
-export function feesReason(gross: number | null, fees: number): CostReason | null {
+/** The engine's fee rule (feeCost) on a day, or on a week to date when `weekFrom` (its Monday) is given. Gross ≤ 0
+ * counts: the fees were paid for nothing. `pct` = fees / gross (null when gross ≤ 0). */
+export function feesReason(gross: number | null, fees: number, weekFrom?: string): CostReason | null {
   const f = Math.abs(fees);
   const k = dayThresholds();
-  if (gross == null || gross <= 0 || f < k.feesMinUsd || f < k.feesShare * gross) return null;
-  return { kind: "fees", costNet: r2(-(f - k.feesHealthyShare * gross)), text: text("fees", { fees: r2(f), gross: r2(gross), pct: Math.round((f / gross) * 100) }) };
+  const g = gross ?? 0;
+  const cost = feeCost(g, f, weekFrom ? k.feesWeeklyMinUsd : k.feesMinUsd, k);
+  if (cost == null) return null;
+  const params = { fees: r2(f), gross: r2(g), pct: g > 0 ? Math.round((f / g) * 100) : null, ...(weekFrom ? { from: weekFrom } : {}) };
+  return { kind: "fees", costNet: cost, text: { key: `costQueue.detail.${weekFrom ? "feesWeek" : "fees"}${g > 0 ? "" : "NoGross"}`, params } };
+}
+
+/** Week-to-date gross / fees of `day` (Monday … day) from the trader's daily aggregates. */
+export function weekToDate(rows: readonly { date: string; gross: number | null; fees: number }[], day: string): { from: string; gross: number; fees: number } {
+  const from = mondayOf(day);
+  let gross = 0, fees = 0;
+  for (const r of rows) if (r.date >= from && r.date <= day) { gross += r.gross ?? 0; fees += Math.abs(r.fees); }
+  return { from, gross: r2(gross), fees: r2(fees) };
 }
 
 /** Losing trading days in a row ending on `day` (days without trades are skipped). `days` = the trader's daily nets. */
@@ -470,11 +483,11 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
   const [aggRows, tradeRows, limitRows, alertRows, violationRows, eodRows, noteRows, questRows, weeklyRows, verdictRows] = await loadData(traders, days, today);
 
   const key = (t: string, d: string) => `${t}|${d}`;
-  const history = new Map<string, { date: string; net: number | null }[]>();
+  const history = new Map<string, { date: string; net: number | null; gross: number | null; fees: number }[]>();
   const agg = new Map<string, { net: number | null; gross: number | null; fees: number; n: number }>();
   for (const r of aggRows) {
     const t = String(r.trader);
-    history.set(t, [...(history.get(t) ?? []), { date: String(r.d), net: num(r.net) }]);
+    history.set(t, [...(history.get(t) ?? []), { date: String(r.d), net: num(r.net), gross: num(r.gross), fees: num(r.fees) ?? 0 }]);
     agg.set(key(t, String(r.d)), { net: num(r.net), gross: num(r.gross), fees: num(r.fees) ?? 0, n: Number(r.n) || 0 });
   }
   const tradesBy = new Map<string, DayTrade[]>();
@@ -520,6 +533,16 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
   for (const t of traders) {
     // A streak spans days: it belongs to the trader's newest traded day of the window only.
     const streakDay = days.find((d) => traded(t, d));
+    // Weekly fees: the week to date, on the newest traded day of each week in the window (days run newest first).
+    const weekly = dayThresholds().feesWeekly;
+    const feeWeeksSeen = new Set<string>();
+    const feesOf = (d: string, a: { gross: number | null; fees: number }): CostReason | null => {
+      if (!weekly) return feesReason(a.gross, a.fees);
+      if (feeWeeksSeen.has(mondayOf(d))) return null;
+      feeWeeksSeen.add(mondayOf(d));
+      const w = weekToDate(history.get(t) ?? [], d);
+      return feesReason(w.gross, w.fees, w.from);
+    };
     for (const d of days) {
       const k = key(t, d);
       const resolved = resolvedOf(t, d);
@@ -530,7 +553,7 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
       const item = makeItem(t, d, [
         stopBreachReason(a?.net ?? null, limits.get(t) ?? null, trades, d === day ? al : al.filter((x) => !x.reviewed)),
         focusReason(verdicts.get(k)),
-        a ? feesReason(a.gross, a.fees) : null,
+        a && traded(t, d) ? feesOf(d, a) : null,
         d === streakDay ? lossStreakReason(history.get(t) ?? [], d) : null,
         givebackReason(trades),
         rulesReason(violations.get(k) ?? []),

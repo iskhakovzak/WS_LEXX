@@ -185,7 +185,7 @@ export default {
   },
   /** components/playbook/export.ts — Markdown / Notion export. */
   export: {
-    title: "WS_LEXX — Плейбук",
+    title: "WS_Desk — Плейбук",
     exportedAt: "Экспортировано: {date}",
     totals: "Всего: {setups} · Дочерних: {children}",
     totalsNotion: "Папок: {folders} · Сетапов: {setups} · Дочерних: {children}",

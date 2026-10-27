@@ -15,7 +15,7 @@
 import React, { Fragment, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { translate, lookup, renderEntry, isLang, type Dict, type Lang, type Params, type TFunction } from "./core";
-import { applyLang, getLang, getVersion, notify, subscribe, type LangSource } from "./state";
+import { applyLang, bootLang, getLang, getVersion, notify, subscribe, type LangSource } from "./state";
 import { latinNamesVersion, subscribeLatinNames } from "@/lib/people/latin-names";
 
 export * from "./core";
@@ -174,7 +174,19 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       // After Radix menus/selects finish their own close-and-return-focus (their trigger is gone).
       window.setTimeout(() => document.querySelector<HTMLElement>(focusSel)?.focus(), 60);
     }
-    void qc.invalidateQueries({ predicate: (q) => (q.meta as { i18n?: boolean } | undefined)?.i18n !== false });
+  }, [lang, qc]);
+  // Server texts follow the new language: refetch after the re-mounted children subscribed again (a passive effect runs
+  // after theirs; in the layout effect above the queries had no observers yet, so «active» refetched nothing and a
+  // first-load switch to the profile language left e.g. the curator's next steps in the browser's language). Starts from
+  // the boot language: a switch that landed before this provider mounted (the shell already fetched) still refetches.
+  const fetchedIn = useRef(bootLang());
+  React.useEffect(() => {
+    if (fetchedIn.current === lang) return;
+    fetchedIn.current = lang;
+    const serverTexts = (q: { meta?: unknown }) => (q.meta as { i18n?: boolean } | undefined)?.i18n !== false;
+    // A first request still in flight (no data yet) would otherwise be joined, not repeated: its answer is in the old
+    // language. Cancel it first (state reverts), then refetch everything that shows server texts.
+    void qc.cancelQueries({ predicate: serverTexts }).then(() => qc.invalidateQueries({ predicate: serverTexts }));
   }, [lang, qc]);
   return React.createElement(Fragment, { key: lang === "ru" ? lang : `${lang}:${namesV}` }, children);
 }

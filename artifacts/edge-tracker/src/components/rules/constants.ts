@@ -1,6 +1,5 @@
 import type { SeverityMeta } from "./types";
 import { pluralRu } from "@/lib/format";
-import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
 import { ERROR_VOCAB, errorCodeOf, errorHint, errorLabel } from "@/components/shared/error-vocab";
 
@@ -64,10 +63,6 @@ export const VIOLATION_ARCHIVE: Record<string, { label: string; hint: string }> 
   rule_deleted: archived("rule_deleted"),
   stale: archived("stale"),
 };
-
-const period = <V extends string>(value: V) => ({ value, get label() { return commonI18n.t("time.daysShort", { count: Number(value) }); } });
-export const PERIODS = [period("30"), period("90"), period("180")] as const;
-export type PeriodValue = (typeof PERIODS)[number]["value"];
 
 export const LS_KEYS = {
   tab: "rules.tab.v2",

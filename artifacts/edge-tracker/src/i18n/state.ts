@@ -35,6 +35,11 @@ export function detectInitialLang(): Lang {
 }
 
 let current: Lang = detectInitialLang();
+/** The language the app booted in (the first requests went out with it). */
+export function bootLang(): Lang {
+  return BOOT;
+}
+const BOOT: Lang = current;
 let version = 0;
 const listeners = new Set<() => void>();
 const changeListeners = new Set<(lang: Lang, source: LangSource) => void>();

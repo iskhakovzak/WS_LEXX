@@ -175,6 +175,7 @@ export default {
     ideaTitle: "Create an idea (I)",
     secAria: "Open the {ticker} filing on SEC",
     secTitle: "Filing on SEC",
+    moreAria: "More actions: {ticker}",
     openAria: "Open {ticker}",
     withdrawn: "withdrawn",
     capacityTitle: "Shelf / program capacity",

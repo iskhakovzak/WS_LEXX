@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { useTaggedTrades } from "@/components/indicators/use-tagged-trades";
-import { Activity, BookOpen, Compass, LayoutGrid, Layers, Rows3, Search, SlidersHorizontal, X } from "lucide-react";
+import { Activity, BookOpen, Gauge, Layers, LayoutGrid, Rows3, Search } from "lucide-react";
 import { EmptyState, Page, PageHeader, SectionTabs, Segmented, Toolbar, usePersistentState } from "@/components/ds";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { MarketView } from "@/components/indicators/market/MarketView";
 import { QueryError } from "@/components/query-error";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
@@ -73,20 +71,6 @@ function IndicatorLibrary() {
   const { map: statsMap, coverage, total } = useIndicatorStats(trades, horizon, scopeTotal);
 
   useEffect(() => { savePrefs({ category, horizon, sort, view }); }, [category, horizon, sort, view]);
-
-  // Global "/" focuses search (ignored while typing elsewhere or when the sheet is open).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || openId) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-      searchRef.current?.select();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openId]);
 
   const favSet = useMemo(() => new Set(favorites), [favorites]);
 
@@ -287,8 +271,9 @@ function IndicatorLibrary() {
     });
   }, [commitFavorites, toast, onServerResult]);
 
-  const filtersActive = search.trim() !== "" || category !== "all" || horizon !== "all";
-  const resetFilters = () => { setSearch(""); setCategory("all"); setHorizon("all"); };
+  const filtersActive = search.trim() !== "" || category !== "all" || horizon !== "all" || sort !== "recommended";
+  const resetExtra = () => { setHorizon("all"); setSort("recommended"); };
+  const resetFilters = () => { setSearch(""); setCategory("all"); resetExtra(); };
 
   const categoryOptions = [
     { value: "all", label: t("library.all"), count: counts.all },
@@ -307,90 +292,59 @@ function IndicatorLibrary() {
 
   return (
     <>
-
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      <div className="grid grid-cols-1 gap-grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
-          <Toolbar className="flex-col items-stretch gap-2 sm:p-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-0 flex-1 basis-48">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  ref={searchRef}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") { e.preventDefault(); if (search) setSearch(""); else e.currentTarget.blur(); }
-                    if (e.key === "ArrowDown" || e.key === "Enter") {
-                      const first = gridRef.current?.querySelector<HTMLButtonElement>("[data-card-index]");
-                      if (first) { e.preventDefault(); if (e.key === "Enter" && filtered.length === 1) setOpenId(filtered[0].id); else first.focus(); }
-                    }
-                  }}
-                  placeholder={t("library.searchPlaceholder")}
-                  aria-label={t("library.searchAria")}
-                  className="pl-10 pr-16"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                  {search ? null : <Kbd>/</Kbd>}
-                </span>
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => { setSearch(""); searchRef.current?.focus(); }}
-                    aria-label={commonI18n.t("actions.clearSearch")}
-                    className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              {/* Row 1: search + filters + view; row 2: categories (the main column is too narrow for all in one line). */}
-              <div className="order-last min-w-0 basis-full">
-                <Segmented ariaLabel={t("library.categoriesAria")} value={category} onChange={setCategory} options={categoryOptions} size="sm" />
-              </div>
-              <div className="ml-auto flex items-center gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" aria-label={extraFilters ? t("library.filtersActive", { count: extraFilters }) : t("library.filters")}>
-                      <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                      {t("library.filters")}
-                      {extraFilters > 0 && <span className="rounded-full bg-primary/15 px-1.5 text-xs tabular-nums text-accent-soft">{extraFilters}</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="flex w-[22rem] flex-col gap-3">
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-medium text-muted-foreground">{t("library.holdHorizon")}</span>
-                      <Segmented size="sm" ariaLabel={t("library.holdHorizon")} value={horizon} onChange={setHorizon} options={horizonOptions} />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-medium text-muted-foreground">{t("sort.label")}</span>
-                      <Select value={sort} onValueChange={(v) => { if (isSort(v)) setSort(v); }}>
-                        <SelectTrigger className="h-9 w-full" aria-label={t("sort.label")}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SORT_KEYS.map((k) => <SelectItem key={k} value={k}>{t(`sort.${k}`)}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {extraFilters > 0 && (
-                      <Button variant="ghost" size="sm" className="self-start" onClick={() => { setHorizon("all"); setSort("recommended"); }}>{commonI18n.t("actions.reset")}</Button>
-                    )}
-                  </PopoverContent>
-                </Popover>
+          {/* One row (design audit wave 3): search · categories (the main mode) · «Фильтры» (horizon, order, view). */}
+          <Toolbar>
+            <ToolbarSearch
+              value={search}
+              onChange={setSearch}
+              inputRef={searchRef}
+              placeholder={t("library.searchPlaceholder")}
+              ariaLabel={t("library.searchAria")}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" || e.key === "Enter") {
+                  const first = gridRef.current?.querySelector<HTMLButtonElement>("[data-card-index]");
+                  if (first) { e.preventDefault(); if (e.key === "Enter" && filtered.length === 1) setOpenId(filtered[0].id); else first.focus(); }
+                }
+              }}
+            />
+            <Segmented ariaLabel={t("library.categoriesAria")} value={category} onChange={setCategory} options={categoryOptions} />
+            <FiltersButton count={extraFilters} onReset={resetExtra} resultCount={filtered.length}>
+              <FilterSection title={t("library.holdHorizon")}>
+                <Segmented size="sm" ariaLabel={t("library.holdHorizon")} value={horizon} onChange={setHorizon} options={horizonOptions} />
+              </FilterSection>
+              <FilterSection title={t("sort.label")}>
+                <Select value={sort} onValueChange={(v) => { if (isSort(v)) setSort(v); }}>
+                  <SelectTrigger className="h-9 w-full" aria-label={t("sort.label")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_KEYS.map((k) => <SelectItem key={k} value={k}>{t(`sort.${k}`)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FilterSection>
+              <FilterSection title={t("library.viewAria")}>
                 <Segmented
                   ariaLabel={t("library.viewAria")}
                   size="sm"
                   value={view}
                   onChange={setView}
                   options={[
-                    { value: "cards", label: <><LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> {t("library.viewCards")}</> },
-                    { value: "table", label: <><Rows3 className="h-3.5 w-3.5" aria-hidden="true" /> {t("library.viewTable")}</> },
+                    { value: "cards", label: <><LayoutGrid aria-hidden="true" /> {t("library.viewCards")}</> },
+                    { value: "table", label: <><Rows3 aria-hidden="true" /> {t("library.viewTable")}</> },
                   ]}
                 />
-              </div>
-            </div>
+              </FilterSection>
+            </FiltersButton>
           </Toolbar>
+          <ActiveFilters
+            onReset={resetFilters}
+            items={[
+              horizon !== "all" && { key: "horizon", label: HORIZON_META[horizon].label, onRemove: () => setHorizon("all") },
+              sort !== "recommended" && { key: "sort", label: t(`sort.${sort}`), onRemove: () => setSort("recommended") },
+            ]}
+          />
 
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
             <span aria-live="polite">
@@ -513,7 +467,7 @@ export default function Indicators() {
     <Page>
       <PageHeader
         title={t("page.title")}
-        icon={Compass}
+        icon={Gauge}
         description={tab === "market" ? t("page.descMarket") : t("page.descLibrary")}
       />
       <SectionTabs

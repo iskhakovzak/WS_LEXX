@@ -10,4 +10,3 @@ export const shellI18n = createNamespace("shell", ru, {
 export type NavKey = keyof typeof ru.nav;
 export type NavShortKey = keyof typeof ru.navShort;
 export type NavGroupKey = keyof typeof ru.groups;
-export type NavHubKey = keyof typeof ru.hubs;

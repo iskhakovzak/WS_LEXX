@@ -10,7 +10,7 @@ export default {
   unread: { one: "{count} ta yangi", other: "{count} ta yangi" },
   markRead: "Oʻqildi",
   refresh: "Lentani yangilash",
-  searchPlaceholder: "Tiker, setap, izoh…  /",
+  searchPlaceholder: "Tiker, setap, izoh…",
   searchAria: "Lentadan qidirish",
   actionTypeAria: "Harakat turi",
   sectionsAria: "Boʻlimlar",
@@ -21,7 +21,6 @@ export default {
   emptyHint: "Bu yerda savdolar, pleybuk setaplari, gʻoyalar, mentor tahlillari va jamoa izohlari paydo boʻladi.",
   loadMore: "Yana yuklash",
   end: "Hammasi shu, avvalgi voqealar yoʻq",
-  digestDay: "{day} · {date} (NY)",
   sections: {
     trades: "Savdolar",
     "trade-ideas": "Gʻoyalar",
@@ -142,8 +141,6 @@ export default {
   },
   digest: {
     title: "Kun dayjesti",
-    prevDay: "Oldingi kun",
-    nextDay: "Keyingi kun",
     unavailable: "Kunlik sharh hozircha mavjud emas: API serverni yangilang.",
     teamActions: "Jamoa harakatlari",
     socialHint: { one: "{count} ta tahlil va reaksiya", other: "{count} ta tahlil va reaksiya" },

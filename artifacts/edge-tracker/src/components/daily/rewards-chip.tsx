@@ -105,7 +105,7 @@ function RewardsPanel({ id, discipline: d, gami, earned }: { id: string; discipl
           <span className="tabular-nums text-foreground">{tq("chip.achievementsAria", { earned: earned.earned, total: earned.total })}</span>
         </div>
       )}
-      <p className="text-[11px] leading-snug text-muted-foreground">{t("rewards.hint")}</p>
+      <p className="text-2xs leading-snug text-muted-foreground">{t("rewards.hint")}</p>
       <Link href="/ratings?tab=quests" className="inline-flex min-h-8 items-center gap-1 self-start rounded-lg px-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {t("rewards.allLink")}
         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />

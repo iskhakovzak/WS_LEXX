@@ -320,7 +320,7 @@ export function TradeFormDialog({
             </div>
           </Section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Section icon={Tag} title={tc("fields.tags")}>
               <TagSelector
                 selectedTags={form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : []}

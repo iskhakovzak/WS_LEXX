@@ -7,7 +7,7 @@ import { playbookI18n } from "@/i18n/ns/playbook";
 type HotkeyKey = keyof typeof import("@/i18n/locales/ru/playbook").default.page.hotkeys;
 const HOTKEYS: [string[], HotkeyKey][] = [
   [["Ctrl", "K"], "quickFindSetup"],
-  [["/"], "quickFind"],
+  [["/"], "focusSearch"],
   [["J", "K"], "nextPrev"],
   [["N"], "newSetup"],
   [["Ctrl", "S"], "saveForm"],
@@ -31,7 +31,7 @@ export function HotkeysHelp({ open, onOpenChange }: { open: boolean; onOpenChang
           aria-label={t("page.hotkeysTitle")}
           title={t("page.hotkeysTitle")}
           aria-keyshortcuts="?"
-          className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="[display:inline-grid] h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <HelpCircle className="h-4 w-4" aria-hidden="true" />
         </button>

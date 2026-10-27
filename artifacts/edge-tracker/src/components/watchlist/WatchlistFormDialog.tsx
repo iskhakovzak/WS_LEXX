@@ -118,13 +118,13 @@ export function WatchlistFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-h-[92vh] w-full max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] max-w-2xl">
         <DialogHeader>
           <DialogTitle>{editing ? t("form.editTitle", { ticker: editing.ticker }) : t("form.addTitle")}</DialogTitle>
           <DialogDescription>{t("form.description")}</DialogDescription>
         </DialogHeader>
         <div
-          className="space-y-5"
+          className="space-y-field"
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (!saving) handleSave(); } }}
         >
           <FieldGroup title={t("form.main")}>

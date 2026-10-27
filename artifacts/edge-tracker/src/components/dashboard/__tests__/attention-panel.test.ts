@@ -92,6 +92,36 @@ describe("violations on a weekend (OWNER-21)", () => {
   });
 });
 
+describe("«План на день»: one next step (composed dashboard, 2026-10-25)", () => {
+  const fresh = [{ ...oldTrade, closeDate: "2026-10-16" }];
+  it("the daily «Напиши план» is the next step, with the day frame and the progress row in the card", () => {
+    const html = render({
+      recent: fresh,
+      dailyStep: { kind: "plan", date: "2026-10-19", href: "/game-plan?view=my&date=2026-10-19" },
+      dailyToday: "2026-10-19",
+      frame: "FRAME",
+      progress: "PROGRESS",
+      recommended: "RECOMMENDED",
+    });
+    expect(html).toContain("Напиши план на сегодня");
+    expect(html.indexOf("Напиши план на сегодня")).toBeLessThan(html.indexOf("RECOMMENDED"));
+    expect(html.indexOf("RECOMMENDED")).toBeLessThan(html.indexOf("FRAME"));
+    expect(html).toContain("PROGRESS");
+  });
+  it("«Закрой день» is not repeated when the journal row for that day is already a task", () => {
+    const eod = { date: "2026-10-16", today: "2026-10-19", traders: [{ trader: "Умид", status: "open", trades: 5, missing: [] }] } as unknown as EodStatus;
+    const html = render({
+      recent: fresh,
+      lastDay: "2026-10-16",
+      lastDayEod: eod,
+      dailyStep: { kind: "close", date: "2026-10-16", href: "/journal?date=2026-10-16" },
+    });
+    expect(html).not.toContain("Закрой день");
+    expect(html).toContain("Заполнить разбор вчерашнего дня");
+    expect(html).toContain("1 задача");
+  });
+});
+
 describe("recent trades setup label (OWNER-35)", () => {
   it("office setup, «без сетапа», or the broker strategy on an older server", () => {
     expect(setupLabel({ setup: "Power Hour Momentum", playbookSetup: "Gap & Go" }, "без сетапа")).toBe(" · Gap & Go");

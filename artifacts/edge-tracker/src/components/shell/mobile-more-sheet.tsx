@@ -1,7 +1,7 @@
-/** Phone «More» sheet: every section + favourites + search (simple menu: «Главное» + a folded «Ещё», nav-model.ts). Own chunk (vaul): loaded on the phone layout when the
+/** Phone «More» sheet: search, «Закреплённые», then every section in the sidebar's groups (simple menu: «Главное» + a folded «Ещё», nav-model.ts). Own chunk (vaul): loaded on the phone layout when the
  * browser is idle, or on the first tap on «More». */
 import { Link } from "wouter";
-import { ChevronRight, Search, Star } from "lucide-react";
+import { ChevronRight, Pin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { isNavActive, type NavItem } from "./nav";
@@ -22,10 +22,10 @@ function Tile({ item, active, alert }: { item: NavItem; active: boolean; alert?:
       onPointerDown={() => preloadRoute(item.href)}
       className={cn(
         "relative flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl px-1 py-2 text-center text-xs font-medium transition-colors",
-        active ? "bg-primary-solid text-primary-foreground" : "glass-panel text-foreground active:bg-[var(--glass-hover-bg)]",
+        active ? "bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/10" : "glass-panel text-foreground active:bg-[var(--glass-hover-bg)]",
       )}
     >
-      <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-primary")} aria-hidden="true" />
+      <Icon className={cn("h-5 w-5", "text-foreground")} aria-hidden="true" />
       <span className="line-clamp-2 leading-tight">{item.name}</span>
       {alert && <><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{t("mobile.needsAttention")}</span></>}
     </Link>
@@ -113,7 +113,7 @@ export default function MobileMoreSheet({ open: moreOpen, onOpenChange: setMoreO
           </button>
           {pinnedItems.length > 0 && (
             <section className="mb-4">
-              <h3 className="micro-label mb-2 flex items-center gap-1.5"><Star className="h-3 w-3" aria-hidden="true" /> {t("sidebar.favorites")}</h3>
+              <h3 className="micro-label mb-2 flex items-center gap-1.5"><Pin className="h-3 w-3 fill-current" aria-hidden="true" /> {t("sidebar.favorites")}</h3>
               <div className={grid}>
                 {pinnedItems.map((i) => <Tile key={`p-${i.href}`} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
               </div>

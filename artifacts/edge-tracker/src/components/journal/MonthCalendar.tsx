@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { CheckCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { Panel, Segmented } from "@/components/ds";
+import { HeatCalendar, type HeatDay, type HeatWeek, type TooltipRow } from "@/components/shared/charts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type DayStats, addDays, fmtMonthTitle, localDateStr, monthBounds, parseDate, weekStart, weekdaysShortMonFirst } from "./utils";
@@ -8,6 +9,7 @@ import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { journalI18n } from "@/i18n/ns/journal";
 import { rich as withNodes } from "@/i18n/rich";
 import { commonI18n } from "@/i18n/ns/common";
+import { chartsI18n } from "@/i18n/ns/charts";
 
 export type CalMetric = "r" | "pnl" | "count";
 
@@ -49,21 +51,6 @@ function fmtMetric(v: number | null, metric: CalMetric, compact = false): string
   if (metric === "r") return fmtR(v, compact ? 1 : 2);
   if (metric === "pnl") return compact ? fmtUsd(v, { signed: true, compact: true }) : fmtUsd(v, { signed: true, decimals: "auto" });
   return String(v);
-}
-
-/** Heat tint bucket for |v| relative to the month's max. */
-function heatClass(v: number | null, max: number, metric: CalMetric): string {
-  if (v == null || max <= 0) return "";
-  if (metric === "count") {
-    const k = v / max;
-    return k > 0.66 ? "bg-primary/25" : k > 0.33 ? "bg-primary/15" : "bg-primary/10";
-  }
-  if (v === 0) return "bg-muted/40";
-  const k = Math.min(1, Math.abs(v) / max);
-  const up = v > 0;
-  if (k > 0.66) return up ? "bg-up/30" : "bg-down/30";
-  if (k > 0.33) return up ? "bg-up/20" : "bg-down/20";
-  return up ? "bg-up/10" : "bg-down/10";
 }
 
 function toneClass(v: number | null, metric: CalMetric): string {
@@ -143,6 +130,71 @@ export function MonthCalendar({
     { value: "count" as const, label: commonI18n.t("trading.trades") },
   ];
 
+  const heatWeeks: HeatWeek[] = weeks.map((row) => {
+    let wSum: number | null = null;
+    let wTrades = 0, wGreen = 0, wRed = 0;
+    for (const d of row) {
+      const s = statsByDate.get(d);
+      if (!s) continue;
+      wTrades += s.trades;
+      const v = metricValue(s, metric);
+      if (v != null) wSum = (wSum ?? 0) + v;
+      if (s.pnl != null && s.trades > 0) { if (s.pnl > 0) wGreen++; else if (s.pnl < 0) wRed++; }
+    }
+    return {
+      key: row[0],
+      days: row.map((d): HeatDay => {
+        const inMonth = d >= from && d <= to;
+        const s = statsByDate.get(d);
+        const v = metricValue(s, metric);
+        const mark = s && s.trades > 0 ? marks.get(d) ?? "missing" : marks.get(d);
+        const wd = parseDate(d).getDay();
+        const label = [
+          fmtDate(d, "long"),
+          s ? t("calendar.dayTrades", { count: s.trades }) : t("calendar.dayNoTrades"),
+          s && v != null && metric !== "count" ? fmtMetric(v, metric) : null,
+          mark ? MARK_LABEL[mark] : null,
+        ].filter(Boolean).join(", ");
+        const quietText = (text: string) => <span className="font-normal text-muted-foreground">{text}</span>;
+        const tipRows: TooltipRow[] = s
+          ? [
+              ...(metric !== "count" ? [{ key: "v", name: chartsI18n.t("heat.result"), value: v != null ? fmtMetric(v, metric) : "—", raw: v }] : []),
+              { key: "n", name: chartsI18n.t("heat.trades"), value: s.trades },
+              ...(mark ? [{ key: "m", value: quietText(MARK_LABEL[mark]) }] : []),
+            ]
+          : [{ key: "none", value: quietText(t("calendar.dayNoTrades")) }];
+        return {
+          date: d,
+          dayNum: parseDate(d).getDate(),
+          inMonth,
+          traded: !!s,
+          value: metric === "count" ? (s ? s.trades : null) : v,
+          valueText: s ? (v != null ? fmtMetric(v, metric, true) : "·") : undefined,
+          sub: s && metric !== "count" ? t("calendar.tradesShort", { count: s.trades }) : undefined,
+          label,
+          tipTitle: fmtDate(d, "weekdayDayMonthLong"),
+          tipRows,
+          adornment: mark && inMonth && d <= today ? <span title={MARK_LABEL[mark]} className="grid place-items-center"><MarkDot mark={mark} /></span> : undefined,
+          today: d === today,
+          active: d === activeDate,
+          quiet: wd === 0 || wd === 6,
+        };
+      }),
+      total: {
+        value: wSum,
+        text: wTrades > 0 ? (wSum != null ? fmtMetric(wSum, metric, true) : "—") : "",
+        sub: wTrades > 0 ? (metric === "count" ? t("calendar.greenRedDays", { green: wGreen, red: wRed }) : t("calendar.tradesShort", { count: wTrades })) : undefined,
+        label: wTrades > 0 ? t("calendar.weekTitle", { sum: fmtMetric(wSum, metric), trades: wTrades, green: wGreen, red: wRed }) : t("calendar.week"),
+        tipTitle: chartsI18n.t("heat.weekTotal"),
+        tipRows: [
+          ...(metric !== "count" ? [{ key: "v", name: chartsI18n.t("heat.result"), value: fmtMetric(wSum, metric) || "—", raw: wSum }] : []),
+          { key: "n", name: chartsI18n.t("heat.trades"), value: wTrades },
+          { key: "gr", name: chartsI18n.t("heat.winLoss"), value: `${wGreen} / ${wRed}` },
+        ],
+      },
+    };
+  });
+
   return (
     <Panel
       title={fmtMonthTitle(month)}
@@ -176,115 +228,25 @@ export function MonthCalendar({
         </div>
       }
     >
-      <div className="grid grid-cols-7 gap-1 sm:grid-cols-[repeat(7,minmax(0,1fr))_64px] sm:gap-1.5">
-        {weekdaysShortMonFirst().map((w, i) => (
-          <div key={w} className={cn("pb-1 text-center text-xs text-muted-foreground", i >= 5 && "opacity-80")}>{w}</div>
-        ))}
-        <div className="hidden pb-1 text-center text-2xs text-muted-foreground sm:block">{t("calendar.week")}</div>
+      <HeatCalendar
+        weeks={heatWeeks}
+        weekdays={weekdaysShortMonFirst()}
+        max={maxAbs}
+        hue={metric === "count" ? "accent" : "pnl"}
+        showOutside
+        ariaLabel={fmtMonthTitle(month)}
+        onActivate={onSelect}
+        legendExtra={!hasPnl && metric !== "count" ? <span title={t("calendar.pnlOffTitle")}>{t("calendar.pnlNoData")}</span> : null}
+      />
 
-        {weeks.map((row) => {
-          let wSum: number | null = null;
-          let wTrades = 0, wGreen = 0, wRed = 0;
-          for (const d of row) {
-            const s = statsByDate.get(d);
-            if (!s) continue;
-            wTrades += s.trades;
-            const v = metricValue(s, metric);
-            if (v != null) wSum = (wSum ?? 0) + v;
-            if (s.pnl != null && s.trades > 0) { if (s.pnl > 0) wGreen++; else if (s.pnl < 0) wRed++; }
-          }
-          return (
-            <WeekRow key={row[0]}>
-              {row.map((d) => {
-                const inMonth = d >= from && d <= to;
-                const s = statsByDate.get(d);
-                const v = metricValue(s, metric);
-                const mark = s && s.trades > 0 ? marks.get(d) ?? "missing" : marks.get(d);
-                const isActive = d === activeDate;
-                const isToday = d === today;
-                const wd = parseDate(d).getDay();
-                const weekend = wd === 0 || wd === 6;
-                const label = [
-                  fmtDate(d, "long"),
-                  s ? t("calendar.dayTrades", { count: s.trades }) : t("calendar.dayNoTrades"),
-                  s && v != null && metric !== "count" ? fmtMetric(v, metric) : null,
-                  mark ? MARK_LABEL[mark] : null,
-                ].filter(Boolean).join(", ");
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => onSelect(d)}
-                    aria-pressed={isActive}
-                    aria-label={label}
-                    title={label}
-                    className={cn(
-                      "relative flex min-h-[52px] min-w-0 flex-col items-start justify-between rounded-xl border border-transparent p-1.5 text-left transition-[background-color,border-color,box-shadow] duration-[var(--dur-1)] sm:min-h-[68px] sm:p-2",
-                      "hover:border-[var(--glass-border)] hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      !inMonth && "opacity-40",
-                      weekend && !s && "opacity-60",
-                      heatClass(v, maxAbs, metric),
-                      isActive && "border-primary ring-1 ring-primary",
-                    )}
-                  >
-                    <span className="flex w-full items-center justify-between gap-1">
-                      <span
-                        className={cn(
-                          "grid h-5 min-w-5 place-items-center rounded-full px-1 text-2xs tabular-nums",
-                          isToday ? "bg-primary font-semibold text-primary-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {parseDate(d).getDate()}
-                      </span>
-                      {mark && inMonth && d <= today && <span title={MARK_LABEL[mark]} className="grid place-items-center"><MarkDot mark={mark} /></span>}
-                    </span>
-                    {s && (
-                      <span className="w-full min-w-0">
-                        <span className={cn("block truncate text-2xs font-semibold tabular-nums sm:text-xs", toneClass(v, metric))}>
-                          {v != null ? fmtMetric(v, metric, true) : "·"}
-                        </span>
-                        {metric !== "count" && (
-                          <span className="hidden truncate text-2xs text-foreground/70 tabular-nums sm:block">
-                            {t("calendar.tradesShort", { count: s.trades })}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-              <div
-                className="hidden min-w-0 flex-col justify-center rounded-xl bg-[var(--glass-bg)] p-1.5 text-right sm:flex"
-                title={wTrades > 0 ? t("calendar.weekTitle", { sum: fmtMetric(wSum, metric), trades: wTrades, green: wGreen, red: wRed }) : undefined}
-              >
-                <span className={cn("truncate text-xs font-semibold tabular-nums", toneClass(wSum, metric))}>
-                  {wTrades > 0 && wSum != null ? fmtMetric(wSum, metric, true) : "—"}
-                </span>
-                <span className="truncate text-2xs text-muted-foreground tabular-nums">
-                  {wTrades > 0 ? (metric === "count" ? t("calendar.greenRedDays", { green: wGreen, red: wRed }) : t("calendar.tradesShort", { count: wTrades })) : ""}
-                </span>
-              </div>
-            </WeekRow>
-          );
-        })}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted-foreground">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted-foreground">
         {(["missing", "filled", "closed", "reviewed"] as const).map((m) => (
           <span key={m} className="inline-flex items-center gap-1.5"><MarkDot mark={m} />{MARK_LABEL[m]}</span>
         ))}
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-up/30" aria-hidden="true" />{t("calendar.plus")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-down/30" aria-hidden="true" />{t("calendar.minus")}</span>
-        {!hasPnl && metric !== "count" && <span title={t("calendar.pnlOffTitle")}>{t("calendar.pnlNoData")}</span>}
         {footer && <span className="ml-auto">{footer}</span>}
       </div>
     </Panel>
   );
-}
-
-/** A week is laid out with `display: contents` so cells sit directly in the parent grid. */
-function WeekRow({ children }: { children: ReactNode }) {
-  return <div className="contents">{children}</div>;
 }
 
 export function currentMonth(): string {

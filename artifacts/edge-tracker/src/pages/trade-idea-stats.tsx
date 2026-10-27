@@ -2,16 +2,20 @@ import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle, ArrowLeft, Award, BarChart3, Download, Lightbulb, MinusCircle, ThumbsDown, ThumbsUp, Users, X,
+  AlertTriangle, ArrowLeft, Award, Download, Lightbulb, MinusCircle, PieChart, ThumbsDown, ThumbsUp, Users,
 } from "lucide-react";
 import { links } from "@/lib/links";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { nyDate } from "@/lib/trading-date";
+import { periodWindow, type PeriodPreset } from "@/lib/period-range";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
+import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, Toolbar, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
+import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
+import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { usePeriodParam } from "@/hooks/use-period-param";
 import { OutcomeBar, Sparkline, downloadCsv, useStoredState } from "@/components/ratings/shared";
 import { useTracking } from "@/components/ideas/hooks";
 import { tradeIdeasQuery } from "@/lib/api/queries";
@@ -28,14 +32,8 @@ import { ideasI18n } from "@/i18n/ns/ideas";
 import { rich, slots } from "@/i18n/rich";
 import { personName, comparePersonNames } from "@/i18n";
 
-const PERIODS = [
-  { value: "30", key: "d30" },
-  { value: "90", key: "d90" },
-  { value: "365", key: "year" },
-  { value: "all", key: "all" },
-] as const;
-type Period = (typeof PERIODS)[number]["value"];
-const periodKey = (p: Period) => PERIODS.find((x) => x.value === p)!.key;
+/** Client-side cutoff, so every window of the vocabulary works (today is too narrow for idea outcomes). */
+const PRESETS = ["week", "month", "quarter", "year", "all"] as const satisfies readonly PeriodPreset[];
 
 type SortKey = "ideas" | "conversion" | "hitRate" | "avgR" | "sumR" | "avgScore" | "calib";
 /** Column headers are built at render time (current UI language). */
@@ -67,11 +65,6 @@ const AUTHOR_ACCESSORS: Record<SortKey | "trader" | "best", (a: AuthorStats) => 
   best: (a) => a.best?.r ?? null,
 };
 
-/** Period start on the NY trading calendar (idea dates are NY dates, so a local-midnight cutoff would drift by a day). */
-function cutoff(period: Period): string | null {
-  if (period === "all") return null;
-  return addDays(nyDate(), -Number(period));
-}
 
 type Majority = "thumbs_up" | "warning" | "thumbs_down" | "none";
 function majorityOf(i: TradeIdea): Majority {
@@ -97,7 +90,9 @@ export default function TradeIdeaStats() {
   const SORTS = sortColumns();
   const noAuthor = t("stats.noAuthor");
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
-  const [period, setPeriod] = useStoredState<Period>("ideaStats.period", "90", PERIODS.map((p) => p.value));
+  // ?period (+ from/to); the old «30 / 90 / 365 / all» value in localStorage still opens on its window.
+  const { period, custom, setPreset, setCustom } = usePeriodParam({ presets: PRESETS, fallback: "quarter", storageKey: "ideaStats.period" });
+  const today = nyDate();
   const [author, setAuthor] = useState<string>("all");
   const [bestMode, setBestMode] = useState<"best" | "worst">("best");
   // Outcome basis: price vs. the idea's own target / stop (every published idea with numeric levels), or the linked
@@ -115,10 +110,11 @@ export default function TradeIdeaStats() {
     [data, byPrice, trackItems],
   );
   const trackingPending = byPrice && tracking.isLoading;
+  // Idea dates are NY dates, so the window is on the NY calendar too (a local-midnight cutoff would drift by a day).
   const inPeriod = useMemo(() => {
-    const c = cutoff(period);
-    return c ? all.filter((i) => i.date >= c) : all;
-  }, [all, period]);
+    const w = periodWindow(period, today, custom);
+    return w ? all.filter((i) => i.date >= w.from && i.date <= w.to) : all;
+  }, [all, period, custom, today]);
   const scoped = useMemo(() => (author === "all" ? inPeriod : inPeriod.filter((i) => (i.trader ?? noAuthor) === author)), [inPeriod, author, noAuthor]);
 
   const overall = useMemo(() => bucketOf(scoped), [scoped]);
@@ -155,50 +151,45 @@ export default function TradeIdeaStats() {
     );
   }
 
-  const periodText = t(`stats.periodText.${periodKey(period)}`);
+  const periodText = period === "custom" && custom ? t("stats.periodText.custom", { range: fmtDayRange(custom) }) : t(`stats.periodText.${period === "custom" ? "all" : period}`);
 
   return (
     <Page>
       <PageHeader
-        icon={BarChart3}
+        icon={PieChart}
         title={t("stats.title")}
         description={byPrice ? t("stats.descriptionPrice") : t("stats.descriptionTrades")}
         actions={
           <>
-            <Button variant="ghost" size="sm" className="gap-1.5" onClick={exportCsv} disabled={authors.length === 0}>
-              <Download className="h-4 w-4" aria-hidden="true" /> CSV
-            </Button>
+            {authors.length > 0 && (
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={exportCsv}>
+                <Download className="h-4 w-4" aria-hidden="true" /> CSV
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setLocation("/trade-ideas")}>
               <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("stats.backToIdeas")}
             </Button>
           </>
         }
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented ariaLabel={t("stats.periodAria")} options={PERIODS.map((p) => ({ value: p.value, label: t(`stats.periods.${p.key}`) }))} value={period} onChange={setPeriod} />
-          <Segmented<OutcomeBasis> ariaLabel={t("stats.basisAria")} options={BASES.map((b) => ({ value: b, label: t(`stats.basis.${b}`) }))} value={basis} onChange={setBasis} />
-          <PersonSelect value={author} onValueChange={setAuthor} allValue="all" allLabel={t("page.allAuthors")} options={authorNames} self={me} selfSuffix={t("stats.you")} ariaLabel={t("stats.authorAria")} className="h-9 w-48" />
-          {me && authorNames.includes(me) && author !== me && (
-            <button type="button" className="chip min-h-9 px-3 text-sm" onClick={() => setAuthor(me)}>{t("stats.myIdeas")}</button>
-          )}
-          {author !== "all" && (
-            <button type="button" className="chip inline-flex min-h-9 items-center gap-1 px-3 text-sm" aria-pressed="true" title={t("stats.resetAuthor")} onClick={() => setAuthor("all")}>
-              {personName(author)} <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          )}
-          {trackingPending && <span className="text-xs text-muted-foreground" role="status">{t("stats.loadingPrices")}</span>}
-          {byPrice && tracking.isError && (
-            <span className="text-xs text-down" role="alert">
-              {t("stats.pricesFailed")} <button type="button" className="inline-flex min-h-8 items-center rounded px-1 underline" onClick={() => tracking.refetch()}>{tc("actions.retry")}</button>
-            </span>
-          )}
-        </div>
-      </PageHeader>
+      />
+
+      <Toolbar className="gap-2">
+        <Segmented<OutcomeBasis> ariaLabel={t("stats.basisAria")} options={BASES.map((b) => ({ value: b, label: t(`stats.basis.${b}`) }))} value={basis} onChange={setBasis} />
+        <PeriodPicker compact presets={PRESETS} value={period} custom={custom} onPreset={setPreset} onCustom={setCustom} today={today} ariaLabel={t("stats.periodAria")} />
+        <PersonSelect value={author} onValueChange={setAuthor} allValue="all" allLabel={t("page.allAuthors")} options={authorNames} self={me} selfSuffix={t("stats.you")} ariaLabel={t("stats.authorAria")} className="h-9 w-48" />
+        {trackingPending && <span className="ml-auto text-xs text-muted-foreground" role="status">{t("stats.loadingPrices")}</span>}
+        {byPrice && tracking.isError && (
+          <span className="ml-auto text-xs text-down" role="alert">
+            {t("stats.pricesFailed")} <button type="button" className="inline-flex min-h-8 items-center rounded px-1 underline" onClick={() => tracking.refetch()}>{tc("actions.retry")}</button>
+          </span>
+        )}
+      </Toolbar>
+      <ActiveFilters items={[author !== "all" && { key: "author", label: personName(author), onRemove: () => setAuthor("all") }]} />
 
       {isLoading && (
         <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("stats.loading")}>
           <StatGrid className="xl:grid-cols-5">{[0, 1, 2, 3, 4].map((k) => <Skeleton key={k} className="h-24 rounded-2xl" />)}</StatGrid>
-          <div className="grid gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
             <Skeleton className="h-80 rounded-2xl lg:col-span-3" />
             <Skeleton className="h-80 rounded-2xl lg:col-span-2" />
           </div>
@@ -257,11 +248,11 @@ export default function TradeIdeaStats() {
               <EmptyState
                 icon={Lightbulb}
                 title={author !== "all" ? t("stats.noIdeasPeriodAuthor", { period: periodText, author: personName(author) }) : t("stats.noIdeasPeriod", { period: periodText })}
-                action={<Button variant="outline" size="sm" onClick={() => { setPeriod("all"); setAuthor("all"); }}>{tc("actions.resetFilters")}</Button>}
+                action={<Button variant="outline" size="sm" onClick={() => { setPreset("all"); setAuthor("all"); }}>{tc("actions.resetFilters")}</Button>}
               />
             </Panel>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
               <div className="lg:col-span-3"><IdeaCalibration ideas={scoped} basis={basis} pending={trackingPending} /></div>
               <Panel
                 className="lg:col-span-2"
@@ -288,10 +279,8 @@ export default function TradeIdeaStats() {
                         <button
                           type="button"
                           onClick={() => (byPrice ? setLocation(`/trade-ideas?idea=${i.id}`) : i.linkedTrade && setLocation(links.trade(i.linkedTrade.id)))}
-                          className={cn(
-                            "flex w-full items-center gap-3 rounded-xl border-l-2 px-3 py-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)]",
-                            (i.r ?? 0) >= 0 ? "border-l-up/60" : "border-l-down/60",
-                          )}
+                          // The R on the right carries the sign colour; no coloured side stripe (design audit detector).
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)]"
                           aria-label={t(byPrice ? "stats.openIdeaAria" : "stats.openTradeAria", { ticker: i.ticker, r: fmtR(i.r) })}
                         >
                           <span className="w-4 text-xs text-muted-foreground tabular-nums">{idx + 1}</span>

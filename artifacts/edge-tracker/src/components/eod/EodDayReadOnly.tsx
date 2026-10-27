@@ -1,3 +1,4 @@
+import { TradeChip } from "@/components/ds/trade-chip";
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, MessageSquareText } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
@@ -61,12 +62,12 @@ export function EodDayReadOnly({
           {emotions.map((e) => <Pill key={e} tone={CALM.has(e) ? "up" : "warn"}>{tagLabel(e)}</Pill>)}
           {violations.map((v) => <Pill key={v} tone="down">{tagLabel(v)}</Pill>)}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <TextBlock label={tradesI18n.t("reviewFields.whatWorked")} text={well} tone="up" />
           <TextBlock label={tradesI18n.t("reviewFields.whatFailed")} text={bad} tone="down" />
         </div>
         {(journal?.lessons?.trim() || s.tomorrow) && (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {journal?.lessons?.trim() && <TextBlock label={t("readOnly.lesson")} text={journal.lessons} accent />}
             {s.tomorrow && <TextBlock label={t("readOnly.focus")} text={s.tomorrow} />}
           </div>
@@ -106,7 +107,7 @@ export function EodDayReadOnly({
                 <li key={tr.id} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">{tr.ticker}</span>
-                    <Pill tone="purple">{HORIZON_LABEL[tr.horizonEff]}</Pill>
+                    <TradeChip group="horizon" value={tr.horizonEff}>{HORIZON_LABEL[tr.horizonEff]}</TradeChip>
                     {tr.date !== data.date && <Pill>{journalI18n.t("trades.since", { date: fmtDate(tr.date, "dayMonth") })}</Pill>}
                     {p?.thesisValid === true && <Pill tone="up">{t("readOnly.thesisValid")}</Pill>}
                     {p?.thesisValid === false && <Pill tone="down">{t("readOnly.thesisBroken")}</Pill>}

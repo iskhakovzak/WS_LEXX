@@ -29,6 +29,11 @@ export class TtlCache<K, V> {
     this.store.delete(key);
   }
 
+  /** Entries held (expired ones included until they are read again). */
+  get size(): number {
+    return this.store.size;
+  }
+
   clear(): void {
     this.store.clear();
   }

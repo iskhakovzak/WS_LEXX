@@ -11,7 +11,7 @@ import { signedR, netPnl, isOpen, horizonOf, entryMinutes } from "@/lib/trade-ma
 import { fmtDateCustom, fmtWeekday, localeTag } from "@/lib/format";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { comparePersonNames, personName } from "@/i18n";
-import { type AnalyticsFilters, NONE, periodRange, day, sortChrono } from "./metrics";
+import { type AnalyticsFilters, NONE, filtersRange, day, sortChrono } from "./metrics";
 import type { SimTrade } from "./edge-stats";
 
 /* ─── Types mirrored from api-server/src/routes/edge.ts ─────────────────── */
@@ -66,7 +66,7 @@ export type RiskMe = { limits: RiskLimits | null } & Record<string, unknown>;
 
 export function edgeParams(filters: AnalyticsFilters, extra: Record<string, string | number | undefined> = {}): string {
   const sp = new URLSearchParams();
-  const range = periodRange(filters.period);
+  const range = filtersRange(filters);
   if (range) { sp.set("from", range.from); sp.set("to", range.to); }
   if (filters.trader) sp.set("trader", filters.trader);
   if (filters.horizon) sp.set("horizon", filters.horizon);
@@ -75,6 +75,7 @@ export function edgeParams(filters: AnalyticsFilters, extra: Record<string, stri
   if (filters.source) sp.set("source", filters.source);
   if (filters.setup && filters.setup !== "__none__") sp.set("setup", filters.setup);
   if (filters.ticker) sp.set("ticker", filters.ticker);
+  if (filters.facets) new URLSearchParams(filters.facets).forEach((v, k) => sp.set(k, v)); // «Разрезы»
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== "") sp.set(k, String(v));
   return sp.toString();
 }

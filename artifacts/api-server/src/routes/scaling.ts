@@ -41,6 +41,8 @@ import { AppError, errorMessage, badRequest, conflict, notFound, sendError, unau
 import { langOf, type Lang } from "../i18n";
 import { scalingT } from "../i18n/ns";
 import { ensureScalingSeed, insertRule, loadLimits, loadRules, loadTiers, upsertTier, type LimitsRow, type Queryable } from "../lib/scalingStore";
+import { logInterventionSafe } from "../lib/interventions/log";
+import { decideCapitalProposal, isCapitalProposal, renderCapitalReasons, withdrawCapitalProposal } from "../lib/capital/decide";
 
 const router: IRouter = Router();
 
@@ -71,16 +73,17 @@ const loadRulesNow = async (): Promise<Rule[]> => (await loadRules()).map(normal
 type Proposal = {
   id: number; trader: string; action: string; fromTier: string | null; toTier: string; status: string; source: string;
   reasons: string[]; comment: string | null; createdBy: string; createdAt: string; decidedBy: string | null; decidedAt: string | null;
-  decisionComment: string | null; snapshot?: unknown;
+  decisionComment: string | null; snapshot?: unknown; kind: string; limits?: unknown;
 };
-const PROPOSAL_COLS = `id, trader, action, from_tier, to_tier, status, source, reasons, comment, created_by, created_at, decided_by, decided_at, decision_comment`;
+const PROPOSAL_COLS = `id, trader, action, from_tier, to_tier, status, source, reasons, comment, created_by, created_at, decided_by, decided_at, decision_comment, kind, limits`;
 /** `lang` renders stored reason items (legacy rows keep their stored RU strings). */
 function rowToProposal(r: any, withSnapshot = false, lang: Lang = "ru"): Proposal {
   const p: Proposal = {
     id: Number(r.id), trader: String(r.trader), action: String(r.action), fromTier: r.from_tier ?? null, toTier: String(r.to_tier),
-    status: String(r.status), source: String(r.source ?? "auto"), reasons: renderStoredReasons(r.reasons, lang),
+    status: String(r.status), source: String(r.source ?? "auto"), reasons: r.kind === "limits" ? renderCapitalReasons(r.reasons, lang) : renderStoredReasons(r.reasons, lang),
     comment: r.comment ?? null, createdBy: String(r.created_by), createdAt: new Date(r.created_at).toISOString(),
     decidedBy: r.decided_by ?? null, decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null, decisionComment: r.decision_comment ?? null,
+    kind: String(r.kind ?? "tier"), limits: r.limits ?? null,
   };
   if (withSnapshot) p.snapshot = r.snapshot ?? null;
   return p;
@@ -174,7 +177,7 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[], v
 
 async function loadPending(trader: string | null): Promise<Map<string, Proposal>> {
   const { rows } = await pool.query(
-    `SELECT ${PROPOSAL_COLS} FROM scaling_proposals WHERE status = 'pending' AND ($1::text IS NULL OR trader = $1)`,
+    `SELECT ${PROPOSAL_COLS} FROM scaling_proposals WHERE status = 'pending' AND kind = 'tier' AND ($1::text IS NULL OR trader = $1)`,
     [trader],
   );
   return new Map(rows.map((r: any) => [String(r.trader), rowToProposal(r)]));
@@ -182,7 +185,7 @@ async function loadPending(trader: string | null): Promise<Map<string, Proposal>
 
 type EvaluatedTrader = Evaluation & { limits: LimitsRow | null; pendingProposal: Proposal | null; role: string | null };
 
-async function evaluateScope(trader: string | null, today: string, lang: Lang = "ru", view = false): Promise<{ tiers: Tier[]; rules: Rule[]; traders: EvaluatedTrader[] }> {
+export async function evaluateScope(trader: string | null, today: string, lang: Lang = "ru", view = false): Promise<{ tiers: Tier[]; rules: Rule[]; traders: EvaluatedTrader[] }> {
   const [tiers, rules] = await Promise.all([loadTiers(), loadRulesNow()]);
   const [{ inputs, limits }, pending, usersRes] = await Promise.all([
     loadInputs(trader, today, rules, view),
@@ -371,7 +374,7 @@ router.get("/scaling/proposals", asyncHandler(async (req, res): Promise<void> =>
       ORDER BY (status = 'pending') DESC, created_at DESC LIMIT $3`,
     [trader, status, limit],
   );
-  res.json({ proposals: rows.map((r) => rowToProposal(r)) });
+  res.json({ proposals: rows.map((r) => rowToProposal(r, false, langOf(req))) });
 }));
 
 /** Compact snapshot stored with a proposal (rules + windows, no raw trades). */
@@ -391,6 +394,7 @@ async function createProposal(opts: {
   /** Stored as data (ReasonItem objects), rendered per reader by rowToProposal. */
   reasons: ReasonItem[]; snapshot: unknown; comment: string | null; actor: string; lang?: Lang;
 }): Promise<Proposal | null> {
+  await withdrawCapitalProposal(opts.trader, opts.actor, opts.lang ?? "ru"); // the ladder goes first (lib/capital)
   const { rows } = await pool.query(
     `INSERT INTO scaling_proposals (trader, action, from_tier, to_tier, status, source, reasons, snapshot, comment, created_by)
      VALUES ($1,$2,$3,$4,'pending',$5,$6::jsonb,$7::jsonb,$8,$9)
@@ -556,6 +560,7 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!parsed.success) throw new AppError("TEXT_TOO_LONG", 400, { field: "comment", max: 2000 });
   const comment = parsed.data.comment || null;
+  if (await isCapitalProposal(id)) { res.json(await decideCapitalProposal(id, "approve", v.name, comment)); return; } // lib/capital: limits, not a tier
   const tiers = await loadTiers();
 
   const client = await pool.connect();
@@ -588,6 +593,7 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
     details: { trader: result.proposal.trader, action: result.proposal.action, fromTier: result.proposal.fromTier, toTier: result.tier.key, historyId: result.historyId, comment },
   });
   notifyDecision(result.proposal, true, v.name, comment, result.tier);
+  await logInterventionSafe({ trader: result.proposal.trader, kind: "scaling_decision", author: v.name, params: { action: result.proposal.action, fromTier: result.proposal.fromTier, toTier: result.tier.key, proposalId: id }, sourceTable: "scaling_history", sourceId: result.historyId });
   res.json(result);
 }));
 
@@ -600,6 +606,7 @@ router.post("/scaling/proposals/:id/reject", asyncHandler(async (req, res): Prom
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!parsed.success) throw new AppError("TEXT_TOO_LONG", 400, { field: "comment", max: 2000 });
   const comment = parsed.data.comment || null;
+  if (await isCapitalProposal(id)) { res.json(await decideCapitalProposal(id, "reject", v.name, comment)); return; }
   const { rows } = await pool.query(
     `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = $3
       WHERE id = $1 AND status = 'pending' RETURNING ${PROPOSAL_COLS}`,
@@ -659,6 +666,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
     client.release();
   }
   await logAudit({ actor: v.name, action: "scaling.assign", targetType: "trader_risk_limits", targetId: b.trader, details: { fromTier: out.fromTier, toTier: tier.key, historyId: out.historyId, comment: b.comment ?? null } });
+  await logInterventionSafe({ trader: b.trader, kind: "scaling_decision", author: v.name, params: { action: "assign", fromTier: out.fromTier, toTier: tier.key }, sourceTable: "scaling_history", sourceId: out.historyId });
   if (b.trader !== v.name) {
     const fromName = tierName(tiers, out.fromTier);
     const actor = v.name;

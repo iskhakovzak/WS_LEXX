@@ -1,9 +1,10 @@
 import { useCallback, useId, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Check, Compass, Globe2, Plus, ShieldAlert, Target, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Segmented } from "@/components/ds";
 import { useEdgeFade } from "@/components/ds/edge-fade";
@@ -133,7 +134,7 @@ function EditorInner({
   const takenTickers = draft.inPlay.map((t) => t.ticker.trim().toUpperCase()).filter(Boolean);
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-6">
+    <div ref={rootRef} className="flex flex-col gap-section">
       {/* Block nav */}
       <nav
         aria-label={tr("editor.blocksAria")}
@@ -174,6 +175,7 @@ function EditorInner({
           </div>
         </div>
         <Field label={tr("editor.context")} htmlFor={`${uid}-mv`}>
+          <div className="-mt-1 mb-1 flex justify-end"><AssistHelp field="plan" value={draft.marketView} onAccept={(v) => patch({ marketView: v })} /></div>
           <Textarea
             id={`${uid}-mv`}
             rows={4}
@@ -291,6 +293,7 @@ function EditorInner({
         </div>
         {!isDesk && <OwnRuleField id={`${uid}-or`} value={draft.ownRule} onChange={(v) => patch({ ownRule: v })} focusMistake={focusMistake} suggestion={ruleSuggestion} />}
         <Field label={isDesk ? tr("editor.riskNotesDesk") : tr("editor.riskNotes")} htmlFor={`${uid}-rn`}>
+          <div className="-mt-1 mb-1 flex justify-end"><AssistHelp field="plan" value={draft.riskNotes} onAccept={(v) => patch({ riskNotes: v })} /></div>
           <Textarea
             id={`${uid}-rn`}
             rows={3}

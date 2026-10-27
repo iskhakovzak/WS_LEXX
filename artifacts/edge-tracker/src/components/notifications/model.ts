@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   CircleSlash, AtSign, MessageSquareReply, MessageSquarePlus, HelpCircle, Lightbulb, ClipboardCheck, MessageSquare, CalendarCheck, AlarmClock,
   CheckCircle2, CalendarRange, Star, BadgeCheck, TriangleAlert, OctagonAlert, SlidersHorizontal, TrendingUp,
-  Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert, Award, Swords, Medal, Gift, XCircle,
+  Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert, Award, Swords, Medal, Gift, XCircle, Sparkles, Compass, BellRing,
 } from "lucide-react";
 import { http } from "@/lib/api/http";
 import { fmtDate } from "@/lib/format";
@@ -43,7 +43,8 @@ export type Notification = {
 };
 
 export type NotificationPage = { items: Notification[]; nextCursor: string | null };
-export type UnreadCount = { unread: number; critical: number; warn: number };
+/** `ownStop`: unread critical notices of the reader's own risk stop (shown in the dashboard hero, not as a red bell). */
+export type UnreadCount = { unread: number; critical: number; warn: number; ownStop: number };
 export type TypeMeta = { type: string; label: string; group: NotificationGroup; severity: Severity; description: string };
 export type Pref = { type: string; inApp: boolean; muteUntil: string | null };
 export type Prefs = { prefs: Pref[]; muteAllUntil: string | null };
@@ -107,6 +108,10 @@ export const TYPES: TypeMeta[] = [
   meta("reward_declined", "review", "info"),
   meta("curator_request", "review", "info"),
   meta("curator_request_done", "review", "info"),
+  meta("curator_digest", "review", "info"),
+  meta("ai_review_ready", "review", "info"),
+  meta("mentor_ready", "review", "info"),
+  meta("mentor_escalation", "review", "warn"),
   meta("risk_warn", "risk", "warn"),
   meta("risk_breach", "risk", "critical"),
   meta("risk_repeat_breach", "risk", "critical"),
@@ -150,7 +155,7 @@ export const TYPE_ICONS: Record<string, LucideIcon> = {
   rating: Star, rating_ack: BadgeCheck, discipline_badge: Award,
   quest_assigned: Swords, quest_done: CheckCircle2, quest_failed: TriangleAlert, quest_cancelled: CircleSlash, achievement_earned: Medal,
   reward_eligible: Gift, reward_requested: Gift, reward_granted: Gift, reward_declined: XCircle,
-  curator_request: HelpCircle, curator_request_done: CheckCircle2,
+  curator_request: HelpCircle, curator_request_done: CheckCircle2, curator_digest: CalendarCheck, ai_review_ready: Sparkles, mentor_ready: Compass, mentor_escalation: BellRing,
   risk_warn: TriangleAlert, risk_breach: OctagonAlert, risk_repeat_breach: OctagonAlert, risk_breach_review: ClipboardCheck, limit_change: SlidersHorizontal, rule_violation: ShieldAlert,
   scaling_proposal: TrendingUp, scaling_decision: Gavel,
   academy_promotion_ready: GraduationCap, academy_promotion_request: GraduationCap, academy_promotion_decision: Gavel,
@@ -296,6 +301,8 @@ export const NOTIF_KEYS = {
 
 export type ListFilters = {
   unread?: boolean;
+  /** Text search in the title / message (server ILIKE). */
+  q?: string;
   types?: string[];
   severities?: Severity[];
   archived?: "0" | "1" | "all";
@@ -306,6 +313,7 @@ export type ListFilters = {
 export function filterParams(f: ListFilters): string {
   const p = new URLSearchParams();
   if (f.unread) p.set("unread", "1");
+  if (f.q) p.set("q", f.q);
   if (f.types?.length) p.set("type", f.types.join(","));
   if (f.severities?.length) p.set("severity", f.severities.join(","));
   if (f.archived && f.archived !== "0") p.set("archived", f.archived);
@@ -317,7 +325,7 @@ export function filterParams(f: ListFilters): string {
 export const notificationsApi = {
   async count(): Promise<UnreadCount> {
     const d = await http.get<Partial<UnreadCount>>("/api/notifications/count");
-    return { unread: Number(d.unread ?? 0), critical: Number(d.critical ?? 0), warn: Number(d.warn ?? 0) };
+    return { unread: Number(d.unread ?? 0), critical: Number(d.critical ?? 0), warn: Number(d.warn ?? 0), ownStop: Number(d.ownStop ?? 0) };
   },
   async list(params: string, cursor?: string | null): Promise<NotificationPage> {
     return normalizePage(await http.get(`/api/notifications?${params}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`));

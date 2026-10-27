@@ -1,11 +1,12 @@
 /**
  * Floating bar for the selected drawing (bottom-left of the chart): colour role (accent · up · down · warn) and delete.
- * Works with a mouse and on a phone, where there is no Delete key. Also shows the hint while a drawing is being placed.
+ * Works with a mouse and on a phone, where there is no Delete key. Also shows the hint while a drawing is being placed,
+ * and the note field of the selected drawing (a level with a note: «здесь продавец», saved with the drawing).
  */
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DrawingRole } from "../types";
-import { DRAWING_ROLES } from "../lib/drawings";
+import { DRAWING_ROLES, MAX_NOTE } from "../lib/drawings";
 import { chartI18n } from "@/i18n/ns/chart";
 
 const SWATCH: Record<DrawingRole, string> = {
@@ -15,7 +16,7 @@ const SWATCH: Record<DrawingRole, string> = {
   warn: "bg-[hsl(var(--chart-3))]",
 };
 
-export function DrawingBar({ hint, selectedRole, onRole, onDelete, local }: {
+export function DrawingBar({ hint, selectedRole, onRole, onDelete, local, note, onNote }: {
   /** Placing a drawing: «Первая точка…» / «Вторая точка…». */
   hint: string | null;
   /** Role of the selected drawing (null = nothing selected). */
@@ -24,6 +25,9 @@ export function DrawingBar({ hint, selectedRole, onRole, onDelete, local }: {
   onDelete: () => void;
   /** Drawings are kept in this browser only (the server has no drawings yet / signed out). */
   local: boolean;
+  /** The note on the selected drawing (saved with it; ≤ 80 characters) — absent = no note field. */
+  note?: string | null;
+  onNote?: (v: string) => void;
 }) {
   const { t } = chartI18n.useT();
   if (!hint && selectedRole == null) return null;
@@ -44,6 +48,16 @@ export function DrawingBar({ hint, selectedRole, onRole, onDelete, local }: {
               />
             ))}
           </span>
+          {onNote && (
+            <input
+              value={note ?? ""}
+              maxLength={MAX_NOTE}
+              onChange={(e) => onNote(e.target.value)}
+              placeholder={t("drawing.notePlaceholder")}
+              aria-label={t("drawing.note")}
+              className="h-7 w-[min(14rem,40vw)] rounded-full border border-[var(--glass-border)] bg-transparent px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          )}
           <button type="button" onClick={onDelete} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 hover:bg-[var(--glass-hover-bg)] hover:text-foreground" title={t("engine.deleteDrawing")}>
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> {t("drawing.delete")}
           </button>

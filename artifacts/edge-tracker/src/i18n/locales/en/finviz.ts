@@ -17,6 +17,7 @@ export default {
       earnings_today: "Reporting today before the open or after the close",
     },
     updated: "updated {ago}",
+    stale: "stale: updated {ago}",
     notYet: "not updated yet",
     collapsed: {
       one: "{count} candidate · leader {ticker} {move}",

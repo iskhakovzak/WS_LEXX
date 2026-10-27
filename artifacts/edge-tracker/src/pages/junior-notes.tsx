@@ -8,7 +8,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Archive, NotebookPen } from "lucide-react";
+import { Archive, NotebookPen, NotebookText } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export default function JuniorNotesPage() {
 
   return (
     <Page>
-      <PageHeader title={t("junior.title")} icon={NotebookPen} description={tj("legacyNotes.description")} />
+      <PageHeader title={t("junior.title")} icon={NotebookText} description={tj("legacyNotes.description")} />
       <Panel>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Archive className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />

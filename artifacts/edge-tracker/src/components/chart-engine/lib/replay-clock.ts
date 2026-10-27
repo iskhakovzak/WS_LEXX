@@ -141,6 +141,7 @@ export type ReplayKeyAction =
   | { kind: "entry" }
   | { kind: "exit" }
   | { kind: "nextFill" }
+  | { kind: "prevFill" }
   | { kind: "pauseOnFills" };
 
 /**
@@ -158,7 +159,8 @@ export function replayKeyAction(key: string, code: string, shift: boolean): Repl
   if (key === "Home") return { kind: "open" };
   if (code === "KeyE") return { kind: "entry" };
   if (code === "KeyX") return { kind: "exit" };
-  if (code === "KeyN") return { kind: "nextFill" };
+  if (code === "KeyN") return { kind: shift ? "prevFill" : "nextFill" };
+  if (code === "KeyB") return { kind: "prevFill" };
   if (code === "KeyP") return { kind: "pauseOnFills" };
   return null;
 }

@@ -14,6 +14,7 @@ import { AppError, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import { violationMessage } from "../lib/rulesI18n";
+import { feeCoachingFor } from "../lib/feeModelStore";
 
 /**
  * «Отчёт недели 1:1» — the weekly trader ↔ curator review document.
@@ -519,9 +520,21 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     };
   });
 
+  // Fee model + breakeven line of the rolling window ending with the week (roadmap R2); never breaks the report.
+  const feeCoaching = await feeCoachingFor(trader, week.end).catch(() => null);
   const reviewRows = reviews.rows as any[];
   const review = presentReview(reviewRows.find((r) => r.week === week.key));
   const prevReview = presentReview(reviewRows.find((r) => r.week === week.prevKey));
+  // An empty week names the trader's last week with closed trades before it (the client's «Последняя неделя со
+  // сделками» button, design audit wave 2). null — none earlier.
+  let lastTradedWeek: string | null = null;
+  if (current.trades === 0) {
+    const { rows } = await pool.query<{ d: string | null }>(
+      `SELECT MAX(${CDATE}) AS d FROM trades t WHERE t.trader = $1 AND t.deleted_at IS NULL AND ${DATE_OK} AND ${CDATE} < $2`,
+      [trader, week.start],
+    ).catch(() => ({ rows: [] as { d: string | null }[] }));
+    lastTradedWeek = rows[0]?.d ? weekKeyOf(rows[0].d) : null;
+  }
 
   res.json({
     trader,
@@ -545,6 +558,8 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     review,
     prevReview,
     prevGoals: prevReview?.goals ?? [],
+    feeCoaching,
+    lastTradedWeek,
   });
 }));
 

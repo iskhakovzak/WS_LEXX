@@ -9,7 +9,7 @@
  *                                                                base bars (≤ 400); until "event" stops at the next market
  *                                                                event / bracket fill (lib/sim/events.ts);
  *                                                                order.sizeMode "risk" (no qty) sizes from 1R and the stop
- *   GET  /api/sim/games/:id/context                              daily bars before the game day + key levels (context.ts)
+ *   GET  /api/sim/games/:id/context                              250 daily bars before the game day, key levels, «Контекст дня» (context.ts)
  *   POST /api/sim/games/:id/skip                                 skip (no order yet) / finish (traded) (decisions.ts)
  *   POST /api/sim/games/:id/no-trade                             «Не торгую»: a scored decision (decisions.ts, noTrade.ts)
  *   POST /api/sim/series               {mode, difficulty, tf?, size?}  a series of games (series.ts)

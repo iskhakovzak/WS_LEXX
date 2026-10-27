@@ -75,6 +75,8 @@ export type ThemesResponse = {
   boards: BoardMeta[];
   /** Finviz is on: screeners resolve. */
   finviz: boolean;
+  /** Cold server start: the first quote refresh is still running (no numbers yet). */
+  warming?: boolean;
 };
 
 type BoardCommon = { board: BoardMeta; session: ThemeSession; finviz: boolean };

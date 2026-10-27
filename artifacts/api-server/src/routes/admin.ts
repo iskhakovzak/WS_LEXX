@@ -458,7 +458,7 @@ router.get("/admin/db-export", asyncHandler(async (req, res): Promise<void> => {
   };
   await logAudit({ actor: actor!, action: "db.export", targetType: "db", targetId: null, details: { tables: keys, partial: requested.length > 0 } });
 
-  const filename = `ws-lexx-${requested.length ? "export" : "backup"}-${exportedAt.substring(0, 10)}.json`;
+  const filename = `ws-desk-${requested.length ? "export" : "backup"}-${exportedAt.substring(0, 10)}.json`;
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.json(data);

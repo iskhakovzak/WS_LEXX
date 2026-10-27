@@ -12,8 +12,12 @@ import type { Horizon } from "@/lib/trade-math";
 import type { LiveInfo } from "@/components/shared/live-badge";
 
 export type Scope = "me" | "team";
-/** Server window of the dashboard equity curve (GET /api/dashboard/equity?period=). */
-export type EquityPeriod = "week" | "30d" | "90d" | "ytd" | "all";
+/**
+ * Server window of the dashboard equity curve (GET /api/dashboard/equity?period=): the period vocabulary (design audit
+ * wave 3). «week» = this calendar week from Monday (the curve equals the week card); month / quarter / year are the
+ * last 30 / 90 / 365 days.
+ */
+export type EquityPeriod = "week" | "month" | "quarter" | "year" | "all";
 export type EquityMetric = "r" | "pnl";
 export type { Horizon };
 
@@ -156,7 +160,7 @@ export type EquityDay = {
 };
 
 export type DashboardEquity = {
-  period: EquityPeriod | "7d";
+  period: EquityPeriod | "7d" | "30d" | "90d" | "ytd";
   scope: string;
   from: string;
   to: string;
@@ -458,68 +462,24 @@ export function useEodDay(date: string | null, trader: string | null, enabled = 
   });
 }
 
-/* ───────────── Local, per-viewer preferences ───────────── */
+/* ───────────── Dashboard tiles ───────────── */
 
-export type SectionId =
-  | "attention"
-  | "equity"
-  | "recent"
-  | "desk"
-  | "streaks"
-  | "positions"
-  | "checkin"
-  | "brief"
-  | "quote"
-  | "sectors"
-  | "macro"
-  | "dna"
-  | "psychology";
+const SECTION_IDS = [
+  "regime", "mentor", "attention", "equity", "recent", "desk", "streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees",
+  "positions", "checkin", "brief", "quote", "sectors", "macro", "dna", "psychology",
+] as const;
+/** A dashboard tile («План на день», a «Ваш edge» insight, «Последние сделки», an extra …). */
+export type SectionId = (typeof SECTION_IDS)[number];
 
-const SECTION_FLAGS: Record<SectionId, { staffOnly?: boolean; extra?: boolean }> = {
-  attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, streaks: {}, positions: {},
-  // Optional extras below the cockpit — off by default, switch on in «Настроить».
-  checkin: { extra: true }, brief: { extra: true }, quote: { extra: true }, sectors: { extra: true },
-  macro: { extra: true }, dna: { extra: true }, psychology: { extra: true },
-};
+type SectionMeta = { label: string; hint: string };
 
-/** Label / hint are read in the current language on access; flags are plain. */
-export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = Object.fromEntries(
-  (Object.keys(SECTION_FLAGS) as SectionId[]).map((id) => [id, {
-    ...SECTION_FLAGS[id],
+/**
+ * Label / hint of a dashboard tile, read in the current language on access. Where a tile goes, its sizes and who sees
+ * it: ./layout-model (TILE_SPECS).
+ */
+export const SECTION_META: Record<SectionId, SectionMeta> = Object.fromEntries(
+  SECTION_IDS.map((id) => [id, {
     get label() { return dashboardI18n.t(`sections.${id}.label`); },
     get hint() { return dashboardI18n.t(`sections.${id}.hint`); },
   }]),
-) as Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }>;
-
-export const DEFAULT_ORDER: SectionId[] = [
-  "attention",
-  "equity",
-  "recent",
-  "desk",
-  "streaks",
-  "positions",
-  "checkin",
-  "brief",
-  "sectors",
-  "macro",
-  "dna",
-  "quote",
-  "psychology",
-];
-
-/** Width class of a block in the 12-col bento: pairs sit side by side, `full` takes the row. */
-export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full"> = {
-  attention: "narrow",
-  equity: "wide",
-  recent: "wide",
-  desk: "narrow",
-  streaks: "narrow",
-  positions: "full",
-  checkin: "wide",
-  brief: "full",
-  quote: "narrow",
-  sectors: "wide",
-  macro: "narrow",
-  dna: "narrow",
-  psychology: "full",
-};
+) as Record<SectionId, SectionMeta>;

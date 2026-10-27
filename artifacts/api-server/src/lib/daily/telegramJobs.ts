@@ -19,6 +19,9 @@
  * Every send is claimed first in notification_dedup (lib/notifyEvents claimOnce) — a restart, a second process or the
  * next sync never sends it again; a send Telegram rejected releases its claim so the next run retries.
  * Nothing is sent unless the bot is configured AND this is production (dailyTelegramEnabled).
+ * Push budget (roadmap R3, lib/pushBudget): each send is also claimed against the person's daily Telegram budget —
+ * morning / evening count as ordinary pushes, the contract alert as a coaching one and it waits while a risk alert to
+ * the same trader is fresh. A send the budget holds back keeps its once-only claim (it would be held back all day).
  */
 import { pool } from "@workspace/db";
 import { config } from "../../config";
@@ -29,6 +32,7 @@ import { closeDateSql } from "../tradeMath";
 import { DEFAULT_STAGE, isTraderRole, loadStageInfo } from "../people/stage";
 import { sendMessage } from "../telegramBot";
 import { claimOnce } from "../notifyEvents";
+import { claimPush, releasePush } from "../pushBudget";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "./telegramGuard";
 import { EVENING_FROM_MIN, contractAlertsEnabled, eveningEnabled, eveningSendMinutes, morningEnabled } from "./telegramSchedule";
 import * as service from "./service";
@@ -70,11 +74,15 @@ export async function releaseKey(key: string): Promise<void> {
   await pool.query(`DELETE FROM notification_dedup WHERE key = $1`, [key]).catch(() => undefined);
 }
 
-/** Claim → send → release on failure. "dup" = someone already sent it. */
-async function deliver(key: string, chatId: string, msg: TgMessage): Promise<"sent" | "dup" | "failed"> {
+export type PushOf = { trader: string; kind: "daily_morning" | "daily_evening" | "daily_contract_alert"; dedupKey?: string };
+
+/** Claim → budget → send → release on failure. "dup" = someone already sent it; "budget" = over the person's budget. */
+async function deliver(key: string, chatId: string, msg: TgMessage, push: PushOf): Promise<"sent" | "dup" | "failed" | "budget"> {
   if (!(await claimOnce(key))) return "dup";
+  const slot = await claimPush(push.trader, push.kind, push.dedupKey ?? null);
+  if (!slot.ok) return "budget";
   const ok = await sendMessage(chatId, msg.text, msg.keyboard.length ? { reply_markup: { inline_keyboard: msg.keyboard } } : {}).catch(() => false);
-  if (!ok) await releaseKey(key);
+  if (!ok) { await releaseKey(key); await releasePush(slot); }
   return ok ? "sent" : "failed";
 }
 
@@ -195,8 +203,8 @@ export async function dayContract(trader: string, date: string): Promise<DayCont
 }
 
 type RunOpts = { now?: Date; signal?: AbortSignal };
-type Tally = { sent: number; dup: number; failed: number; skipped: number };
-const tally = (): Tally => ({ sent: 0, dup: 0, failed: 0, skipped: 0 });
+type Tally = { sent: number; dup: number; failed: number; skipped: number; budget: number };
+const tally = (): Tally => ({ sent: 0, dup: 0, failed: 0, skipped: 0, budget: 0 });
 const pause = () => new Promise((r) => setTimeout(r, SEND_GAP_MS));
 
 // ─── morning ────────────────────────────────────────────────────────────────
@@ -217,7 +225,7 @@ export async function runMorningFocus(o: RunOpts = {}): Promise<Record<string, u
     const focus = await service.focusFor(r.name, date).catch((err) => { logger.warn({ err, trader: r.name }, "daily-tg: focus failed"); return null; });
     if (!focus) { n.skipped++; continue; }
     const msg = morningMessage({ lang: r.lang, date, focus, contract: await dayContract(r.name, date), siteUrl: config.siteUrl, unreviewed: unreviewed.has(r.name) ? prev : null });
-    n[await deliver(dailyKey.morning(date, r.name), r.chatId, msg)]++;
+    n[await deliver(dailyKey.morning(date, r.name), r.chatId, msg, { trader: r.name, kind: "daily_morning" })]++;
     await pause();
   }
   const reasons = { active: 0, learner: 0, idle: 0 };
@@ -244,7 +252,7 @@ export async function runEveningCards(o: RunOpts = {}): Promise<Record<string, u
     const card = await service.eveningFor(r.name, date).catch((err) => { logger.warn({ err, trader: r.name }, "daily-tg: evening card failed"); return null; });
     if (!card || card.trades === 0) { n.skipped++; continue; }
     const msg = eveningMessage({ lang: r.lang, card, siteUrl: config.siteUrl, privateChat: isPrivateChat(r.chatId) });
-    const res = await deliver(dailyKey.evening(date, r.name), r.chatId, msg);
+    const res = await deliver(dailyKey.evening(date, r.name), r.chatId, msg, { trader: r.name, kind: "daily_evening" });
     if (res === "sent") await claimOnce(dailyKey.card(date, r.name, r.chatId));
     n[res]++;
     await pause();
@@ -280,7 +288,7 @@ export async function runContractAlerts(o: RunOpts & { check?: IntradayCheck | n
     const r = byName.get(b.trader);
     if (!r) { n.skipped++; continue; }
     const text = contractAlert({ lang: r.lang, breach: b, privateChat: isPrivateChat(r.chatId) });
-    n[await deliver(dailyKey.alert(b.kind, date, b.trader), r.chatId, { text, keyboard: [] })]++;
+    n[await deliver(dailyKey.alert(b.kind, date, b.trader), r.chatId, { text, keyboard: [] }, { trader: b.trader, kind: "daily_contract_alert", dedupKey: `contract:${b.kind}` })]++;
   }
   return { date, breaches: breaches.length, ...n };
 }

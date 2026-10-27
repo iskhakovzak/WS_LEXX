@@ -16,6 +16,7 @@ import {
   type TradeFilters,
 } from "./trade-utils";
 import { isPreset, PRESET_META, type Preset } from "./review-presets";
+import { normalizePeriod } from "@/lib/period-range";
 
 const FILTERS_KEY = "ws.trades.filters.v2";
 const VIEWS_KEY = "ws.trades.views.v1";
@@ -27,7 +28,19 @@ export type SavedView = { id: string; name: string; filters: TradeFilters };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SORT_COLS: readonly SortCol[] = ["date", "ticker", "side", "setup", "trader", "entry", "exit", "r", "result", "pnl", "gross", "fees", "exitEff", "mfeR", "left", "impact", "hold"];
 const OUTCOMES: readonly Outcome[] = ["all", "win", "loss", "breakeven", "open"];
-const PERIODS: readonly Period[] = ["all", "today", "week", "month", "custom"];
+
+/**
+ * Stored / saved-view filters in today's shape: the period read through the one vocabulary (legacy values via
+ * normalizePeriod; the old calendar «week» / «month» now mean the last 7 / 30 days), a custom period without a usable
+ * range falls back to «Всё».
+ */
+export function normalizeStoredFilters(f: Partial<TradeFilters> | null | undefined): TradeFilters {
+  const out: TradeFilters = { ...DEFAULT_FILTERS, ...(f ?? {}) };
+  const period = normalizePeriod(out.period, "all") as Period;
+  const hasRange = DATE_RE.test(out.from) || DATE_RE.test(out.to);
+  if (period === "custom" && hasRange) return { ...out, period, from: DATE_RE.test(out.from) ? out.from : "", to: DATE_RE.test(out.to) ? out.to : "" };
+  return { ...out, period: period === "custom" ? "all" : period, from: "", to: "" };
+}
 
 /** Query-string keys owned by the trades page (everything else — ?highlight, ?new, ?fromIdea — is left untouched). */
 export const TRADES_URL_KEYS = [
@@ -58,7 +71,7 @@ export function parseTradesUrl(search: string): { state: ParsedTradesUrl; hasAny
   const period = get("period");
   if (date && DATE_RE.test(date)) { f.period = "custom"; f.from = date; f.to = date; }
   else if ((from && DATE_RE.test(from)) || (to && DATE_RE.test(to))) { f.period = "custom"; f.from = DATE_RE.test(from) ? from : ""; f.to = DATE_RE.test(to) ? to : ""; }
-  else if (period && (PERIODS as readonly string[]).includes(period) && period !== "custom") f.period = period as Period;
+  else if (period && period !== "custom") f.period = normalizePeriod(period, "all") as Period; // legacy 7d / 30d / ytd… read as the vocabulary
   const outcome = get("outcome"); if ((OUTCOMES as readonly string[]).includes(outcome)) f.outcome = outcome as Outcome;
   const side = get("side"); if (side === "Long" || side === "Short") f.side = side;
   const setup = get("setup"); if (setup) f.setup = setup;
@@ -91,9 +104,9 @@ export function serializeTradesUrl(s: TradesUrlState, keep?: URLSearchParams): s
   const set = (k: string, v: string | number | null | undefined) => { if (v !== "" && v != null) p.set(k, String(v)); };
   set("q", f.q.trim());
   set("ticker", f.ticker.trim().toUpperCase());
+  // ?period=<vocabulary> (+ from / to for «Период…»); «Всё» is the default and stays out of the URL.
   if (f.period === "custom") {
-    if (f.from && f.from === f.to) set("date", f.from);
-    else { set("from", f.from); set("to", f.to); }
+    if (f.from || f.to) { set("period", "custom"); set("from", f.from); set("to", f.to); }
   } else if (f.period !== "all") set("period", f.period);
   if (f.outcome !== "all") set("outcome", f.outcome);
   set("side", f.side);
@@ -137,7 +150,7 @@ export function useTradeFilters() {
   const [filters, setFilters] = useState<TradeFilters>(() => {
     if (initial.hasAny) return { ...DEFAULT_FILTERS, ...initial.state.filters };
     // The free-text search is not restored from storage: a stale query hiding trades is confusing.
-    return { ...readLS<TradeFilters>(FILTERS_KEY, DEFAULT_FILTERS), q: "" };
+    return { ...normalizeStoredFilters(readLS<TradeFilters>(FILTERS_KEY, DEFAULT_FILTERS)), q: "" };
   });
   const [sort, setSortState] = useState<SortConfig>(() => initial.state.sort ?? readLS<SortConfig>(SORT_KEY, { col: "date", dir: "desc" }));
   const [page, setPageState] = useState<number>(() => initial.state.page ?? 1);
@@ -221,7 +234,7 @@ export function useTradeFilters() {
     });
   }, []);
 
-  const applyView = useCallback((v: SavedView) => { setFilters({ ...DEFAULT_FILTERS, ...v.filters }); setPageState(1); }, []);
+  const applyView = useCallback((v: SavedView) => { setFilters(normalizeStoredFilters(v.filters)); setPageState(1); }, []);
 
   const toggleSort = useCallback((col: SortConfig["col"]) => {
     setSortState((prev) => (prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: col === "ticker" || col === "trader" || col === "setup" ? "asc" : "desc" }));

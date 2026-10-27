@@ -113,7 +113,8 @@ export function EdgeMatrixTab({
   }, [data, u, seed, minN, metric]);
 
   const sel = selected && grid ? grid.stats.get(`${selected.row}\u0000${selected.col}`) ?? null : null;
-  const dims = EDGE_DIMENSIONS.filter((d) => isCurator || d !== "trader");
+  // Trades come only from PropReports: no «source» axis.
+  const dims = EDGE_DIMENSIONS.filter((d) => d !== "source" && (isCurator || d !== "trader"));
   // Plain render helper (not a nested component) so the Select keeps its identity between renders.
   const dimSelect = (value: EdgeDimension, onChange: (d: EdgeDimension) => void, label: string) => (
     <Select value={value} onValueChange={(v) => onChange(v as EdgeDimension)}>

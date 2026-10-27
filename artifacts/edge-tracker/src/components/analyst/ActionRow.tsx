@@ -1,16 +1,13 @@
 /**
  * Small building blocks shared by «Сегодня до открытия», the actions table and the ticker sheet.
  */
-import * as React from "react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import {
   ArrowRight, BookmarkCheck, BookmarkPlus, Briefcase, Building2, CalendarPlus, CalendarCheck, ExternalLink, Hash, History,
-  Lightbulb, Loader2, MoreHorizontal, Repeat,
+  Lightbulb, Loader2, Repeat,
 } from "lucide-react";
-import { Delta, Pill } from "@/components/ds";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Delta, Pill, RowActions as DsRowActions } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { ReactionAgg } from "./api";
@@ -143,9 +140,6 @@ export function ReactionChip({ agg, compact = false }: { agg: ReactionAgg | null
   );
 }
 
-const ICON_BTN =
-  "grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
-
 export type RowActionsProps = {
   action: FeedAction;
   watched: boolean;
@@ -158,90 +152,60 @@ export type RowActionsProps = {
   onOpen?: () => void;
   onFilterFirm?: () => void;
   onFilterTicker?: () => void;
+  /** Keep the actions visible (the keyboard-focused table row). */
+  forceShow?: boolean;
   className?: string;
 };
 
-/** Watchlist · plan · idea · more. Used in table rows (hover-reveal) and premarket cards. */
+/**
+ * «В план» (the session is what this screen prepares for) + «…» (watchlist, idea, history, «только …», source) —
+ * ds RowActions: shown on row hover / focus, always on touch. «В плане ✓» stays visible outside it; «в вотчлисте» is in
+ * Marks.
+ */
 export function RowActions({
-  action: a, watched, inPlan, addingWatch, addingPlan, canEdit, onAddWatch, onAddPlan, onOpen, onFilterFirm, onFilterTicker, className,
+  action: a, watched, inPlan, addingWatch, addingPlan, canEdit, onAddWatch, onAddPlan, onOpen, onFilterFirm, onFilterTicker, forceShow, className,
 }: RowActionsProps) {
   const { t } = analystI18n.useT();
+  const [, navigate] = useLocation();
   return (
-    <div className={cn("flex shrink-0 items-center gap-0.5", className)}>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onAddWatch(); }}
-        disabled={!canEdit || watched || addingWatch}
-        aria-label={watched ? t("row.inWatchAria", { ticker: a.ticker }) : t("row.addWatchAria", { ticker: a.ticker })}
-        title={watched ? t("row.inWatchTitle") : !canEdit ? t("row.noRights") : t("row.addWatchTitle")}
-        className={ICON_BTN}
-      >
-        {addingWatch ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          : watched ? <BookmarkCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-          : <BookmarkPlus className="h-4 w-4" aria-hidden="true" />}
-      </button>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onAddPlan(); }}
-        disabled={!canEdit || inPlan || addingPlan}
-        aria-label={inPlan ? t("row.inPlanAria", { ticker: a.ticker }) : t("row.addPlanAria", { ticker: a.ticker })}
-        title={inPlan ? t("row.inPlanTitle") : !canEdit ? t("row.noRights") : t("row.addPlanTitle")}
-        className={ICON_BTN}
-      >
-        {addingPlan ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          : inPlan ? <CalendarCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-          : <CalendarPlus className="h-4 w-4" aria-hidden="true" />}
-      </button>
-      <Link
-        href={links.newIdea(a.ticker)}
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-        aria-label={t("row.ideaAria", { ticker: a.ticker })}
-        title={t("row.idea")}
-        className={ICON_BTN}
-      >
-        <Lightbulb className="h-4 w-4" aria-hidden="true" />
-      </Link>
-      {(onOpen || onFilterFirm || onFilterTicker || a.sourceUrl) && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              onClick={(e) => e.stopPropagation()}
-              aria-label={t("row.moreAria", { ticker: a.ticker, firm: a.firm })}
-              className={cn(ICON_BTN, "data-[state=open]:bg-[var(--glass-hover-bg)]")}
-            >
-              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60" onClick={(e) => e.stopPropagation()}>
-            {onOpen && (
-              <DropdownMenuItem onSelect={onOpen}>
-                <History className="h-4 w-4" aria-hidden="true" /> {t("row.history", { ticker: a.ticker })}
-              </DropdownMenuItem>
-            )}
-            {onFilterTicker && (
-              <DropdownMenuItem onSelect={onFilterTicker}>
-                <Hash className="h-4 w-4" aria-hidden="true" /> {t("row.only", { value: a.ticker })}
-              </DropdownMenuItem>
-            )}
-            {onFilterFirm && (
-              <DropdownMenuItem onSelect={onFilterFirm}>
-                <Building2 className="h-4 w-4" aria-hidden="true" /> {t("row.only", { value: a.firm })}
-              </DropdownMenuItem>
-            )}
-            {a.sourceUrl && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <a href={a.sourceUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" aria-hidden="true" /> {t("row.source", { source: a.source })}
-                  </a>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div className={cn("flex shrink-0 items-center justify-end gap-0.5", className)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      {inPlan && (
+        <span title={t("row.inPlanTitle")} className="inline-flex text-primary">
+          <CalendarCheck className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{t("row.inPlanAria", { ticker: a.ticker })}</span>
+        </span>
       )}
+      <DsRowActions
+        className={cn(forceShow && "opacity-100")}
+        menuLabel={t("row.moreAria", { ticker: a.ticker, firm: a.firm })}
+        more={[
+          {
+            label: addingWatch ? commonI18n.t("states.saving") : watched ? t("row.inWatchTitle") : t("row.addWatchTitle"),
+            icon: watched ? BookmarkCheck : BookmarkPlus,
+            disabled: !canEdit || watched || addingWatch,
+            onSelect: onAddWatch,
+          },
+          { label: t("row.idea"), icon: Lightbulb, onSelect: () => navigate(links.newIdea(a.ticker)) },
+          onOpen && { label: t("row.history", { ticker: a.ticker }), icon: History, onSelect: onOpen },
+          onFilterTicker && { label: t("row.only", { value: a.ticker }), icon: Hash, onSelect: onFilterTicker },
+          onFilterFirm && { label: t("row.only", { value: a.firm }), icon: Building2, onSelect: onFilterFirm },
+          a.sourceUrl ? { label: t("row.source", { source: a.source }), icon: ExternalLink, onSelect: () => { window.open(a.sourceUrl!, "_blank", "noopener,noreferrer"); } } : null,
+        ]}
+      >
+        {!inPlan && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onAddPlan}
+            disabled={!canEdit || addingPlan}
+            aria-label={t("row.addPlanAria", { ticker: a.ticker })}
+            title={!canEdit ? t("row.noRights") : t("row.addPlanTitle")}
+          >
+            {addingPlan ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CalendarPlus aria-hidden="true" />}
+          </Button>
+        )}
+      </DsRowActions>
     </div>
   );
 }

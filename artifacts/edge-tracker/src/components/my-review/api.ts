@@ -5,6 +5,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import type { EdgeVerdict } from "@/components/shared/edge-map/api";
 
 export type ReviewDimension = "setup" | "ticker" | "hour";
 
@@ -22,6 +23,8 @@ export type MyReview = {
   imx?: { count: number; net: number; excluded: boolean };
   earn: Record<ReviewDimension, ReviewBucket[]>;
   lose: { patterns: ReviewPattern[] } & Record<ReviewDimension, ReviewBucket[]>;
+  /** Edge-map verdicts (roadmap R4): what the page shows as «где зарабатываю / теряю»; null = never computed. */
+  edge?: { asOf: string | null; earn: EdgeVerdict[]; lose: EdgeVerdict[] } | null;
   rule: { mistake: string; costNet: number; count: number; days: number; window: { from: string; to: string }; source: "plan" | "period" } | null;
   generatedAt: string;
 };

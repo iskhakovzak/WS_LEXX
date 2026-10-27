@@ -67,7 +67,7 @@ export function TraderDaySheet({ date, alias, staff, onClose }: { date: string |
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-md">
+      <SheetContent side="right" size="md" className="flex flex-col gap-4 overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2.5">
             {d && <AliasBadge row={d} />}
@@ -98,7 +98,7 @@ export function TraderDaySheet({ date, alias, staff, onClose }: { date: string |
         ) : (
           <>
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("sheet.tickers")}</h3>
+              <h3 className="text-xs font-semibold text-muted-foreground">{t("sheet.tickers")}</h3>
               <ul className="flex flex-col gap-2">
                 {d.tickers.map((tk) => <TickerRow key={tk.ticker} tk={tk} date={d.date} alias={d.alias} />)}
               </ul>

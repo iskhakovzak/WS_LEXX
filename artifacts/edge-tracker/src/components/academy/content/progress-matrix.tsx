@@ -9,6 +9,7 @@ import { Download, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { downloadCsv } from "@/components/analytics-page/metrics";
 import { DataTable, EmptyState, ErrorState, Panel, PanelSkeleton, Pill, SortableTh, StatCard, StatGrid, StatGridSkeleton, useTableSort } from "@/components/ds";
+import { StageMedal, medalStageOf } from "@/components/shared/medals";
 import { cn } from "@/lib/utils";
 import { stageLabelOf, useProgressMatrix, type ProgressStudent } from "./api";
 import { PctBar } from "./bits";
@@ -99,7 +100,12 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
                   <tr key={r.userName}>
                     <td>
                       <Link href={academyLinks.learn({ program: d.program!.id, user: r.userName })} className="font-medium text-foreground hover:text-primary">{personName(r.userName)}</Link>
-                      {r.stage && <span className="ml-2 text-xs text-muted-foreground">{stageLabelOf(r.stage)}</span>}
+                      {r.stage && (
+                        <span className="ml-2 inline-flex items-center gap-1 align-middle text-xs text-muted-foreground">
+                          {medalStageOf(r.stage) && <StageMedal stage={medalStageOf(r.stage) ?? "junior"} size={16} decorative />}
+                          {stageLabelOf(r.stage)}
+                        </span>
+                      )}
                     </td>
                     <td className="min-w-[9rem]">
                       <div className="flex items-center gap-2">

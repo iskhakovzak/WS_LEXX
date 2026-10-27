@@ -25,13 +25,12 @@ export default {
     ytd: "Yil boshidan",
     quarter: "Chorak",
     month: "Oy",
-    custom: "Boshqa",
     quarterShort: "{q}-chorak",
     quarterOfYear: "{year}, {q}-chorak",
     monthOfYear: "{month} {year}",
     ytdOf: "{year}-yil boshidan",
-    from: "Dan",
-    to: "Gacha",
+    /** Option hints of the calendar period picker (the words are the shared vocabulary). */
+    hints: { ytd: "Kalendar yil: tanlangan yilning 1-yanvaridan", quarter: "Tanlangan yilning choragi: Q1–Q4", month: "Tanlangan yilning oyi" },
   },
   filters: {
     years: "Yillar",

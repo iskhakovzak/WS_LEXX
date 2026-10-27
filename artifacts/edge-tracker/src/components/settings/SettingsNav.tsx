@@ -1,13 +1,18 @@
 import * as React from "react";
 import { forwardRef } from "react";
-import { ArrowUpRight, Bell, Database, Palette, Plug, Search, ShieldCheck, SlidersHorizontal, UserRound, Users, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Bell, LockKeyhole, Palette, Search, ShieldCheck, SlidersHorizontal, UserRound, type LucideIcon } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import type { Capability } from "@/lib/permissions";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
 
-export type SectionId = "profile" | "appearance" | "trading" | "notifications" | "team" | "permissions" | "data" | "integrations";
+/**
+ * Personal settings only (design audit wave 2B). The desk's team, rights, backups and integrations live in the desk
+ * console (/admin): one «Пульт деска» item opens it (staff only). Old #team / #permissions / #data / #integrations
+ * links are mapped in pages/settings.tsx (LEGACY_SECTIONS).
+ */
+export type SectionId = "profile" | "appearance" | "trading" | "notifications" | "security" | "desk";
 
 export type SectionMeta = {
   id: SectionId;
@@ -40,16 +45,11 @@ export const SECTIONS: SectionMeta[] = [
     keywords: "счёт счет риск комиссия плечо leverage горизонт интрадей овернайт свинг чек-лист checklist покупательная buying power размер позиции account risk fees horizon hisob komissiya leverej savdo" }),
   section("notifications", Bell, {
     keywords: "уведомления оповещения telegram бот утро вечер notifications alerts bot bildirishnoma xabarnoma" }),
-  section("team", Users, {
-    keywords: "команда пользователи роли пригласить добавить деактивировать куратор ментор риск-менеджер назначения users team invite roles jamoa foydalanuvchi",
-    requiresAny: ["users.read.team"], href: "/admin?tab=people" }),
-  section("permissions", ShieldCheck, {
-    keywords: "права доступ роли матрица разрешения permissions capabilities куратор админ трейдер scope закреплённые access huquq ruxsat",
-    requiresAny: ["users.read.team", "permissions.manage"], href: "/admin?tab=roles" }),
-  section("data", Database, {
-    keywords: "данные экспорт импорт csv json бэкап backup база выгрузка data export maʼlumot eksport zaxira" }),
-  section("integrations", Plug, {
-    keywords: "интеграции telegram телеграм бот привязать отвязать рассылка broadcast integrations bot integratsiya" }),
+  section("security", LockKeyhole, {
+    keywords: "lock screen screensaver quick code pin auto-lock security xavfsizlik qulf ekran kod" }),
+  section("desk", ShieldCheck, {
+    keywords: "пульт админка команда пользователи роли права доступ бэкап backup данные экспорт интеграции рассылка telegram broadcast admin console team permissions data integrations jamoa huquq zaxira integratsiya",
+    requiresAny: ["users.read.team", "permissions.manage", "admin.backups.read", "admin.audit"], href: "/admin" }),
 ];
 
 export function visibleSections(can: (cap: Capability) => boolean): SectionMeta[] {

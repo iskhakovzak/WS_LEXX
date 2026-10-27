@@ -1,11 +1,14 @@
 import { cn } from "@/lib/utils";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { OctagonX } from "lucide-react";
 import type { RiskLimits, RiskMetrics } from "./use-risk";
 import { usageColor, usageText } from "./primitives";
 import { fmtPct, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
+import { LiveNumber } from "@/components/ds";
+
+const usd0 = (n: number) => fmtUsd(n, { decimals: 0 });
 
 type Item = { key: string; label: string; used: number; limit: number | null; pnlText: string };
 
@@ -19,7 +22,8 @@ function items(m: RiskMetrics, L: RiskLimits | null): Item[] {
   ];
 }
 
-function Cell({ it, big }: { it: Item; big: boolean }) {
+/** `announce`: the remaining amount is a polite live region (the trader's own day cell only). */
+function Cell({ it, big, announce = false }: { it: Item; big: boolean; announce?: boolean }) {
   const reduce = useReducedMotion();
   const { t } = riskI18n.useT();
   if (it.limit == null || it.limit <= 0) {
@@ -38,12 +42,12 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
   return (
     <div className={cn("flex flex-col gap-1.5 rounded-xl p-3 ring-1 ring-inset", over ? "bg-down/10 ring-down/40" : pct >= 70 ? "bg-warn/10 ring-warn/30" : "bg-[var(--glass-bg)] ring-[var(--field-border)]")}>
       <span className="text-xs text-muted-foreground">{it.label}</span>
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
-        <span className={cn("inline-flex items-center gap-1.5 font-semibold", big ? "text-2xl" : "text-lg", over ? "text-down" : usageText(pct))}>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
+        <span className={cn("inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap font-semibold", big ? "text-2xl" : "text-lg", over ? "text-down" : usageText(pct))}>
           {over && <OctagonX className={big ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true" />}
-          {over ? t("remaining.stop") : fmtUsd(remaining, { decimals: 0 })}
+          {over ? t("remaining.stop") : <LiveNumber value={remaining} format={usd0} announce={announce} />}
         </span>
-        <span className={cn("text-xs", over ? "font-medium text-down" : "text-muted-foreground")}>
+        <span className={cn("min-w-0 text-xs", over ? "font-medium text-down" : "text-muted-foreground")}>
           {over
             ? t("remaining.over", { amount: fmtUsd(it.used - it.limit, { decimals: 0 }) })
             : t("remaining.leftPct", { pct: fmtPct(remainingPct, { decimals: 0, signed: false }) })}
@@ -70,11 +74,21 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
   );
 }
 
-export function StopRemaining({ m, limits, big = false, className }: { m: RiskMetrics; limits: RiskLimits | null; big?: boolean; className?: string }) {
+export function StopRemaining({ m, limits, big = false, announce = false, className }: {
+  m: RiskMetrics;
+  limits: RiskLimits | null;
+  big?: boolean;
+  /** Announce the day's remaining amount to screen readers when it changes (the trader's own view; not the staff card). */
+  announce?: boolean;
+  className?: string;
+}) {
   riskI18n.useT();
   return (
-    <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-3", className)}>
-      {items(m, limits).map((it) => <Cell key={it.key} it={it} big={big} />)}
+    // Three in a row once the block itself has room (≥ 32rem): the same tiles fit a narrow sheet and a wide page.
+    <div className={cn("@container", className)}>
+      <div className="grid grid-cols-1 gap-grid @lg:grid-cols-3">
+        {items(m, limits).map((it) => <Cell key={it.key} it={it} big={big} announce={announce && it.key === "day"} />)}
+      </div>
     </div>
   );
 }

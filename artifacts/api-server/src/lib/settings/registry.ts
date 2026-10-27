@@ -8,8 +8,8 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access";
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
  * `pilot: true` = one of the ~10 settings the pilot needs (docs/PILOT.md §2.5 / §3): the admin page shows only these
@@ -42,8 +42,18 @@ export const SETTINGS = {
   "daily.feesShare": { group: "daily", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesHealthyShare": { group: "daily", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesMinUsd": { group: "daily", type: "number", default: 5, min: 0, max: 500, step: 1, unit: "usd" },
+  // Fees judged per NY week (roadmap R2): Σ fees ≥ max(feesWeeklyMinUsd, feesShare × max(Σ gross, 0)), one hit per week;
+  // off = per day against feesMinUsd. A week / day with gross ≤ 0 counts (the fees were paid for nothing).
+  "daily.feesWeekly": { group: "daily", type: "boolean", default: true },
+  "daily.feesWeeklyMinUsd": { group: "daily", type: "number", default: 25, min: 0, max: 5000, step: 5, unit: "usd" },
   "daily.givebackMinPeakUsd": { group: "daily", type: "number", default: 50, min: 0, max: 5000, step: 10, unit: "usd" },
   "daily.givebackKeepShare": { group: "daily", type: "number", default: 0.2, min: 0, max: 1, step: 0.05, unit: "ratio" },
+
+  // Coaching (roadmap R2): the per-trader fee model by price band (lib/feeModel) — rolling window, trades a band needs,
+  // and the gross-per-share ÷ fees-per-share ratio below which a band is flagged.
+  "coach.feeWindowDays": { group: "coach", type: "number", default: 60, min: 20, max: 250, step: 5, unit: "days" },
+  "coach.feeBandMinTrades": { group: "coach", type: "number", default: 30, min: 5, max: 500, step: 5, unit: "trades" },
+  "coach.feeBandRatioMin": { group: "coach", type: "number", default: 1.5, min: 1, max: 5, step: 0.1, unit: "times" },
 
   // Own contract → discipline (lib/daily/discipline)
   "discipline.contractKeptPoints": { group: "discipline", type: "number", default: 5, min: 0, max: 50, step: 1, unit: "points" },
@@ -54,6 +64,11 @@ export const SETTINGS = {
   // A broken day: «reset» = the streak starts again from 0; «halve» = it keeps half (rounded down).
   "discipline.streakOnBreak": { group: "discipline", type: "select", default: "reset", options: ["reset", "halve"], pilot: true },
   "discipline.pointsWindowDays": { group: "discipline", type: "number", default: 30, min: 5, max: 120, step: 1, unit: "days" },
+  // Discipline index thresholds of the ladder seeds (roadmap R3): one key per place, current values kept — promotion
+  // (academy criteria, lib/promotionEngine) 75, scaling plan (lib/scalingSeed) 70. Choosing one number is an owner
+  // decision; stored criteria / rules stay authoritative once seeded (editable on their own screens).
+  "discipline.promotionMinIndex": { group: "discipline", type: "number", default: 75, min: 0, max: 100, step: 1, unit: "points" },
+  "discipline.scalingMinIndex": { group: "discipline", type: "number", default: 70, min: 0, max: 100, step: 1, unit: "points" },
 
   // Rewards: levels by all-time discipline points (contract + quest points); traded days a clean month needs
   "rewards.level1Points": { group: "rewards", type: "number", default: 50, min: 1, max: 100000, step: 10, unit: "points" },
@@ -137,8 +152,34 @@ export const SETTINGS = {
   "telegram.eveningTime": { group: "telegram", type: "time", default: "16:30", pilot: true },
   "telegram.contractAlertsEnabled": { group: "telegram", type: "boolean", default: true },
 
+  // Coaching evidence (roadmap R4, lib/edgeMap.ts): τ of the fallback desk prior (bps of notional) when a slice has
+  // fewer than 5 traders with 30+ trades, and the smallest |$ per active day| an edge-map verdict needs.
+  "coach.tauDefaultBps": { group: "coach", type: "number", default: 3, min: 1, max: 50, step: 0.5, unit: "bp" },
+  "coach.leakMinUsdPerDay": { group: "coach", type: "number", default: 3, min: 0, max: 100, step: 0.5, unit: "usd" },
+
+  // Plateau detector (roadmap R6, lib/plateau.ts): active days at a stage before «not at the pace yet» is judged.
+  "academy.plateau.minTenure": { group: "academy", type: "number", default: 120, min: 40, max: 500, step: 10, unit: "days" },
+  // «Цена джуна до безубытка» (lib/juniorCost): the desk's cost of one seat per month (software, data, desk; 0 = only the
+  // trading loss counts) and the window of own trading days the cumulative net must stay ≥ 0 to count as breakeven.
+  "academy.juniorCost.seatUsdMonth": { group: "academy", type: "number", default: 0, min: 0, max: 100000, step: 50, unit: "usd" },
+  "academy.juniorCost.stableDays": { group: "academy", type: "number", default: 20, min: 5, max: 60, step: 1, unit: "days" },
+
+  // Telegram push budget per person and New York day (roadmap R3; lib/notificationCore pushVerdict, lib/pushBudget):
+  // all non-risk pushes, of them coaching nudges; a contract alert waits while a risk alert is this fresh. Risk alerts
+  // are never capped, only deduplicated.
+  "alerts.budget.dailyPush": { group: "alerts", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "count" },
+  "alerts.budget.coachingPush": { group: "alerts", type: "number", default: 1, min: 0, max: 10, step: 1, unit: "count" },
+  "alerts.budget.riskQuietMinutes": { group: "alerts", type: "number", default: 30, min: 0, max: 240, step: 5, unit: "minutes" },
+
   // Curator queue (lib/daily/costQueue)
   "curator.queueCarryDays": { group: "curator", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "days" },
+  // Curator evening digest (roadmap R3; lib/curatorDigest, job curator.digest): one Telegram + one in-app notice per
+  // curator, weekdays at this New York time — closed days to review and the top items of the queue.
+  "curator.digestEnabled": { group: "curator", type: "boolean", default: true },
+  "curator.digestTime": { group: "curator", type: "time", default: "17:30" },
+  "curator.digestTopN": { group: "curator", type: "number", default: 3, min: 1, max: 10, step: 1, unit: "count" },
+  // R11: «Следующие шаги» keep this many steps (urgent ones ≥ 80 always); the rest waits for the 17:30 digest.
+  "curator.capacity": { group: "curator", type: "number", default: 6, min: 1, max: 30, step: 1, unit: "count" },
 
   // Gamification (lib/gamification/*): monthly seasons, curator league, recognition, setup mastery, streak freeze
   "gamification.enabled": { group: "gamification", type: "boolean", default: true },
@@ -177,6 +218,11 @@ export const SETTINGS = {
   "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true, hidden: true },
   // Ladder stages that see other traders' real names (staff always do); unsaved → derived from the legacy switch above.
   "privacy.namesVisibleTo": { group: "privacy", type: "stages", default: [], hidden: true },
+  // Share cards (web components/trades/share-card: a PNG of one own trade, drawn in the browser, nothing uploaded).
+  // Off → no «Картинка» button anywhere. «r_only» → the card never shows $ (result in R or %, the $ switch is gone).
+  // Read by the web from GET /permissions/me → shareCards.
+  "shareCards.enabled": { group: "privacy", type: "boolean", default: true },
+  "shareCards.money": { group: "privacy", type: "select", default: "usd", options: ["usd", "r_only"] },
 
   // Sections closed per ladder stage (owner 2026-10-21): web nav href → blocked stages. {} = everything open. Staff are
   // never blocked. The web menu / route guard read GET /permissions/me → nav.blocked; the API answers 403
@@ -196,6 +242,8 @@ export const SETTINGS = {
   "trainer.slipUsd": { group: "trainer", type: "number", default: 0.01, min: 0, max: 0.5, step: 0.005, unit: "usd" },
   "trainer.stopSlipUsd": { group: "trainer", type: "number", default: 0.02, min: 0, max: 1, step: 0.005, unit: "usd" },
   "trainer.oneRUsd": { group: "trainer", type: "number", default: 50, min: 1, max: 10_000, step: 5, unit: "usd" },
+  // Every trainer ticker-day opens at least this far from the previous close, up or down, with a catalyst (lib/sim/catalyst.ts).
+  "trainer.minGapPct": { group: "trainer", type: "number", default: 7, min: 1, max: 50, step: 0.5, unit: "pct" },
   "trainer.dailyEnabled": { group: "trainer", type: "boolean", default: true },
   "trainer.dailyPickTime": { group: "trainer", type: "time", default: "08:30" },
   "trainer.dailyPlayMinutes": { group: "trainer", type: "number", default: 120, min: 30, max: 390, step: 15, unit: "minutes", pilot: true },
@@ -250,6 +298,114 @@ export const SETTINGS = {
   // A change re-derives every trade (job trades.strategy-backfill).
   "trades.imxWindowStart": { group: "trades", type: "time", default: "15:50" },
   "trades.imxWindowEnd": { group: "trades", type: "time", default: "16:00" },
+
+  // «Ассистент WS» (lib/assistant, docs/AI_ASSISTANT.md; key = env AI_INTEGRATIONS_ANTHROPIC_API_KEY, without it the
+  // assistant answers 503 AI_NOT_CONFIGURED): the switch, the default (cheap) model and the escalation model with the
+  // auto-escalation switch (owner 2026-10-25: «большинство задач — Haiku, если нужно умнее — Sonnet»), juniors on / off
+  // (who else may use it: the roles matrix, capability assistant.use), daily token budgets per user and model class
+  // (input + cache writes + output; cache reads not counted), the per-user request rate, and whether the audit keeps
+  // message bodies (off: only who / when / tokens / tools)
+  "assistant.enabled": { group: "assistant", type: "boolean", default: true },
+  "assistant.defaultModel": { group: "assistant", type: "select", default: "claude-haiku-5-5", options: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
+  "assistant.smartModel": { group: "assistant", type: "select", default: "claude-sonnet-5-5", options: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"] },
+  "assistant.autoEscalate": { group: "assistant", type: "boolean", default: true },
+  "assistant.juniorsEnabled": { group: "assistant", type: "boolean", default: true },
+  // One daily budget per user in units (owner 2026-10-25: 1M): default-model tokens count 1x, boosted / escalated /
+  // advisor tokens count boostMultiplier x (the «x5» badge). Replaces the per-model budgets (migration 0261). 0 = off.
+  "assistant.dailyUnits": { group: "assistant", type: "number", default: 1_000_000, min: 0, max: 50_000_000, step: 50_000, unit: "tokens" },
+  "assistant.boostMultiplier": { group: "assistant", type: "number", default: 5, min: 1, max: 50, step: 1, unit: "count" },
+  // Advisor tool (beta advisor-tool-2026-03-01): heavy tasks stay on the default model, which consults the advisor model
+  // mid-answer instead of re-running on the escalation model. Off = the old routing (re-run on assistant.smartModel).
+  "assistant.advisorEnabled": { group: "assistant", type: "boolean", default: true },
+  "assistant.advisorModel": { group: "assistant", type: "select", default: "claude-sonnet-5-5", options: ["claude-sonnet-5-5", "claude-opus-5-5"] },
+  "assistant.requestsPer10Min": { group: "assistant", type: "number", default: 20, min: 1, max: 200, step: 1, unit: "count" },
+  "assistant.auditBodies": { group: "assistant", type: "boolean", default: false },
+
+  // Nightly AI reviews at half price (lib/assistant/batch, job ai.batch-reviews; Message Batches API, −50%): when the
+  // day closes (every EOD of the day closed, at the latest aiBatch.time NY) ONE batch carries an «AI-разбор дня» for
+  // every trader who traded; Fridays optionally the weekly summary per trader, the 1st of the month the monthly one.
+  // Off until the owner turns it on. They never spend a trader's personal budget (assistant.dailyUnits): they count
+  // against the desk-wide nightly cap in the same units; over the cap, traders without a day review come first, then
+  // juniors. The model writes the reviews; the advisor follows assistant.advisorEnabled / assistant.advisorModel.
+  "aiBatch.enabled": { group: "aiBatch", type: "boolean", default: false },
+  "aiBatch.time": { group: "aiBatch", type: "time", default: "21:00" },
+  "aiBatch.day": { group: "aiBatch", type: "boolean", default: true },
+  "aiBatch.week": { group: "aiBatch", type: "boolean", default: false },
+  "aiBatch.month": { group: "aiBatch", type: "boolean", default: false },
+  "aiBatch.nightlyUnits": { group: "aiBatch", type: "number", default: 2_000_000, min: 0, max: 100_000_000, step: 100_000, unit: "tokens" },
+  "aiBatch.model": { group: "aiBatch", type: "select", default: "claude-haiku-5-5", options: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
+
+  // Market regime (lib/marketRegime): the daily loss limit multiplier of each desk regime. By default it is only a
+  // suggestion (base × multiplier on the risk screen and the trader's day); applyLimits = the effective daily limits
+  // of /risk and the stop alerts use it (stored limits never change, so switching it off restores them).
+  "regime.mult.theme_bull": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.macro": { group: "regime", type: "number", default: 0.75, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.range": { group: "regime", type: "number", default: 0.5, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.panic": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.idiosyncratic": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.mult.euphoria": { group: "regime", type: "number", default: 1, min: 0.1, max: 2, step: 0.05, unit: "times" },
+  "regime.applyLimits": { group: "regime", type: "boolean", default: false },
+
+  // Live leak guard (lib/leakGuard): personal leak patterns caught at the first PropReports sync that shows them →
+  // intervention ladder (soft: banner + notice with a countdown; firm: + required acknowledgement, the curator is told
+  // when it is ignored; hard: + «на паузе» on the risk desk, the risk manager is told to act — PropReports is a
+  // back office and cannot block orders). Ladder per stage (default: Джун firm, Трейдер / Сеньор soft) with a
+  // per-trader override on the risk desk. Telegram off by default and never from a non-production API.
+  "leakGuard.enabled": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.afterLoss": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.firstTrade": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.ruleViolation": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.nearStop": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.pauseMinutes": { group: "leakGuard", type: "number", default: 10, min: 1, max: 60, step: 1, unit: "minutes" },
+  "leakGuard.violationPauseMinutes": { group: "leakGuard", type: "number", default: 30, min: 5, max: 240, step: 5, unit: "minutes" },
+  "leakGuard.nearStopPauseMinutes": { group: "leakGuard", type: "number", default: 15, min: 5, max: 240, step: 5, unit: "minutes" },
+  "leakGuard.firstTradeSizeRatio": { group: "leakGuard", type: "number", default: 0.6, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
+  "leakGuard.minOccurrences": { group: "leakGuard", type: "number", default: 5, min: 2, max: 100, step: 1, unit: "trades" },
+  "leakGuard.minCostUsd": { group: "leakGuard", type: "number", default: 10, min: 0, max: 1000, step: 5, unit: "usd" },
+  "leakGuard.minTStat": { group: "leakGuard", type: "number", default: 1, min: 0, max: 5, step: 0.1 },
+  "leakGuard.lookbackDays": { group: "leakGuard", type: "number", default: 90, min: 20, max: 365, step: 5, unit: "days" },
+  "leakGuard.ackMinutes": { group: "leakGuard", type: "number", default: 3, min: 1, max: 30, step: 1, unit: "minutes" },
+  "leakGuard.maxEventsPerDay": { group: "leakGuard", type: "number", default: 6, min: 1, max: 50, step: 1, unit: "count" },
+  "leakGuard.levelJunior": { group: "leakGuard", type: "select", default: "firm", options: ["off", "soft", "firm", "hard"] },
+  "leakGuard.levelTrader": { group: "leakGuard", type: "select", default: "soft", options: ["off", "soft", "firm", "hard"] },
+  "leakGuard.levelSenior": { group: "leakGuard", type: "select", default: "soft", options: ["off", "soft", "firm", "hard"] },
+  "leakGuard.quietEnabled": { group: "leakGuard", type: "boolean", default: false },
+  "leakGuard.quietFrom": { group: "leakGuard", type: "time", default: "15:50" },
+  "leakGuard.quietTo": { group: "leakGuard", type: "time", default: "16:00" },
+  "leakGuard.telegram": { group: "leakGuard", type: "boolean", default: false },
+  // Capital allocation (lib/capital): weekly (Fri 19:30 NY) and on demand, per trader raise / keep / cut of the daily loss
+  // limit (BP in the same ratio) from the shrunk edge, the edge in the current regime and discipline. Proposals land in
+  // the scaling queue; autoApply (off by default) lets the weekly job apply them itself. Weights are relative shares.
+  "capital.weightEdge": { group: "capital", type: "number", default: 0.5, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "capital.weightRegime": { group: "capital", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "capital.weightDiscipline": { group: "capital", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
+  "capital.maxStepUpPct": { group: "capital", type: "number", default: 20, min: 0, max: 100, step: 1, unit: "pct" },
+  "capital.maxStepDownPct": { group: "capital", type: "number", default: 25, min: 0, max: 90, step: 1, unit: "pct" },
+  "capital.minStepPct": { group: "capital", type: "number", default: 5, min: 1, max: 50, step: 1, unit: "pct" },
+  "capital.minTrades": { group: "capital", type: "number", default: 30, min: 5, max: 1000, step: 5, unit: "trades" },
+  "capital.windowDays": { group: "capital", type: "number", default: 60, min: 20, max: 250, step: 5, unit: "days" },
+  "capital.includeJuniors": { group: "capital", type: "boolean", default: false },
+  "capital.disciplineGate": { group: "capital", type: "number", default: 60, min: 0, max: 100, step: 1, unit: "points" },
+  "capital.disciplineCut": { group: "capital", type: "number", default: 35, min: 0, max: 100, step: 1, unit: "points" },
+  "capital.floorPctOfTier": { group: "capital", type: "number", default: 50, min: 10, max: 100, step: 5, unit: "pct" },
+  "capital.capPctOfTier": { group: "capital", type: "number", default: 150, min: 100, max: 500, step: 5, unit: "pct" },
+  "capital.maxDeskGrowthPct": { group: "capital", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "pct" },
+  "capital.autoApply": { group: "capital", type: "boolean", default: false },
+  // «Ментор» — the personal AI mentor (lib/mentor). It runs on the assistant's models and the member's daily budget
+  // (assistant.dailyUnits); the daily rhythm is generated on demand when the trader opens the mentor. Escalation to the
+  // curator is deterministic (no model): a tilt streak, repeated commitment breaks, drawdown near the limit, silence.
+  // Scheduled pushes (a pre-market brief and a post-session debrief written ahead through the Message Batches API at
+  // half price) are off by default; they count against mentor.pushDailyUnits, never a trader's personal budget.
+  "mentor.enabled": { group: "mentor", type: "boolean", default: true },
+  "mentor.escalationsEnabled": { group: "mentor", type: "boolean", default: true },
+  "mentor.escTiltDays": { group: "mentor", type: "number", default: 3, min: 2, max: 10, step: 1, unit: "days" },
+  "mentor.escBreakCount": { group: "mentor", type: "number", default: 4, min: 2, max: 20, step: 1, unit: "count" },
+  "mentor.escDrawdownShare": { group: "mentor", type: "number", default: 0.8, min: 0.5, max: 1, step: 0.05, unit: "ratio" },
+  "mentor.escSilenceDays": { group: "mentor", type: "number", default: 3, min: 2, max: 15, step: 1, unit: "days" },
+  "mentor.pushesEnabled": { group: "mentor", type: "boolean", default: false },
+  "mentor.briefTime": { group: "mentor", type: "time", default: "08:45" },
+  "mentor.debriefTime": { group: "mentor", type: "time", default: "16:30" },
+  "mentor.pushDailyUnits": { group: "mentor", type: "number", default: 1_000_000, min: 0, max: 50_000_000, step: 50_000, unit: "tokens" },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

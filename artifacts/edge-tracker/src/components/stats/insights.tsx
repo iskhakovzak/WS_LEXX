@@ -147,7 +147,7 @@ export function ExtremesPanel({ trades, lists, metric, hideTrader }: {
       {valued.length === 0 ? (
         <EmptyState icon={Trophy} title={t("extremes.empty", { unit })} description={t("extremes.emptyHint")} />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <List title={t("extremes.best")} icon={Trophy} tone="up" items={best} empty={t("extremes.noBest")} />
           <List title={t("extremes.worst")} icon={AlertTriangle} tone="down" items={worst} empty={t("extremes.noWorst")} />
 

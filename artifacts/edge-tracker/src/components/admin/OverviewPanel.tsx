@@ -1,4 +1,5 @@
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Link } from "wouter";
 import {
   AlertTriangle, ArrowRight, BookX, CheckCircle2, ClipboardCheck, Clock, Database, DatabaseBackup, Flag, Gauge, Link2, ListChecks,
@@ -14,6 +15,7 @@ import { timeAgo, type DeskPulse, type Overview, type RiskDeskLite } from "./api
 import { actorName, describeAudit } from "./audit-text";
 import type { DataCheck, EodStatus, HealthData, ReviewLoad } from "./console-api";
 import { backupProblem, isWeekendYmd, overdueByCurator } from "./overview-model";
+import { syncStale } from "@/lib/trading-date";
 import type { TraderFilter } from "./TradersTable";
 import { fmtCount, fmtDate, fmtDeskDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -149,9 +151,9 @@ function buildItems({
     if (unmatched) items.push({ key: "accounts", tone: "warn", icon: Link2, title: t("attention.unmappedAccounts", { count: unmatched }), detail: names([...sy.unmatched, ...sy.accounts.unmapped]), action: { label: A("map"), go: () => onGo("people") } });
     if (sy.pending) items.push({ key: "pending", tone: "warn", icon: Database, title: t("attention.pending", { count: sy.pending }), detail: t("attention.pendingDetail"), action: { label: A("reconcile"), href: "/integrations?tab=reconcile" } });
     const lastAt = sy.lastRun?.startedAt ?? sy.lastSyncedAt;
-    const staleDays = lastAt ? Math.floor((Date.now() - Date.parse(lastAt)) / 86_400_000) : null;
+    const fresh = syncStale(lastAt);
     if (!lastAt) items.push({ key: "nosync", tone: "warn", icon: Plug, title: t("attention.noSync"), action: { label: A("integrations"), href: "/integrations" } });
-    else if (staleDays != null && staleDays >= 3) items.push({ key: "stale-sync", tone: "warn", icon: Plug, title: t("attention.staleSync", { days: staleDays }), detail: sy.configured ? t("attention.staleConfigured") : t("attention.staleManual"), action: { label: A("integrations"), href: "/integrations" } });
+    else if (fresh.stale) items.push({ key: "stale-sync", tone: "warn", icon: Plug, title: t("attention.staleSync", { days: Math.max(1, fresh.days) }), detail: sy.configured ? t("attention.staleConfigured") : t("attention.staleManual"), action: { label: A("integrations"), href: "/integrations" } });
   }
 
   const high = (quality ?? []).filter((c) => c.severity === "high" && c.count > 0);
@@ -201,8 +203,10 @@ function SyncPanel({ health, error, onGo }: { health: HealthData | undefined; er
   const { t } = adminI18n.useT();
   const sy = health?.sync;
   const run = sy?.lastRun;
-  const runTone: Tone = !run ? "neutral" : run.status === "ok" ? "up" : run.status === "running" ? "accent" : "down";
-  const runLabel = !run ? "—" : t(`sync.status.${run.status === "ok" || run.status === "running" || run.status === "partial" ? run.status : "error"}`);
+  // A successful run that is old reads as a yellow «устарело», not a green «успешно» (design audit: data trust).
+  const stale = run?.status === "ok" && syncStale(run.startedAt ?? sy?.lastSyncedAt).stale;
+  const runTone: Tone = !run ? "neutral" : stale ? "warn" : run.status === "ok" ? "up" : run.status === "running" ? "accent" : "down";
+  const runLabel = !run ? "—" : t(`sync.status.${stale ? "stale" : run.status === "ok" || run.status === "running" || run.status === "partial" ? run.status : "error"}`);
   return (
     <Panel
       title="PropReports"

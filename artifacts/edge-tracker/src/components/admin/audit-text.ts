@@ -13,6 +13,8 @@ import { adminAuditI18n } from "@/i18n/ns/adminAudit";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
 import { auditValueText, settingLabel } from "./desk-settings-text";
 import type { SettingUnit } from "./desk-settings-model";
+import { isRegimeKey } from "@/lib/market-regime";
+import { regimeName } from "@/components/shared/regime/labels";
 import RU from "@/i18n/locales/ru/adminAudit";
 
 export interface AuditLike {
@@ -326,6 +328,27 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
 
+    case "leakGuard.level": {
+      const lvl = (v: unknown) => {
+        const k = typeof v === "string" && ["off", "soft", "firm", "hard"].includes(v) ? (v as "off" | "soft" | "firm" | "hard") : "default";
+        return t(`leakGuardLevel.${k}`);
+      };
+      return { label: L("leakGuard"), tone: "warn", text: t("text.leakGuardLevel", { trader: pn(e.targetId) }), detail: `${lvl(d.from)} → ${lvl(d.to)}` };
+    }
+    case "leakGuard.release": return { label: L("leakGuard"), tone: "neutral", text: t("text.leakGuardRelease", { trader: pn(e.targetId) }) };
+
+    // capital allocation (api lib/capital): limits applied / rejected / reverted by a curator or the weekly job
+    case "capital.apply": case "capital.revert": {
+      const lim = (x: unknown) => fmtUsd(n((x as { dailyLossLimit?: unknown } | null)?.dailyLossLimit), { decimals: 0 });
+      return { label: L("capitalAllocation"), tone: e.action === "capital.apply" ? "accent" : "warn", text: t(e.action === "capital.apply" ? "text.capitalApply" : "text.capitalRevert", { trader: pn(e.targetId) }), detail: `${lim(d.before)} → ${lim(d.after)}` };
+    }
+    case "capital.reject": return { label: L("capitalAllocation"), tone: "neutral", text: t("text.capitalReject", { trader: pn(e.targetId) }) };
+    case "capital.recompute": return { label: L("capitalAllocation"), tone: "neutral", text: t("text.capitalRecompute", { created: n(d.created), updated: n(d.updated), applied: n(d.applied) }) };
+    case "regime.set": {
+      const name = (k: unknown) => (isRegimeKey(k) ? regimeName(k) : t("none"));
+      return { label: L("regime"), tone: "accent", text: t("text.regimeSet", { day: s(e.targetId) }), detail: `${name(d.from)} → ${name(d.to)}` };
+    }
+
     case "academy.path.seed_demo": {
       const count = Array.isArray(d.created) ? d.created.length : 0;
       return { label: L("academy"), tone: "neutral", text: count ? t("text.seedDemoCount", { count }) : t("text.seedDemo") };
@@ -380,7 +403,7 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
     case "office_capital.set": return {
-      label: L("capital"), tone: "neutral", text: t("text.capitalSet", { date: s(e.targetId) }),
+      label: L("capitalAllocation"), tone: "neutral", text: t("text.capitalSet", { date: s(e.targetId) }),
       detail: joinDetail([
         d.capital != null ? t("detail.capital", { value: fmtUsd(n(d.capital), { decimals: "trim" }) }) : "",
         d.goalPct != null ? t("detail.goal", { value: n(d.goalPct) }) : "",
@@ -399,6 +422,7 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
 
+    case "user.rename": return { label: L("rename"), tone: "neutral", text: t("text.rename", { from: pn(d.from), to: pn(d.to) }), detail: t("detail.renameRows", { count: n(d.rows) }) };
     case "user.name_latin": return d.to
       ? { label: L("latin"), tone: "neutral", text: t("text.latinSet", { who, to: s(d.to) }), detail: d.from ? t("detail.was", { value: s(d.from) }) : undefined }
       : { label: L("latin"), tone: "neutral", text: t("text.latinRemove", { who }), detail: d.from ? t("detail.was", { value: s(d.from) }) : undefined };
@@ -410,6 +434,14 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
     case "curator.note.restore": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteRestoreFor", { trader: pn(d.trader) }) : t("text.noteRestore") };
     case "auth.logout_others": return { label: L("login"), tone: "neutral", text: t("text.logoutOthers") };
     case "auth.lockout": return { label: L("login"), tone: "warn", text: t("text.lockout", { minutes: n(d.minutes) }), detail: e.targetType === "user" ? undefined : s(e.targetId) || undefined };
+    // Screen lock / quick code (routes/screen-lock.ts): were shown as raw «auth screen unlock · with: quick_code».
+    case "auth.screen_lock": return { label: L("login"), tone: "neutral", text: t("text.screenLock") };
+    case "auth.screen_unlock": return { label: L("login"), tone: "neutral", text: t("text.screenUnlock"), detail: d.with === "quick_code" ? t("text.screenUnlockWith.quick_code") : d.with === "password" ? t("text.screenUnlockWith.password") : undefined };
+    case "auth.screen_unlock_failed": return { label: L("login"), tone: "warn", text: t("text.screenUnlockFailed"), detail: d.attemptsLeft != null ? t("text.screenUnlockLeft", { count: n(d.attemptsLeft) }) : undefined };
+    case "auth.screen_unlock_signed_out": return { label: L("login"), tone: "down", text: t("text.screenUnlockSignedOut") };
+    case "auth.quick_code_set": return { label: L("login"), tone: "neutral", text: t("text.quickCodeSet") };
+    case "auth.quick_code_change": return { label: L("login"), tone: "neutral", text: t("text.quickCodeChange") };
+    case "auth.quick_code_remove": return { label: L("login"), tone: "neutral", text: t("text.quickCodeRemove") };
 
     case "daily_quote.regenerate": return { label: L("dailyQuote"), tone: "neutral", text: t("text.quoteRegenerate") };
     case "daily_quote.cron": return { label: L("dailyQuote"), tone: "neutral", text: t("text.quoteCron") };

@@ -1,3 +1,9 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="1.07 0.41 61.87 61.87">
+  <!-- WS_Desk mark «One line», small optical cut (components/ds/brand.tsx): the W's fourth stroke becomes the S.
+       Ink on light tab strips, white under a dark scheme. -->
+  <style>
+    path { stroke: #111111; }
+    @media (prefers-color-scheme: dark) { path { stroke: #f2f2f2; } }
+  </style>
+  <path d="M6.5 17L15.5 46L24.5 23.5L33.5 46C38 50.5 56 50 56.5 40.5C57 31.5 40.5 34 40.5 25.5C40.5 16.5 54.5 15.5 57.5 21" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

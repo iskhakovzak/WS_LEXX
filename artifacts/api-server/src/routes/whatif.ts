@@ -4,15 +4,23 @@
  *   GET  /whatif/base?trader=&from=&to=[&enc=2]  input trades + baseline metrics/equity + presets (enc=2: compact
  *                                                trade table, see compactTrades)
  *   POST /whatif/run   {trader, from, to, rules[]} scenario vs baseline (read-only computation, nothing stored)
- *   GET  /whatif/suggestions?trader=&from=&to=   best single rules by net improvement beyond bootstrap noise
+ *   GET  /whatif/suggestions?trader=&from=&to=[&window=rolling]   best single rules: for one trader on a growing
+ *                                                period («всё время», «с начала года») the honest verdict (walk-forward
+ *                                                + Romano–Wolf, job whatif.honesty, cached per data signature in
+ *                                                whatif_honesty_cache) once ready, the fast search marked
+ *                                                «предварительно» until then; the whole desk, a rolling window or a
+ *                                                closed range (lib/whatIfHonestyBody honestWindow): the fast search
+ *                                                Every card carries its «Почему» (lib/whatIfWhy).
+ *   GET  /whatif/combos?trader=&from=&to=[&rules=JSON]  best sets of 2–3 rules + the own set, one correction over
+ *                                                everything tried (lib/whatIfCombo)
+ *   GET  /whatif/my-rules?trader=                the trader's rules (and rule trials) since adoption (lib/whatIfMyRules)
  *   GET  /whatif/fees?trader=&from=&to=          fee breakdown by price/size/hold/hour/ticker, break-even, advice
  *   GET  /whatif/scenarios?trader=               saved rule sets (table whatif_scenarios)
  *   POST /whatif/scenarios {trader?, name, rules[]}
  *   DELETE /whatif/scenarios/:id                 soft delete (archived_at)
  *
  * Scope: lib/auth scopeTrader — a trader always sees their own trades, staff may pick any trader, guests get nothing.
- * Trading day = the NY date stored in trades.date; entry time / hold come from trade_executions, else the
- * PropReports snapshot (openedAt/closedAt in ET), else the hold_time text.
+ * Trades come from lib/whatIfLoader (trading day = the NY date stored in trades.date).
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { gzip } from "node:zlib";
@@ -22,16 +30,34 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, isGuest, isStaffRole } from "../lib/auth";
 import { TtlCache } from "../lib/hotCache";
-import { num, normResult, signedR } from "../lib/tradeMath";
-import { nyMinutes } from "../lib/tradingDate";
-import { execSpanJoin } from "../lib/execSpan";
 import {
-  type SimTrade, type Rule, type Side, type Horizon,
-  computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, presets, RULE_TYPES, GRADES,
+  type SimTrade, type Rule,
+  computeMetrics, dailyResults, equityByDay, runScenario, feeReport, describeRule, presets, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
+import { MAX_SETUP_LEN, MAX_TAG_LEN, WHATIF_STRATEGIES } from "../lib/whatIfTypes";
+import { findSuggestions, type SuggestionsResult } from "../lib/whatIfSuggest";
+import { withWhy } from "../lib/whatIfWhy";
+import { COMBO_MAX_RULES, findCombos } from "../lib/whatIfCombo";
+import { type AdoptedRule, MIN_SIDE_DAYS, rulesInAction } from "../lib/whatIfMyRules";
+import { trialRules } from "../lib/whatIfRuleTrials";
+import { fetchRiskLimits, fetchRulesFor, ruleSince } from "../lib/rulesEngine";
+import { shownRuleName } from "../lib/rulesTemplates";
+import { freshSimTrades, loadSimTrades } from "../lib/whatIfLoader";
+import { tradesSignature } from "../lib/whatIfSignature";
+import * as honestyStore from "../lib/whatIfHonestyStore";
+import { type SuggestionsHead, honestWindow, honestyKey, suggestionsBody } from "../lib/whatIfHonestyBody";
+import { WHATIF_HONESTY_JOB, WHATIF_HONESTY_REQUESTED } from "../lib/whatIfHonestyJobDefs";
+import { emitJobEvent, listJobs } from "../jobs/registry";
+import { config } from "../config";
+import { logger } from "../lib/logger";
+import { nyDate } from "../lib/tradingDate";
+import { isDeskTag } from "../lib/deskTags";
+import { ERROR_VOCAB, type ErrorVocabCode } from "../lib/tradingErrors";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { acceptsGzip } from "../lib/jsonCompression";
+import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
+import { facetCacheKey } from "../lib/tradeFacetsFilter";
 
 const router: IRouter = Router();
 
@@ -44,9 +70,14 @@ const rangeSchema = z.object({
   trader: z.string().trim().max(120).optional(),
   from: z.string().regex(YMD_RE).optional(),
   to: z.string().regex(YMD_RE).optional(),
+  // /whatif/suggestions: the page's 30 / 90-day periods move `from` every day (no honest verdict can resolve there).
+  window: z.enum(["rolling"]).optional(),
+  ...FACET_QUERY, // the page's «Разрезы» (lib/tradeFacetsSql): excluded trades never reach the engine
 });
 
-const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
+const ERROR_CODES = ERROR_VOCAB.map((v) => v.code) as [ErrorVocabCode, ...ErrorVocabCode[]];
+
+export const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("dailyLossLimit"), usd: z.coerce.number().positive().max(1e7) }),
   z.object({ type: z.literal("maxTradesPerDay"), n: z.coerce.number().int().min(1).max(1000) }),
   z.object({ type: z.literal("stopAfterLosses"), n: z.coerce.number().int().min(1).max(100) }),
@@ -63,8 +94,27 @@ const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("capLoss"), usd: z.coerce.number().positive().max(1e7) }),
   z.object({ type: z.literal("sizeRange"), min: z.coerce.number().nonnegative().max(1e7).nullish(), max: z.coerce.number().positive().max(1e7).nullish() }),
   z.object({ type: z.literal("afterLoss"), minutes: z.coerce.number().positive().max(24 * 60) }),
-  z.object({ type: z.literal("excludeSetups"), setups: z.array(z.string().trim().min(1).max(80)).max(50) }),
+  z.object({ type: z.literal("excludeSetups"), setups: z.array(z.string().trim().min(1).max(MAX_SETUP_LEN)).max(50) }),
   z.object({ type: z.literal("minGrade"), grade: z.enum(GRADES) }),
+  z.object({ type: z.literal("excludeImx") }),
+  z.object({ type: z.literal("noReentry") }),
+  z.object({ type: z.literal("requireStop") }),
+  z.object({ type: z.literal("maxSizeRel"), x: z.coerce.number().min(0.5).max(10) }),
+  z.object({ type: z.literal("excludeMistakes"), codes: z.array(z.enum(ERROR_CODES)).min(1).max(14).refine((a) => new Set(a).size === a.length) }),
+  // Personal tags only: IMX and the mistakes vocabulary have their own rules.
+  z.object({ type: z.literal("excludeTags"), tags: z.array(z.string().trim().min(1).max(MAX_TAG_LEN)).min(1).max(20).refine((a) => !a.some(isDeskTag)) }),
+  z.object({ type: z.literal("profitGiveback"), peak: z.coerce.number().positive().max(1e7), pct: z.coerce.number().int().min(10).max(90) }),
+  z.object({ type: z.literal("dailyProfitTarget"), usd: z.coerce.number().positive().max(1e7) }),
+  z.object({ type: z.literal("afterWin"), minutes: z.coerce.number().positive().max(24 * 60) }),
+  z.object({
+    type: z.literal("redZone"), usd: z.coerce.number().positive().max(1e7), k: z.coerce.number().int().min(0).max(100),
+    floor: z.coerce.number().positive().max(1e7).nullish(),
+  }),
+  z.object({ type: z.literal("blockWindow"), from: z.string().regex(HM_RE), to: z.string().regex(HM_RE) }),
+  z.object({ type: z.literal("maxTradesPerTicker"), n: z.coerce.number().int().min(1).max(100) }),
+  z.object({ type: z.literal("noReentryAfterLoss"), minutes: z.coerce.number().positive().max(24 * 60) }),
+  z.object({ type: z.literal("excludeStrategies"), strategies: z.array(z.enum(WHATIF_STRATEGIES)).min(1).max(WHATIF_STRATEGIES.length) }),
+  z.object({ type: z.literal("excludeEarnings") }),
 ]);
 
 const runSchema = rangeSchema.extend({
@@ -87,145 +137,9 @@ function normQuery(q: Request["query"]): Record<string, string> {
   return out;
 }
 
-/* ─── Loading trades ─────────────────────────────────────────────────────── */
+/* ─── Loading trades (lib/whatIfLoader; re-exported for existing imports and tests) ─────────────────────── */
 
-type Row = {
-  id: number; ticker: string; date: string; exit_date?: string | null; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
-  result: string; pnl: unknown; fees: unknown; r_multiple: unknown; risk_usd: unknown; hold_time: string | null; setup: string | null; confidence_grade: string | null;
-  tags: string | null; horizon: string | null; context_snapshot: Record<string, unknown> | null;
-  first_entry: Date | string | null; last_exit: Date | string | null;
-};
-
-/** "5m", "2h 29m", "17s", "1:30", "45 мин", "3 д" → seconds; null when unparsable. */
-export function parseHoldSeconds(raw: string | null | undefined): number | null {
-  if (!raw) return null;
-  const s = raw.trim().toLowerCase().replace(",", ".");
-  if (!s) return null;
-  const hm = /^(\d{1,3}):(\d{2})(?::(\d{2}))?$/.exec(s);
-  if (hm) return Number(hm[1]) * 3600 + Number(hm[2]) * 60 + Number(hm[3] ?? 0);
-  let total = 0, matched = false;
-  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|h|ч|m|min|мин|м|s|sec|с|сек)\b/g; // i18n-ignore (parses RU / EN duration input)
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s))) {
-    matched = true;
-    const v = Number(m[1]);
-    const u = m[2];
-    if (u.startsWith("d") || u.startsWith("д")) total += v * 86400; // i18n-ignore (input parsing)
-    else if (u.startsWith("h") || u.startsWith("ч")) total += v * 3600; // i18n-ignore (input parsing)
-    else if (u.startsWith("s") || u === "с" || u === "сек") total += v; // i18n-ignore (input parsing)
-    else total += v * 60;
-  }
-  if (matched) return total;
-  const bare = /^(\d+(?:\.\d+)?)$/.exec(s);
-  return bare ? Number(bare[1]) * 60 : null;
-}
-
-/** "2026-10-15T15:59:16" (ET, no zone) → minutes since midnight; null when malformed. */
-function etMinutesOf(v: unknown): number | null {
-  if (typeof v !== "string") return null;
-  const m = /T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(v);
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]) + Number(m[3] ?? 0) / 60;
-}
-
-function secondsBetweenEt(a: unknown, b: unknown): number | null {
-  if (typeof a !== "string" || typeof b !== "string") return null;
-  const ta = Date.parse(a.length <= 19 ? `${a}Z` : a), tb = Date.parse(b.length <= 19 ? `${b}Z` : b);
-  if (!Number.isFinite(ta) || !Number.isFinite(tb) || tb < ta) return null;
-  return (tb - ta) / 1000;
-}
-
-function toDate(v: Date | string | null): Date | null {
-  if (!v) return null;
-  const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-export function rowToSim(r: Row, seq: number): SimTrade {
-  const snap = r.context_snapshot ?? {};
-  const first = toDate(r.first_entry), last = toDate(r.last_exit);
-  let entryMin: number | null = first ? nyMinutes(first) + first.getUTCSeconds() / 60 : null;
-  if (entryMin == null) entryMin = etMinutesOf(snap.openedAt);
-  if (entryMin == null) {
-    const m = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})/.exec(r.date);
-    if (m) entryMin = Number(m[1]) * 60 + Number(m[2]);
-  }
-  let holdSec: number | null = first && last && last.getTime() >= first.getTime() ? (last.getTime() - first.getTime()) / 1000 : null;
-  if (holdSec == null) holdSec = secondsBetweenEt(snap.openedAt, snap.closedAt);
-  if (holdSec == null) holdSec = parseHoldSeconds(r.hold_time);
-  const sideRaw = String(r.side ?? "").trim().toLowerCase();
-  const side: Side | null = sideRaw.startsWith("s") ? "short" : sideRaw.startsWith("l") || sideRaw.startsWith("b") ? "long" : null;
-  const res = normResult(r.result);
-  const h = String(r.horizon ?? "").trim();
-  const horizon: Horizon = h === "overnight" || h === "swing" ? h : "intraday";
-  const breakdown = snap.feesByType && typeof snap.feesByType === "object" ? (snap.feesByType as Record<string, number>) : null;
-  const fills = num(snap.fillCount);
-  return {
-    id: r.id,
-    day: r.date.slice(0, 10),
-    ...(r.exit_date && r.exit_date.slice(0, 10) !== r.date.slice(0, 10) ? { closeDay: r.exit_date.slice(0, 10) } : {}),
-    entryMin,
-    ticker: String(r.ticker ?? "").toUpperCase(),
-    side,
-    qty: num(r.qty) != null ? Math.abs(num(r.qty)!) : null,
-    entry: num(r.entry), exit: num(r.exit),
-    gross: num(r.pnl),
-    fees: Math.abs(num(r.fees) ?? 0),
-    holdSec,
-    r: signedR({ result: r.result, side: r.side, entry: r.entry, exit: r.exit, stop: r.stop, r_multiple: r.r_multiple, pnl: r.pnl, risk_usd: r.risk_usd }),
-    stop: num(r.stop),
-    setup: r.setup?.trim() || null,
-    tags: String(r.tags ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    horizon,
-    result: res === "win" || res === "loss" || res === "be" ? res : null,
-    feeBreakdown: breakdown,
-    fills,
-    seq,
-    grade: r.confidence_grade?.trim() || null,
-  };
-}
-
-/** Closed trades with a money result for the scope/period, in simulation order. */
-/*
- * The page fires /base, /suggestions, /fees (and /run) at once for the same scope: one SQL load serves them all.
- * Short TTL — trades only change on a PropReports sync, and a 20 s old snapshot is fine for a what-if.
- * The engine never mutates trade objects (it sorts copies), so callers share them; each gets its own array.
- */
-const SIM_CACHE_TTL_MS = 60_000;
-const SIM_CACHE_MAX = 24;
-const simCache = new Map<string, { at: number; promise: Promise<SimTrade[]> }>();
-
-export async function loadSimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const key = `${scope ?? "*"}|${from ?? ""}|${to ?? ""}`;
-  const now = Date.now();
-  const hit = simCache.get(key);
-  if (hit && now - hit.at < SIM_CACHE_TTL_MS) return (await hit.promise).slice();
-  const promise = querySimTrades(scope, from, to);
-  simCache.set(key, { at: now, promise });
-  promise.catch(() => simCache.delete(key));
-  if (simCache.size > SIM_CACHE_MAX) {
-    for (const [k, v] of simCache) if (now - v.at >= SIM_CACHE_TTL_MS || simCache.size > SIM_CACHE_MAX) simCache.delete(k);
-  }
-  return (await promise).slice();
-}
-
-async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const params: unknown[] = [];
-  const cond: string[] = [`t.deleted_at IS NULL`, `t.pnl IS NOT NULL`, `LOWER(TRIM(t.result)) <> 'open'`];
-  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
-  if (scope != null) cond.push(`t.trader = ${p(scope)}`);
-  if (from) cond.push(`substring(t.date from 1 for 10) >= ${p(from)}`);
-  if (to) cond.push(`substring(t.date from 1 for 10) <= ${p(to)}`);
-  // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
-  const sql = `
-    SELECT t.id, t.ticker, t.date, t.exit_date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
-           t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
-    FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
-    WHERE ${cond.join(" AND ")}
-    ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;
-  const { rows } = await pool.query<Row>(sql, params);
-  return rows.map((r, i) => rowToSim(r, i));
-}
+export { type SimRow, parseHoldSeconds, rowToSim, loadSimTrades, simTradesQuery } from "../lib/whatIfLoader";
 
 async function resolveScope(req: Request, requested?: string): Promise<string | null | undefined> {
   return scopeTrader(req, requested);
@@ -251,6 +165,8 @@ function previewOf(t: SimTrade) {
     id: t.id, day: t.day, entryMin: t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, ticker: t.ticker, side: t.side,
     qty: t.qty, entry: t.entry, gross: t.gross, fees: t.fees, holdSec: t.holdSec, seq: t.seq,
     fills: t.fills ?? null, feeBreakdown: t.feeBreakdown ?? null, setup: t.setup, grade: t.grade ?? null,
+    trader: t.trader ?? null, imx: t.imx === true, reentry: t.reentry === true, sizeRel: t.sizeRel ?? null, hasStop: t.hasStop ?? null,
+    mistakes: t.mistakes ?? [], ptags: t.ptags ?? [], strategy: t.strategy ?? null, earnings: t.earnings ?? null,
   };
 }
 
@@ -260,8 +176,11 @@ function previewOf(t: SimTrade) {
  * ticker, side, setup, grade) as indexes into `dicts`, and only the regulatory-fee sum (`reg`) instead of the
  * breakdown — the client's tariff preview reads nothing else (edge-tracker components/what-if/api.ts decodeTrades).
  * Plain `trades` stays the default so an older bundle keeps working against a newer API. */
-export const WHATIF_COLS = ["id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade"] as const;
-export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade"] as const;
+export const WHATIF_COLS = [
+  "id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade",
+  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes", "strategy", "earnings",
+] as const;
+export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade", "trader", "ptags", "mistakes", "strategy"] as const;
 const REG_KEYS = ["sec", "taf", "cat", "orf", "nfa"];
 type Cell = string | number | null;
 
@@ -285,22 +204,38 @@ export function compactTrades(trades: SimTrade[]): { cols: typeof WHATIF_COLS; r
   const rows = trades.map((t): Cell[] => [
     t.id, code("day", t.day), t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, code("ticker", t.ticker), code("side", t.side),
     t.qty, t.entry, t.gross, t.fees, t.holdSec, t.seq, t.fills ?? null, regulatoryFees(t.feeBreakdown), code("setup", t.setup), code("grade", t.grade ?? null),
+    // 1/0 flags (hasStop null = unknown); tag lists joined with "," (tags never contain one), null when empty.
+    code("trader", t.trader ?? null), t.imx ? 1 : 0, t.reentry ? 1 : 0, t.sizeRel ?? null, t.hasStop == null ? null : t.hasStop ? 1 : 0,
+    code("ptags", t.ptags?.length ? t.ptags.join(",") : null), code("mistakes", t.mistakes?.length ? t.mistakes.join(",") : null),
+    code("strategy", t.strategy ?? null), t.earnings == null ? null : t.earnings ? 1 : 0,
   ]);
   return { cols: WHATIF_COLS, rows, dicts };
 }
 
 /*
- * Suggestions (~40 scenario runs with a bootstrap each: 1.8–2.7 s desk-wide) and the fee report are cached per viewer
+ * Suggestions (~70 candidates on the fast path + one family-wise bootstrap) and the fee report are cached per viewer
  * kind + scope + period + language for RESULT_TTL_MS (DEV-10). Staff and members never share an entry, even for the
- * same trader. A PropReports sync shows up after at most that long.
+ * same trader. A PropReports sync shows up after at most that long. A trader's suggestions also depend on the data
+ * signature: the entry stores it next to the body and a hit must match it — keyed by the signature, every sync would
+ * leave entries behind that are never read (and so never expire) again.
  */
 const RESULT_TTL_MS = 120_000;
 const suggestionsCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
 const feesCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
 
-export function resultKey(req: Request, scope: string | null, from: string | undefined, to: string | undefined): string {
-  return `${isStaffRole(req.authUser?.role) ? "staff" : "member"}|${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${langOf(req)}`;
+export function resultKey(req: Request, scope: string | null, from: string | undefined, to: string | undefined, facets = ""): string {
+  return `${isStaffRole(req.authUser?.role) ? "staff" : "member"}|${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${langOf(req)}${facets ? `|${facets}` : ""}`;
 }
+
+/** The cached value of `key` when it was computed for this data signature. */
+function cachedFor<T>(key: string, sig: string): T | undefined {
+  const hit = suggestionsCache.get(key) as { sig: string; value: T } | undefined;
+  return hit && hit.sig === sig ? hit.value : undefined;
+}
+const cacheFor = (key: string, sig: string, value: unknown) => suggestionsCache.set(key, { sig, value });
+
+/** Tests: entries held by the suggestions cache (bounded by viewer kind × scope × period × language). */
+export const suggestionsCacheSize = (): number => suggestionsCache.size;
 
 const gzipAsync = promisify(gzip);
 
@@ -320,6 +255,69 @@ export async function sendJsonGz(req: Request, res: Response, body: unknown): Pr
   res.type("application/json").send(buf);
 }
 
+/* ─── Suggestions: the honest verdict (lib/whatIfHonesty, job whatif.honesty) or the fast path ─────────────── */
+
+function suggestionsHead(scope: string | null, trades: SimTrade[], q: { from?: string; to?: string }): SuggestionsHead {
+  const baseline = computeMetrics(trades);
+  return {
+    scope, period: periodMeta(trades, q.from, q.to),
+    baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
+    // Too little to call anything robust: every card is a guide («ориентир»).
+    smallSample: baseline.days < 30 || baseline.trades < 60,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** The fast search, cached like the old body (the polls while the honest run is queued stay cheap). */
+function fastSuggestions(cacheKey: string, sig: string, trades: SimTrade[], lang: Lang): SuggestionsResult {
+  const hit = cachedFor<SuggestionsResult>(cacheKey, sig);
+  if (hit) return hit;
+  // «Почему» of every card (lib/whatIfWhy): computed once with the cards, cached with them.
+  const found = withWhy(findSuggestions(trades, { lang, team: false }), trades);
+  cacheFor(cacheKey, sig, found);
+  return found;
+}
+
+let honestyStoreWarned = false;
+
+/** The cache row; ok = false when the store is unreachable (no table before 0244): the fast path only. */
+async function honestyRow(k: honestyStore.HonestyKey): Promise<{ row: honestyStore.HonestyRow | null; ok: boolean }> {
+  try {
+    return { row: await honestyStore.get(pool, k), ok: true };
+  } catch (err) {
+    if (!honestyStoreWarned) {
+      honestyStoreWarned = true;
+      logger.warn({ err }, "whatif: honesty cache unavailable, suggestions use the fast path only");
+    }
+    return { row: null, ok: false };
+  }
+}
+
+const honestyJobOn = () => config.jobsEnabled && listJobs().some((j) => j.name === WHATIF_HONESTY_JOB);
+
+/**
+ * Queue the key (or retry a failed row when allowed); the state the client should see and since when it is pending,
+ * null = unavailable. A viewer asking for an existing row marks the key as used (the evening precompute warms only keys
+ * viewers asked for).
+ */
+async function queueHonesty(k: honestyStore.HonestyKey, row: honestyStore.HonestyRow | null): Promise<{ state: honestyStore.HonestyState; since: Date } | null> {
+  try {
+    if (!row) {
+      if (await honestyStore.enqueue(pool, k)) emitJobEvent(WHATIF_HONESTY_REQUESTED, { trader: k.trader });
+      return { state: "queued", since: new Date() };
+    }
+    void honestyStore.touch(pool, row.id).catch(() => undefined);
+    if (row.state === "failed" && (await honestyStore.retryFailed(pool, row.id))) {
+      emitJobEvent(WHATIF_HONESTY_REQUESTED, { trader: k.trader });
+      return { state: "queued", since: new Date() };
+    }
+    return { state: row.state, since: row.requestedAt };
+  } catch (err) {
+    logger.warn({ err }, "whatif: could not queue the honest verdict");
+    return null;
+  }
+}
+
 /* ─── Routes ─────────────────────────────────────────────────────────────── */
 
 router.get("/whatif/base", asyncHandler(async (req, res) => {
@@ -328,7 +326,7 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const trades = await loadSimTrades(scope, q.from, q.to);
+  const trades = await loadSimTrades(scope, q.from, q.to, facetFiltersOf(q));
   const daily = dailyResults(trades);
   const compact = req.query.enc === "2";
   await sendJsonGz(req, res, {
@@ -343,13 +341,19 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
   });
 }));
 
+/** A tariff (commissionPlan) what-if is staff-only (roadmap R2.4; the desk does not choose its broker fees — owner 2026-10-22). */
+export function feePlanAllowed(role: string | null | undefined, rules: readonly Rule[]): boolean {
+  return isStaffRole(role) || !rules.some((r) => r.type === "commissionPlan");
+}
+
 router.post("/whatif/run", asyncHandler(async (req, res) => {
   const parsed = runSchema.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
+  if (!feePlanAllowed(req.authUser?.role, q.rules)) throw new AppError("WHATIF_FEE_PLAN_STAFF_ONLY");
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const trades = await loadSimTrades(scope, q.from, q.to);
+  const trades = await loadSimTrades(scope, q.from, q.to, facetFiltersOf(q));
   const result = runScenario(trades, q.rules, { iters: q.iters ?? 1000, lang: langOf(req) });
   res.json({
     scope, period: periodMeta(trades, q.from, q.to),
@@ -365,21 +369,62 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const key = resultKey(req, scope, q.from, q.to);
-  const hit = suggestionsCache.get(key);
+  const lang = langOf(req);
+  const facets = facetFiltersOf(q);
+  const key = resultKey(req, scope, q.from, q.to, facetCacheKey(facets));
+  if (scope == null) {
+    // Whole desk: the fast path only (day rules per trader, no share-size or personal-tag candidates).
+    const hit = suggestionsCache.get(key);
+    if (hit) { res.json(hit); return; }
+    const trades = await loadSimTrades(scope, q.from, q.to, facets);
+    const body = withWhy(suggestionsBody({ head: suggestionsHead(scope, trades, q), lang, team: true, fast: findSuggestions(trades, { lang, team: true }), row: null, available: false }), trades);
+    suggestionsCache.set(key, body);
+    res.json(body);
+    return;
+  }
+  let trades = await loadSimTrades(scope, q.from, q.to, facets);
+  // The honest verdict of exactly these trades (a sync or an edited mark gives a new signature, so a new key).
+  let sig = tradesSignature(trades);
+  const win = honestWindow(q.from, q.to, q.window === "rolling", nyDate());
+  const fastKey = `${key}|${q.window ?? ""}|fast`;
+  // The honest verdict is kept per whole book (job whatif.honesty): a «Разрезы» selection takes the fast path.
+  if (!trades.length || isGuest(req) || !win.honest || facets) {
+    const found = fastSuggestions(fastKey, sig, trades, lang);
+    const head = suggestionsHead(scope, trades, q);
+    res.json(trades.length && !isGuest(req) ? suggestionsBody({ head, lang, team: false, window: !facets, filtered: !!facets, fast: found, row: null, available: false })
+      : { ...head, suggestions: found.suggestions, tested: found.tested });
+    return;
+  }
+  const readyKey = `${key}|ready`;
+  const hit = cachedFor(readyKey, sig);
   if (hit) { res.json(hit); return; }
-  const trades = await loadSimTrades(scope, q.from, q.to);
-  const baseline = computeMetrics(trades);
-  const suggestions = findSuggestions(trades, { lang: langOf(req) });
-  const body = {
-    scope, period: periodMeta(trades, q.from, q.to),
-    baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
-    smallSample: baseline.trades < 30 || baseline.days < 30,
-    suggestions,
-    generatedAt: new Date().toISOString(),
-  };
-  suggestionsCache.set(key, body);
-  res.json(body);
+  let hk = honestyKey(scope, q.from, q.to, sig);
+  let { row, ok } = await honestyRow(hk);
+  if (ok && !row && honestyJobOn()) {
+    // No row for the cached snapshot's signature: a sync may have landed since (the job loads uncached and may have
+    // moved the row to the new signature already). Look again with the trades as they are now before queueing.
+    const fresh = await freshSimTrades(scope, q.from, q.to);
+    const freshSig = tradesSignature(fresh);
+    if (freshSig !== sig) {
+      trades = fresh;
+      sig = freshSig;
+      hk = honestyKey(scope, q.from, q.to, sig);
+      ({ row, ok } = await honestyRow(hk));
+    }
+  }
+  const head = suggestionsHead(scope, trades, q);
+  if (row?.state === "ready") {
+    const body = withWhy(suggestionsBody({ head, lang, team: false, reachDays: win.reachDays, fast: null, row, available: true }), trades);
+    cacheFor(readyKey, sig, body);
+    void honestyStore.touch(pool, row.id).catch(() => undefined);
+    res.json(body);
+    return;
+  }
+  const queued = ok && honestyJobOn() ? await queueHonesty(hk, row) : null;
+  res.json(suggestionsBody({
+    head, lang, team: false, fast: fastSuggestions(fastKey, sig, trades, lang), now: new Date(),
+    row: queued ? { state: queued.state, result: null, finishedAt: null, requestedAt: queued.since } : null, available: queued != null,
+  }));
 }));
 
 router.get("/whatif/fees", asyncHandler(async (req, res) => {
@@ -388,13 +433,64 @@ router.get("/whatif/fees", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const key = resultKey(req, scope, q.from, q.to);
+  const facets = facetFiltersOf(q);
+  const key = resultKey(req, scope, q.from, q.to, facetCacheKey(facets));
   const hit = feesCache.get(key);
   if (hit) { res.json(hit); return; }
-  const trades = await loadSimTrades(scope, q.from, q.to);
+  const trades = await loadSimTrades(scope, q.from, q.to, facets);
   const body = { scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades, langOf(req)), generatedAt: new Date().toISOString() };
   feesCache.set(key, body);
   res.json(body);
+}));
+
+/* ─── «Набор правил» and «Мои правила в деле» ─────────────────────────────── */
+
+const combosCache = new TtlCache<string, { sig: string; value: unknown }>(RESULT_TTL_MS);
+const ownRulesSchema = z.array(ruleSchema).max(COMBO_MAX_RULES);
+
+/** GET /whatif/combos?…&rules=<JSON, ≤ 3 rules>: the best sets of 2–3 rules and the trader's own set (lib/whatIfCombo). */
+router.get("/whatif/combos", asyncHandler(async (req, res) => {
+  const parsed = rangeSchema.safeParse(normQuery(req.query));
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
+  const q = parsed.data;
+  let own: Rule[] = [];
+  if (typeof req.query.rules === "string" && req.query.rules.trim()) {
+    let raw: unknown;
+    try { raw = JSON.parse(req.query.rules); } catch { throw badRequest("BAD_REQUEST"); }
+    const r = ownRulesSchema.safeParse(raw);
+    if (!r.success) throw badRequest("BAD_REQUEST", r.error.flatten());
+    own = r.data;
+  }
+  const scope = await resolveScope(req, q.trader);
+  if (scope === undefined) throw unauthorized();
+  const facets = facetFiltersOf(q);
+  const trades = await loadSimTrades(scope, q.from, q.to, facets);
+  const sig = tradesSignature(trades);
+  const key = `${resultKey(req, scope, q.from, q.to, facetCacheKey(facets))}|${JSON.stringify(own)}`;
+  const hit = combosCache.get(key);
+  if (hit && hit.sig === sig) { res.json(hit.value); return; }
+  const found = findCombos(trades, { own, lang: langOf(req), team: scope == null });
+  const body = { scope, period: periodMeta(trades, q.from, q.to), ...found, generatedAt: new Date().toISOString() };
+  combosCache.set(key, { sig, value: body });
+  res.json(body);
+}));
+
+/** GET /whatif/my-rules?trader=: the trader's own rules (and rule trials) on real trades since adoption (lib/whatIfMyRules). */
+router.get("/whatif/my-rules", asyncHandler(async (req, res) => {
+  const parsed = rangeSchema.safeParse(normQuery(req.query));
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
+  const scope = await resolveScope(req, parsed.data.trader);
+  if (scope === undefined) throw unauthorized();
+  // Rules belong to one trader: the whole desk and guests get an empty list (the page explains it).
+  if (scope == null || isGuest(req)) { res.json({ scope, rules: [], team: scope == null }); return; }
+  const [trades, stored, trials, limits] = await Promise.all([loadSimTrades(scope), fetchRulesFor(scope, { enabledOnly: true }), trialRules(scope), fetchRiskLimits(scope)]);
+  const lang = langOf(req);
+  const adopted: AdoptedRule[] = [
+    ...stored.map((r) => ({ id: String(r.id), name: shownRuleName(r.name, r.templateKey, lang), kind: r.kind, threshold: r.threshold, since: ruleSince(r.createdAt), source: "catalog" as const })),
+    ...trials,
+  ];
+  const rules = rulesInAction(trades, adopted, limits).map((x) => ({ ...x, label: x.rule ? describeRule(x.rule, lang) : null }));
+  res.json({ scope, team: false, minSideDays: MIN_SIDE_DAYS, rules, generatedAt: new Date().toISOString() });
 }));
 
 /* ─── Saved scenarios ────────────────────────────────────────────────────── */

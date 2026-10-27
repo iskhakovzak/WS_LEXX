@@ -97,6 +97,23 @@ function excValue(e: Excursion, sign: 1 | -1): string {
   return perShareText(e.perShare, sign);
 }
 
+export type ExcursionFact = { text: string; adverse: boolean; explain: string };
+
+/**
+ * MAE / MFE of a trade as short facts (the trade sheet's key facts row), from the same cached record as the block.
+ * `tradeId` null asks nothing; both are null while loading, on error or when the quality is unavailable.
+ */
+export function useExcursionFacts(tradeId: number | null, afterExit: number): { mae: ExcursionFact | null; mfe: ExcursionFact | null } {
+  const { data } = useTradeQuality(tradeId, afterExit);
+  const q = data?.quality;
+  if (!q || q.status === "unavailable") return { mae: null, mfe: null };
+  const t = chartI18n.t;
+  return {
+    mae: q.mae ? { text: excValue(q.mae, -1), adverse: q.mae.perShare > 0, explain: t("quality.maeExplain") } : null,
+    mfe: q.mfe ? { text: excValue(q.mfe, 1), adverse: false, explain: t("quality.mfeExplain", { dir: q.side === "short" ? t("quality.down") : t("quality.up") }) } : null,
+  };
+}
+
 export function QualitySummaryLine({ q }: { q: TradeQuality }) {
   if (q.status === "unavailable" || !q.mfe) return null;
   const eff = q.exitEfficiency;
@@ -112,7 +129,7 @@ export function QualitySummaryLine({ q }: { q: TradeQuality }) {
           pct: fmtRate(eff),
           detail: mfeR != null && capturedR != null ? t("quality.ofAvailable", { got: fmtR(capturedR), max: fmtR(mfeR) })
             : q.captured?.usd != null && q.mfe.usd != null ? t("quality.ofAvailable", { got: usdA(q.captured.usd), max: usdA(q.mfe.usd) })
-            : t("quality.ofPerShare", { got: fmtUsd(q.captured?.perShare ?? 0), max: fmtUsd(q.mfe.perShare) }),
+            : t("quality.ofPerShare", { got: fmtUsd(q.captured?.perShare), max: fmtUsd(q.mfe.perShare) }),
         });
   return <p className="text-sm text-muted-foreground">{text}</p>;
 }

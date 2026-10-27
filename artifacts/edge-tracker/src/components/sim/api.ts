@@ -6,6 +6,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { OWN_CANDIDATES_KEY } from "@/components/shared/replay-own-day";
+import type { TrainerDayContext } from "@/lib/trainer/types";
 
 export type SimMode = "intraday" | "swing";
 export type Difficulty = "easy" | "medium" | "hard";
@@ -108,10 +109,18 @@ export type SimEvent = { kind: SimEventKind | (string & {}); dir?: "up" | "down"
 /** Max base bars of one step (server). */
 export const MAX_ADVANCE = 400;
 
-/** Context of an intraday game: daily bars before the play day (fake times until the reveal) and the key levels. */
+/**
+ * Context of an intraday game: up to 250 daily bars before the play day (fake times until the reveal), the key levels
+ * (52-week high / low since 2026-10-25) and «Контекст дня» (gap, catalyst masked until the reveal, cap, float,
+ * premarket volume; null / absent on older servers).
+ */
 export type GameContext = {
   daily: WireBar[];
-  levels: { pdh: number | null; pdl: number | null; pdc: number | null; pmh: number | null; pml: number | null; gapPct: number | null; atr14: number | null };
+  levels: {
+    pdh: number | null; pdl: number | null; pdc: number | null; pmh: number | null; pml: number | null; gapPct: number | null; atr14: number | null;
+    hi52?: number | null; lo52?: number | null;
+  };
+  day?: TrainerDayContext | null;
 };
 
 export type StepBody = {

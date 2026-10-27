@@ -107,7 +107,7 @@ function LoopTable({ data, onOpenPeople }: { data: LoopYesterday; onOpenPeople: 
   const rows = sortRows(data.rows);
   const total = totalCells(data, t);
   const mark = (col: Column, r: LoopRow) => <Mark col={col} row={r} date={data.date} onOpenPeople={onOpenPeople} sla={data.slaHours} />;
-  const th = "px-2 py-2 text-left text-2xs font-medium uppercase tracking-wide text-muted-foreground";
+  const th = "px-2 py-2 text-left text-2xs font-medium text-muted-foreground";
   return (
     <>
       {/* ≥ md: one table, totals in the footer */}

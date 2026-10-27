@@ -5,11 +5,10 @@
  */
 import * as React from "react";
 import { useSearch } from "wouter";
-import { Flag, Plus, RefreshCw } from "lucide-react";
+import { Flag, Plus, RefreshCw, Target } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Segmented, SplitSkeleton, Toolbar } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -51,11 +50,13 @@ export default function AcademyChallengesPage() {
     if (selected == null && items.length && !list.isPlaceholderData) setSelected(items[0].id);
   }, [items, selected, list.isPlaceholderData]);
 
+  const noExams = !!list.data && !list.isPlaceholderData && list.data.challenges.length === 0 && filter === "all" && !who;
+
   return (
     <Page>
       <PageHeader
         title={shellI18n.t("nav.academyChallenges")}
-        icon={Flag}
+        icon={Target}
         description={t("page.challengesDescription")}
         actions={
           <>
@@ -65,8 +66,12 @@ export default function AcademyChallengesPage() {
             )}
           </>
         }
-      >
-        <div className="flex flex-wrap items-center gap-2">
+      />
+
+      {/* No exams at all yet: the empty state alone, no filters over nothing (design audit wave 2). The mode and the
+          student (scope) sit in the Toolbar under the header, not in it (design audit wave 3). */}
+      {!noExams && (
+        <Toolbar>
           <Segmented<Filter>
             ariaLabel={t("page.filterAria")}
             value={filter}
@@ -79,26 +84,23 @@ export default function AcademyChallengesPage() {
             ]}
           />
           {isCurator && (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{t("page.student")}</span>
-              <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={personOptions} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
-            </label>
+            <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={personOptions} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
           )}
-        </div>
-      </PageHeader>
+        </Toolbar>
+      )}
 
       {list.isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-[340px_1fr]"><Skeleton className="h-72 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
+        <SplitSkeleton side="340px" rows={5} />
       ) : list.isError ? (
         <ErrorState error={list.error} onRetry={list.refetch} title={t("page.loadFailed")} />
       ) : !items.length ? (
         <Panel>
-          <EmptyState icon={Flag} title={filter === "archived" ? t("page.archiveEmpty") : t("page.noExams")}
+          <EmptyState art="laurel" icon={Flag} title={filter === "archived" ? t("page.archiveEmpty") : t("page.noExams")}
             description={isCurator ? t("page.noExamsStaff", { from: defaultStageName("junior"), to: defaultStageName("trader") }) : t("page.noExamsTrader")}
-            action={list.data?.canCreate && config.data ? <Button size="sm" onClick={() => setCreateOpen(true)}>{t("page.assignExam")}</Button> : undefined} />
+            action={list.data?.canCreate && config.data ? <Button onClick={() => setCreateOpen(true)}>{t("page.assignExam")}</Button> : <EmptyLink href="/academy/learn">{shellI18n.t("nav.academyLearn")}</EmptyLink>} />
         </Panel>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
           <nav aria-label={t("page.listAria")} aria-busy={list.isPlaceholderData || undefined} className={cn("flex flex-col gap-2 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", list.isPlaceholderData && "pointer-events-none opacity-60")}>
             {items.map((c) => <ChallengeCard key={c.id} c={c} active={c.id === selected} onOpen={() => setSelected(c.id)} showUser={isCurator} templates={config.data?.templates} />)}
           </nav>

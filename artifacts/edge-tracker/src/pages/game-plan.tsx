@@ -1,31 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, ChevronLeft, ChevronRight, Compass, FileText, Pencil, Plus, ShieldAlert, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented } from "@/components/ds";
+import { Crosshair, FileText, Pencil, Plus, ShieldAlert, Users } from "lucide-react";
+import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DayStepper } from "@/components/shared/day-stepper";
 import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
-import { InPlayCard, MacroStrip, PlanHero, longDate, shortDay, type DayEvent } from "@/components/game-plan/plan-briefing";
+import { InPlayCard, MacroStrip, PlanHero, shortDay, type DayEvent } from "@/components/game-plan/plan-briefing";
 import { MyPlan } from "@/components/game-plan/my-plan";
 import { MorningScreener } from "@/components/shared/finviz/screener-card";
 import { TraderPlans } from "@/components/game-plan/trader-plans";
 import { MarkReadButton, ReadStatusPanel } from "@/components/game-plan/read-status";
 import { HistoryPanel } from "@/components/game-plan/history-panel";
 import { PlanEditorSheet } from "@/components/game-plan/plan-editor-sheet";
-import { HORIZON, dateObj, gpApi, gpKeys, isIsoDate, nyToday, shiftTradingDay, type Horizon } from "@/components/game-plan/types";
-import { fmtRelative, fmtUsd } from "@/lib/format";
+import { HORIZON, gpApi, gpKeys, isIsoDate, nyToday, shiftTradingDay, type Horizon } from "@/components/game-plan/types";
+import { fmtUsd } from "@/lib/format";
+import { isTypingTarget } from "@/lib/utils";
 import { nyClock } from "@/components/shared/finviz/model";
 import { DeskMorning } from "@/components/game-plan/desk-morning";
 import { defaultPlanView, deskEmptyKind, deskEmptyTitle, type PlanView } from "@/components/game-plan/plan-defaults";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { shellI18n } from "@/i18n/ns/shell";
-import { commonI18n } from "@/i18n/ns/common";
 import { AskCuratorButton } from "@/components/shared/ask-curator";
+import { RegimeDayView } from "@/components/shared/regime/regime-day";
+import { MentorLine } from "@/components/mentor/mentor-line";
 
 type HorizonFilter = "all" | Horizon;
 type View = PlanView;
@@ -48,22 +49,14 @@ function readUrlDate(): string | null {
   }
 }
 
-function isTypingTarget(t: EventTarget | null) {
-  // The target can be the document or the window (keys with nothing focused): those have no tagName / closest.
-  if (!(t instanceof Element)) return false;
-  const el = t as HTMLElement;
-  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
-}
-
-/** "updated N min ago" in the UI language — re-renders every 15s. */
-function useAgo(ts: number) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => tick((n) => n + 1), 15_000);
-    return () => window.clearInterval(id);
-  }, []);
-  if (!ts) return "";
-  return gpI18n.t("page.updatedAgo", { ago: fmtRelative(ts) });
+/** The day's context strips under the header: the desk regime; on the own plan of today, the AI mentor's line too. */
+function DayStrips({ date, mine }: { date: string; mine: boolean }) {
+  return (
+    <>
+      <RegimeDayView date={date} variant="strip" />
+      {mine && <MentorLine className="glass-panel" />}
+    </>
+  );
 }
 
 export default function GamePlanPage() {
@@ -83,7 +76,6 @@ export default function GamePlanPage() {
   const sessionAhead = today !== calToday;
   const [date, setDate] = useState<string>(() => readUrlDate() ?? today);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [calOpen, setCalOpen] = useState(false);
   const [hz, setHz] = useState<HorizonFilter>("all");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -119,27 +111,18 @@ export default function GamePlanPage() {
 
   const data = dayQ.data;
   const plan = data?.plan ?? null;
-  const ago = useAgo(dayQ.dataUpdatedAt);
 
   const go = useCallback((d: string) => {
     setDate(d);
     setHz("all");
   }, []);
 
-  // Keyboard: ←/→ trading days, T today, E edit (curator), / search history.
+  // Keyboard (wave 3): the day keys ([ ] ← → T) live in DayStepper; the page keeps E (edit, curator) and / (history search).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       if (editorOpen || isTypingTarget(e.target)) return;
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        go(shiftTradingDay(date, -1));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        go(shiftTradingDay(date, 1));
-      } else if (e.key === "t" || e.key === "T" || e.key === "е" || e.key === "Е") { // i18n-ignore (RU keyboard layout)
-        go(today);
-      } else if ((e.key === "e" || e.key === "E" || e.key === "у" || e.key === "У") && isCurator && view === "desk") { // i18n-ignore (RU keyboard layout)
+      if (e.code === "KeyE" && !e.shiftKey && isCurator && view === "desk") {
         e.preventDefault();
         setEditorOpen(true);
       } else if (e.key === "/") {
@@ -149,7 +132,7 @@ export default function GamePlanPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [date, today, editorOpen, isCurator, go, view]);
+  }, [editorOpen, isCurator, view]);
 
   const counts = useMemo(() => {
     const c: Record<HorizonFilter, number> = { all: 0, intraday: 0, overnight: 0, swing: 0 };
@@ -165,7 +148,6 @@ export default function GamePlanPage() {
   );
 
   const isToday = date === today;
-  const shortDate = shortDay(date);
   const clock = nyClock(new Date());
   const emptyKind = deskEmptyKind({ date, today, sessionAhead, nyDate: clock.date, nyMinutes: clock.minutes });
 
@@ -173,58 +155,19 @@ export default function GamePlanPage() {
     <Page>
       <PageHeader
         title={shellI18n.t("nav.gamePlan")}
-        icon={Compass}
-        description={t("page.description", { ago: ago || t("page.timeEt") })}
+        icon={Crosshair}
+        description={t("page.description", { ago: t("page.timeEt") })}
         actions={
           <>
-            <nav aria-label={t("page.dayNav")} className="glass-field inline-flex items-center gap-0.5 p-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title={t("page.prevDayKey")}
-                aria-label={t("page.prevDay")}
-                onClick={() => go(shiftTradingDay(date, -1))}
-              >
-                <ChevronLeft aria-hidden="true" />
-              </Button>
-              <Popover open={calOpen} onOpenChange={setCalOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="min-w-[132px] tabular-nums" aria-label={t("page.pickDate", { date: longDate(date) })}>
-                    <CalendarDays aria-hidden="true" />
-                    {shortDate}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" align="center">
-                  <Calendar
-                    mode="single"
-                    selected={dateObj(date)}
-                    defaultMonth={dateObj(date)}
-                    weekStartsOn={1}
-                    onSelect={(d: Date | undefined) => {
-                      if (!d) return;
-                      go(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-                      setCalOpen(false);
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title={t("page.nextDayKey")}
-                aria-label={t("page.nextDay")}
-                onClick={() => go(shiftTradingDay(date, 1))}
-              >
-                <ChevronRight aria-hidden="true" />
-              </Button>
-            </nav>
-            {!isToday && (
-              <Button variant="outline" size="sm" onClick={() => go(today)} title={sessionAhead ? t("page.nextSessionKey") : t("page.todayKey")}>
-                {sessionAhead ? t("page.nextSession") : commonI18n.t("time.today")}
-              </Button>
-            )}
+            <DayStepper
+              value={date}
+              onChange={go}
+              home={today}
+              homeLabel={sessionAhead ? t("page.nextSession") : undefined}
+              homeTitle={sessionAhead ? t("page.nextSessionKey") : undefined}
+              arrows
+              hotkeys={!editorOpen}
+            />
             {isCurator && view === "desk" && plan && (
               <Button className="bg-primary-solid" onClick={() => setEditorOpen(true)} title={t("page.editDeskKey")}>
                 <Pencil aria-hidden="true" />
@@ -234,28 +177,28 @@ export default function GamePlanPage() {
           </>
         }
       >
-        {(canMine || canTeam) && (
-          <Segmented<View>
-            ariaLabel={t("page.viewAria")}
-            size="sm"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "desk", label: t("page.views.desk") },
-              ...(canMine ? [{ value: "my" as View, label: t("page.views.my") }] : []),
-              ...(canTeam ? [{ value: "traders" as View, label: t("page.views.traders") }] : []),
-            ]}
-          />
-        )}
       </PageHeader>
+      {/* The plan's views are page views: SectionTabs, not a filter Segmented (design system: one tab language). */}
+      {(canMine || canTeam) && (
+        <SectionTabs<View>
+          ariaLabel={t("page.viewAria")}
+          value={view}
+          onChange={setView}
+          tabs={[
+            { value: "desk", label: t("page.views.desk") },
+            ...(canMine ? [{ value: "my" as View, label: t("page.views.my") }] : []),
+            ...(canTeam ? [{ value: "traders" as View, label: t("page.views.traders") }] : []),
+          ]}
+        />
+      )}
 
-      {view === "desk" && isToday && <MorningScreener planDate={date} />}
+      {!!user && <DayStrips date={date} mine={view === "my" && isToday} />}
       {view === "my" ? (
         <MyPlan date={date} deskPlan={plan} />
       ) : view === "traders" ? (
         <TraderPlans date={date} />
       ) : (
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
           {dayQ.isLoading ? (
             <BriefingSkeleton />
@@ -345,7 +288,7 @@ export default function GamePlanPage() {
                     <p className="text-sm text-muted-foreground">{t("page.noTickers")}</p>
                   </Panel>
                 ) : (
-                  <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 2xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-[var(--grid-gap)] md:grid-cols-2 2xl:grid-cols-3">
                     {visible.map((i, idx) => (
                       <InPlayCard key={`${i.ticker}-${idx}`} item={i} index={idx} />
                     ))}
@@ -384,6 +327,7 @@ export default function GamePlanPage() {
         </aside>
       </div>
       )}
+      {view === "desk" && isToday && <MorningScreener planDate={date} /> /* after the plan and «В игре» (wave 2B) */}
 
       {isCurator && (
         <PlanEditorSheet
@@ -409,12 +353,12 @@ function BriefingSkeleton() {
           <Skeleton className="h-7 w-36 rounded-full" />
         </div>
         <Skeleton className="h-16 w-full rounded-xl" />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Skeleton className="h-32 rounded-xl" />
           <Skeleton className="h-32 rounded-xl" />
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-56 rounded-2xl" />
         ))}

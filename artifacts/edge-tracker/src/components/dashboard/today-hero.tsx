@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LimitBar, Segmented, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
+import { LimitBar, LiveNumber, Segmented, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,7 @@ function Cell({
   title,
   href,
   extra,
+  wrap = false,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -56,6 +57,8 @@ function Cell({
   title?: string;
   href?: string;
   extra?: ReactNode;
+  /** Never truncate the value and the hint (the stop cell: its reason must be read in full on a phone). */
+  wrap?: boolean;
 }) {
   const body = (
     <>
@@ -63,14 +66,15 @@ function Cell({
       {loading ? (
         <Skeleton className="my-0.5 h-6 w-24 rounded-md" />
       ) : (
-        <span className={cn("truncate text-xl font-semibold leading-7 tabular-nums tracking-tight", toneText(tone))}>{value}</span>
+        <span className={cn(wrap ? "text-base leading-6 sm:text-xl sm:leading-7" : "truncate text-xl leading-7", "font-semibold tabular-nums tracking-tight", toneText(tone))}>{value}</span>
       )}
-      {loading ? <Skeleton className="h-3.5 w-28 rounded" /> : hint != null && <span className="truncate text-xs text-muted-foreground tabular-nums">{hint}</span>}
+      {loading ? <Skeleton className="h-3.5 w-28 rounded" /> : hint != null && <span className={cn("text-xs text-muted-foreground tabular-nums", !wrap && "max-lg:line-clamp-2 lg:truncate")}>{hint}</span>}
       {!loading && extra}
     </>
   );
-  const cls = "flex min-w-0 flex-col gap-0.5 lg:border-l lg:border-[var(--glass-border)] lg:pl-4";
-  // Narrow cells truncate the hint: keep the full text reachable on hover.
+  const cls = "flex min-w-0 flex-col gap-0.5";
+  // Narrow desktop cells truncate the hint: keep the full text reachable on hover. Phones (no hover, one cell per
+  // row) wrap it to two lines instead («Max drawdown reached: $947.66 from peak with a …» was cut).
   const tip = title ?? (typeof hint === "string" ? hint : undefined);
   if (href) {
     return (
@@ -86,6 +90,49 @@ function Cell({
   return (
     <div className={cls} title={tip}>
       {body}
+    </div>
+  );
+}
+
+/**
+ * The day's number (owner, 2026-10-24: «huge confident numbers»): today's net P&L at hero size, counting up from 0 and
+ * resolving blur-to-sharp when it first appears (instant under reduced motion). Colour only says up / down.
+ */
+function HeroCell({
+  label,
+  value,
+  format,
+  resetKey,
+  hint,
+  tone,
+  loading,
+  title,
+}: {
+  label: ReactNode;
+  value: number | null;
+  format: (n: number) => string;
+  /** Scope / unit of the number: a switch re-bases it without a live flash. */
+  resetKey: string;
+  hint?: ReactNode;
+  tone: Tone;
+  loading?: boolean;
+  title?: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1" title={title}>
+      <span className="truncate text-xs text-muted-foreground">{label}</span>
+      {loading ? (
+        <Skeleton className="h-10 w-40 max-w-full rounded-xl" />
+      ) : value == null ? (
+        <span className="type-hero text-[1.5rem] text-muted-foreground/60">—</span>
+      ) : (
+        // The reveal sits on a wrapper: the live flash is an animation too, and on the same element it would replace
+        // (and on removal restart) the reveal. Phones (2 × 2 cells) take a smaller step of the same scale.
+        <span className={cn("reveal type-hero w-fit max-w-full whitespace-nowrap max-sm:text-[1.625rem]", toneText(tone))}>
+          <LiveNumber value={value} format={format} resetKey={resetKey} countIn countInDuration={700} />
+        </span>
+      )}
+      {loading ? <Skeleton className="h-3.5 w-40 rounded" /> : hint != null && <span className="truncate text-xs text-muted-foreground tabular-nums">{hint}</span>}
     </div>
   );
 }
@@ -119,7 +166,11 @@ function MarketCell({ holidays }: { holidays: { date: string; name: string }[] }
   );
 }
 
-function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefined; desk: RiskDesk | null | undefined; team: boolean; loading: boolean }) {
+/**
+ * The daily stop as a meter. A halt is red only on a trading day (trading is really stopped today); on a weekend /
+ * market holiday the same status reads neutrally («рынок закрыт»), never as a Saturday alarm.
+ */
+function RiskCell({ risk, desk, team, loading, quietDay }: { risk: RiskMe | null | undefined; desk: RiskDesk | null | undefined; team: boolean; loading: boolean; quietDay: boolean }) {
   const { t } = dashboardI18n.useT();
   if (team) {
     if (desk === undefined && loading) return <Cell label={t("hero.deskLimits")} value="" loading />;
@@ -140,9 +191,7 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
   }
   if (risk === undefined && loading) return <Cell label={t("hero.dailyLimit")} value="" loading />;
   if (!risk) return <Cell label={t("hero.dailyLimit")} value="—" hint={t("hero.riskUnavailable")} />;
-  if (risk.halted) {
-    return <Cell label={t("hero.dailyLimit")} value={risk.stop.label} tone="down" hint={risk.stop.message} href={links.risk(risk.trader)} title={risk.stop.message} extra={<LiveBadge live={risk.live} />} />;
-  }
+  if (risk.halted) return <HaltCell risk={risk} quietDay={quietDay} />;
   const limit = risk.limits?.dailyLossLimit ?? null;
   if (!risk.limits || limit == null || limit <= 0) {
     // No dead end (Волна 1 п. 1.1): the trader asks the curator right here (a button cannot sit inside the cell link).
@@ -155,7 +204,7 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
   return (
     <Cell
       label={t("hero.remaining")}
-      value={fmtUsd(remaining, { decimals: 0 })}
+      value={<LiveNumber value={remaining} format={(n) => fmtUsd(n, { decimals: 0 })} announce />}
       tone={lt === "ok" ? "neutral" : limitToneToTone(lt)}
       hint={t("hero.usedOf", { limit: fmtUsd(limit, { decimals: 0 }), pct: fmtRate(Math.min(1, loss / limit)) })}
       href={links.risk(risk.trader)}
@@ -169,7 +218,47 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
 }
 
 /**
- * Dashboard header: who / when, and one line of state — NY session, today and week net P&L, risk limit.
+ * A stopped trader: the cell names the rule that stopped trading («Просадка от пика $948 / лимит $800») and gives the
+ * one next step, «Написать куратору» (design audit wave 2: this cell is the one place of the stop alarm; the sidebar,
+ * the plan and the bell no longer repeat it). Red only on a trading day; on a weekend / holiday it reads neutrally.
+ * No cell link: a button cannot sit inside it (the risk desk is one click away in the nav).
+ */
+function HaltCell({ risk, quietDay }: { risk: RiskMe; quietDay: boolean }) {
+  const { t } = dashboardI18n.useT();
+  const L = risk.limits;
+  const state = risk.stop.state === "drawdown" || risk.stop.state === "weekly" ? risk.stop.state : "stop";
+  const [used, limit] = state === "drawdown"
+    ? [risk.drawdown.currentUsd, L?.maxDrawdown ?? null]
+    : state === "weekly"
+      ? [Math.max(0, -(risk.week.pnlNet ?? 0)), L?.weeklyLossLimit ?? null]
+      : [Math.max(0, -(risk.today.pnlNet ?? 0)), L?.dailyLossLimit ?? null];
+  const rule = t(`hero.haltRule.${state}`);
+  const usedText = fmtUsd(used, { decimals: 0 });
+  const limitText = limit != null ? fmtUsd(limit, { decimals: 0 }) : "—";
+  return (
+    <Cell
+      label={rule}
+      value={limit != null ? t("hero.haltValue", { used: usedText, limit: limitText }) : risk.stop.label}
+      tone={quietDay ? "neutral" : "down"}
+      hint={quietDay ? t("hero.haltedClosed") : t(`hero.haltHint.${state}`)}
+      title={risk.stop.message}
+      wrap
+      extra={<>
+        <AskCuratorButton
+          kind="other" size="xs" className="mt-1 self-start"
+          label={t("hero.writeCurator")}
+          prefill={t("hero.writeCuratorPrefill", { rule: rule.toLowerCase(), used: usedText, limit: limitText })}
+        />
+        {!quietDay && <LiveBadge live={risk.live} className="mt-0.5" />}
+      </>}
+    />
+  );
+}
+
+/**
+ * «Сегодня» — the hero strip, read in two seconds: greeting + date on the left, «Мои / Команда» on the right, then four
+ * equal cells: today's net (the screen's one hero number), the week's net, what is left to the daily stop (a meter) and
+ * the NY market clock. Nothing else lives here: the day's to-do is «План на день», progress sits in its footer.
  * No entry CTAs: trades arrive automatically; manual writing lives in the playbook, plans and the journal.
  */
 export function DashboardHeader({
@@ -184,8 +273,6 @@ export function DashboardHeader({
   onScopeChange,
   canChooseScope,
   userName,
-  customize,
-  dayLine,
 }: {
   data: DashboardToday | undefined;
   risk: RiskMe | null | undefined;
@@ -198,9 +285,6 @@ export function DashboardHeader({
   onScopeChange: (s: Scope) => void;
   canChooseScope: boolean;
   userName: string | null;
-  customize: ReactNode;
-  /** The trader's day line (focus · contract · evening card · tier progress), rendered under the state line. */
-  dayLine?: ReactNode;
 }) {
   const { t: tr } = dashboardI18n.useT();
   const now = new Date();
@@ -212,8 +296,13 @@ export function DashboardHeader({
   const loading = isLoading && !data;
   const team = scope === "team";
   const quietDay = !!data && (data.market.weekend || !!data.market.holidayToday);
+  // Live-number context from the answer itself: right after a scope switch the previous scope's numbers are still shown
+  // (keepPreviousData), so the toggle alone would flash the arrival of the other scope's total.
+  const liveKey = data ? `${data.scope}:${data.trader ?? ""}:${data.date}` : "";
 
-  const todayValue = t?.pnlNet != null ? fmtUsd(t.pnlNet, { signed: true }) : t && t.rCount > 0 ? fmtR(t.r) : "—";
+  // The hero number: net dollars, else R when only R is known, else nothing yet.
+  const todayNum = t?.pnlNet != null ? t.pnlNet : t && t.rCount > 0 ? t.r : null;
+  const todayFormat = t?.pnlNet != null ? (n: number) => fmtUsd(n, { signed: true }) : fmtR;
   const todayHint = t
     ? t.closed > 0
       ? [
@@ -227,66 +316,74 @@ export function DashboardHeader({
         : tr("hero.noClosed")
     : undefined;
 
-  const weekValue = w?.pnlNet != null ? fmtUsd(w.pnlNet, { signed: true }) : w && w.rCount > 0 ? fmtR(w.r) : "—";
+  const weekValue = w?.pnlNet != null
+    ? <LiveNumber value={w.pnlNet} format={(n) => fmtUsd(n, { signed: true })} resetKey={liveKey} />
+    : w && w.rCount > 0 ? fmtR(w.r) : "—";
   const weekHint = w
     ? w.closed > 0
       ? tr("hero.weekHint", { trades: commonI18n.t("units.trades", { count: w.closed }), green: w.greenDays, days: w.tradingDays })
       : tr("hero.noWeekTrades")
     : undefined;
 
+  const wide = "col-span-2 lg:col-span-3";
   return (
-    <section aria-labelledby="dash-hero-title" className="glass-panel rounded-2xl p-[var(--panel-p)]">
-      <div className="grid items-center gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(270px,1.35fr)_repeat(4,minmax(0,1fr))]">
-        <div className="flex min-w-0 items-start justify-between gap-2 sm:col-span-2 lg:col-span-1">
-          <div className="min-w-0">
-            <p className="truncate text-xs text-muted-foreground">
-              {dateLabel}
-              {data && data.market.nyDate !== data.date ? ` · ${tr("hero.tradingDay", { date: shortDate(data.date) })}` : ""}
-            </p>
-            <h1 id="dash-hero-title" className="line-clamp-2 text-xl font-semibold leading-7 tracking-tight [overflow-wrap:anywhere]">
-              {greeting(now)}
-              {userName ? `, ${personName(userName)}` : ""}
-            </h1>
-            {canChooseScope && !guest && (
-              <Segmented<Scope>
-                ariaLabel={tr("hero.scopeAria")}
-                size="sm"
-                className="mt-1.5"
-                value={scope}
-                onChange={onScopeChange}
-                options={[
-                  { value: "me", label: tr("hero.mine") },
-                  { value: "team", label: tr("hero.team") },
-                ]}
-              />
-            )}
-          </div>
-          <div className="shrink-0">{customize}</div>
+    <section aria-labelledby="dash-hero-title" className="ins-tile glass-panel dash-card gap-5!">
+      {/* Greeting: display type, one family (the intro's italic serif stays on the intro and the lock screen). */}
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs text-muted-foreground">
+            {dateLabel}
+            {data && data.market.nyDate !== data.date ? ` · ${tr("hero.tradingDay", { date: shortDate(data.date) })}` : ""}
+          </p>
+          <h1 id="dash-hero-title" className="reveal mt-1 line-clamp-2 type-display text-foreground [overflow-wrap:anywhere]">
+            {greeting(now)}
+            {userName ? <>, {personName(userName)}</> : ""}
+          </h1>
         </div>
+        {canChooseScope && !guest && (
+          <Segmented<Scope>
+            ariaLabel={tr("hero.scopeAria")}
+            size="sm"
+            value={scope}
+            onChange={onScopeChange}
+            options={[
+              { value: "me", label: tr("hero.mine") },
+              { value: "team", label: tr("hero.team") },
+            ]}
+          />
+        )}
+      </div>
 
-        <MarketCell holidays={data?.market.holidays ?? []} />
-
+      <div className="dash-kpis">
         {guest ? (
-          <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
-            <span className="text-sm font-medium">{tr("hero.guest")}</span>
-            <span className="text-xs text-muted-foreground">{tr("hero.guestHint")}</span>
-          </div>
+          <>
+            <MarketCell holidays={data?.market.holidays ?? []} />
+            <div className={cn("flex min-w-0 flex-col gap-0.5", wide)}>
+              <span className="text-sm font-medium">{tr("hero.guest")}</span>
+              <span className="text-xs text-muted-foreground">{tr("hero.guestHint")}</span>
+            </div>
+          </>
         ) : isError && !data ? (
-          <div className="flex min-w-0 items-center gap-3 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
-            <span className="text-sm">{tr("hero.loadFailed")}</span>
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              <RefreshCw aria-hidden="true" />
-              {commonI18n.t("actions.retry")}
-            </Button>
-          </div>
+          <>
+            <MarketCell holidays={[]} />
+            <div className={cn("flex min-w-0 flex-wrap items-center gap-3", wide)}>
+              <span className="text-sm">{tr("hero.loadFailed")}</span>
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                <RefreshCw aria-hidden="true" />
+                {commonI18n.t("actions.retry")}
+              </Button>
+            </div>
+          </>
         ) : (
           <>
-            <Cell
+            <HeroCell
               label={team ? tr("hero.deskToday") : tr("hero.today")}
               title={KPI_FORMULAS.netPnl}
               loading={loading}
-              value={todayValue}
-              tone={toneOf(t?.pnlNet ?? (t && t.rCount > 0 ? t.r : null))}
+              value={todayNum}
+              format={todayFormat}
+              resetKey={`${liveKey}:${t?.pnlNet != null ? "usd" : "r"}`}
+              tone={toneOf(todayNum)}
               hint={todayHint}
             />
             <Cell
@@ -297,11 +394,11 @@ export function DashboardHeader({
               tone={toneOf(w?.pnlNet ?? (w && w.rCount > 0 ? w.r : null))}
               hint={weekHint}
             />
-            <RiskCell risk={risk} desk={desk} team={team} loading={loading} />
+            <div data-tour="risk" className="min-w-0"><RiskCell risk={risk} desk={desk} team={team} loading={loading} quietDay={quietDay} /></div>
+            <MarketCell holidays={data?.market.holidays ?? []} />
           </>
         )}
       </div>
-      {!guest && dayLine}
     </section>
   );
 }

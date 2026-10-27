@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
+import { adoptFormerNames } from "@/lib/people/rename-local";
 import { BASE } from "@/lib/api";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { AUTH_EXPIRED_EVENT } from "@/lib/install-fetch-auth";
 import { toast } from "@/hooks/use-toast";
 import { shellI18n } from "@/i18n/ns/shell";
+import { isLang, setLang, LANG_PENDING_KEY } from "@/i18n";
 import { canWith, defaultPermissions, type Capability, type PermissionsMe, type Target } from "@/lib/permissions";
 
 export type UserRole = "trader" | "curator" | "admin" | "guest";
@@ -45,13 +47,13 @@ export type DbUser = {
 interface AuthContextType {
   user: UserSession | null;
   /** Resolves to null on success, otherwise the reason the login failed (+ seconds until a lock ends). */
-  loginAsTrader: (name: string, password: string) => Promise<LoginFailure | null>;
+  loginAsTrader: (name: string, password: string, opts?: EnterOptions) => Promise<LoginFailure | null>;
   /** Change own secret (also the forced staff change). Resolves to null on success, else the server's message. */
-  changePassword: (current: string, next: string) => Promise<string | null>;
+  changePassword: (current: string, next: string, opts?: EnterOptions) => Promise<string | null>;
   /** True while a signed-in staff member still has to set a new password (login screen, step 2). */
   passwordChangePending: boolean;
   /** Asks the API for a read-only guest token (12h). Resolves to null on success. */
-  loginAsGuest: () => Promise<LoginError | null>;
+  loginAsGuest: (opts?: EnterOptions) => Promise<LoginError | null>;
   /** «Выйти»: signs out this device only (the server revokes this session). */
   logout: () => void;
   /** Settings «Выйти на других устройствах»: every other session ends, this device gets a fresh token. True on success. */
@@ -77,6 +79,19 @@ interface AuthContextType {
 
 export type LoginError = "invalid" | "locked" | "rate_limited" | "network" | "banned" | "guest_disabled";
 export type LoginFailure = { error: LoginError; retryAfterSec?: number };
+/**
+ * `beforeEnter` runs after the server said yes and before the session is applied (the sign-in page plays its success
+ * animation there, the same way the lock screen does: lib/lock `beforeApply`). `mustChange`: step 2 «new password»
+ * follows instead of the app. Never awaited longer than ENTER_ANIM_MAX_MS, and a throw is ignored.
+ */
+export type EnterOptions = { beforeEnter?: (mustChange: boolean) => Promise<void> };
+const ENTER_ANIM_MAX_MS = 2500;
+async function runBeforeEnter(opts: EnterOptions | undefined, mustChange: boolean): Promise<void> {
+  if (!opts?.beforeEnter) return;
+  try {
+    await Promise.race([opts.beforeEnter(mustChange), new Promise<void>((r) => setTimeout(r, ENTER_ANIM_MAX_MS))]);
+  } catch { /* an animation never blocks the sign-in */ }
+}
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -104,6 +119,28 @@ async function requestLogoutOthers(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** POST /auth/guest → a read-only guest token (12h), or why there is none. */
+async function requestGuestToken(): Promise<{ token: string } | LoginError> {
+  try {
+    const r = await fetch(`${BASE}/api/auth/guest`, { method: "POST", headers: { "Content-Type": "application/json" } });
+    if (r.status === 429) return "rate_limited";
+    if (r.status === 403) {
+      // GUEST_MODE off on this server (code GUEST_DISABLED).
+      const body = await r.json().catch(() => null) as { code?: string } | null;
+      return body?.code === "GUEST_DISABLED" ? "guest_disabled" : "invalid";
+    }
+    if (!r.ok) return "invalid";
+    const data = await r.json() as { token: string };
+    return data?.token ? { token: data.token } : "invalid";
+  } catch {
+    return "network";
+  }
+}
+
+function langPending(): boolean {
+  try { return localStorage.getItem(LANG_PENDING_KEY) === "1"; } catch { return false; }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -262,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { /* storage blocked */ }
   }, [user]);
 
-  const loginAsTrader = useCallback(async (name: string, password: string): Promise<LoginFailure | null> => {
+  const loginAsTrader = useCallback(async (name: string, password: string, opts?: EnterOptions): Promise<LoginFailure | null> => {
     try {
       const r = await fetch(`${BASE}/api/auth/login`, {
         method: "POST",
@@ -280,13 +317,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await r.json() as {
         token: string;
         user: { id: number; name: string; role: string };
+        formerNames?: string[]; // earlier names of this account (renamed by an admin), newest first
         mustChangePassword?: boolean;
         mustChangeReason?: "first" | "policy";
         secretPolicy?: { min?: number };
+        /** The saved interface language (users.locale). */
+        locale?: string;
       };
+      // The profile language first (design audit wave 2): every request of the new session — server texts such as the
+      // curator's «На стопе — связаться…» — goes out with it, not with the browser's language. A choice made on the
+      // login page itself (pending) wins and is saved to the profile by LocaleSync instead.
+      if (isLang(data.locale) && !langPending()) await setLang(data.locale, { source: "profile" }).catch(() => undefined);
+      await runBeforeEnter(opts, !!data.mustChangePassword);
       _currentToken = data.token;
       // Persist synchronously so raw fetch() calls fired by the first authenticated render carry the token.
       writeToken(data.token);
+      adoptFormerNames(data.formerNames, data.user.name); // renamed by an admin: this device's name-keyed entries follow
       setUser({
         role: (data.user.role as UserRole) ?? "trader",
         traderName: data.user.name,
@@ -294,6 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         mustChangePassword: !!data.mustChangePassword,
         mustChangeReason: data.mustChangePassword ? data.mustChangeReason : undefined,
         secretMin: data.secretPolicy?.min,
+        profileLocale: typeof data.locale === "string" ? data.locale : undefined,
       });
       return null;
     } catch {
@@ -303,7 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Own secret change. The API revokes every other session and returns a fresh token for this one, so the forced
   // staff change goes straight on into the app.
-  const changePassword = useCallback(async (current: string, next: string): Promise<string | null> => {
+  const changePassword = useCallback(async (current: string, next: string, opts?: EnterOptions): Promise<string | null> => {
     try {
       const r = await fetch(`${BASE}/api/users/me/password`, {
         method: "POST",
@@ -313,6 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const body = (await r.json().catch(() => null)) as { token?: string; error?: string } | null;
       const token = body?.token;
       if (!r.ok || !token) return body?.error ?? `HTTP ${r.status}`;
+      await runBeforeEnter(opts, false);
       _currentToken = token;
       writeToken(token);
       setUser((u) => (u ? { ...u, token, mustChangePassword: false, mustChangeReason: undefined } : u));
@@ -324,25 +372,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Guest = a real (read-only, 12h) token from POST /api/auth/guest, stored exactly like a
   // member token, so every request is authenticated and the server can enforce "view only".
-  const loginAsGuest = useCallback(async (): Promise<LoginError | null> => {
-    try {
-      const r = await fetch(`${BASE}/api/auth/guest`, { method: "POST", headers: { "Content-Type": "application/json" } });
-      if (r.status === 429) return "rate_limited";
-      if (r.status === 403) {
-        // GUEST_MODE off on this server (code GUEST_DISABLED).
-        const body = await r.json().catch(() => null) as { code?: string } | null;
-        return body?.code === "GUEST_DISABLED" ? "guest_disabled" : "invalid";
-      }
-      if (!r.ok) return "invalid";
-      const data = await r.json() as { token: string };
-      if (!data?.token) return "invalid";
-      _currentToken = data.token;
-      writeToken(data.token);
-      setUser({ role: "guest", traderName: null, token: data.token });
-      return null;
-    } catch {
-      return "network";
-    }
+  const loginAsGuest = useCallback(async (opts?: EnterOptions): Promise<LoginError | null> => {
+    const res = await requestGuestToken();
+    if (typeof res !== "object") return res;
+    await runBeforeEnter(opts, false);
+    _currentToken = res.token;
+    writeToken(res.token);
+    setUser({ role: "guest", traderName: null, token: res.token });
+    return null;
   }, []);
 
   const logout = useCallback(() => {

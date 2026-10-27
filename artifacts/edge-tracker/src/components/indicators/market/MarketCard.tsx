@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { alertFires, type AlertRule, type IndicatorDef, type Reading } from "./engine";
+import { alertFires, type AlertRule, type IndicatorDef, type Reading } from "@/components/shared/market/engine";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -27,7 +27,7 @@ export function IndicatorExplain({ def }: { def: IndicatorDef }) {
           type="button"
           aria-label={t("mcard.whatIs", { label: def.label })}
           onClick={(e) => e.stopPropagation()}
-          className="-m-1.5 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-my-1 [display:inline-grid] h-6 w-6 shrink-0 place-items-center rounded-full align-middle text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

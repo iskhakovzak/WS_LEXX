@@ -389,7 +389,7 @@ export function JuniorEditor({
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5">
       <Panel padded={false} className="min-w-0">
         {/* Header: date nav + status + tools */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
@@ -483,7 +483,7 @@ export function JuniorEditor({
             ))}
           </div>
         ) : (
-          <div className="space-y-6 px-4 py-5 sm:px-5">
+          <div className="space-y-section px-4 py-5 sm:px-5">
             {/* Mood */}
             <div className="space-y-2">
               <span id="jn-mood" className="micro-label">{t("stateLabel")}</span>

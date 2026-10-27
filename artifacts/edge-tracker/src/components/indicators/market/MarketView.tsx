@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils";
 import {
   DIMENSIONS, INDICATORS, INDICATOR_BY_ID, alertFires, analogues as findAnalogues, baseline, bucketize, buildFrame, joinDays, readings,
   regimeAt, tercileDimension, traderDays, type AlertRule, type IndicatorId,
-} from "./engine";
-import { useMarketData } from "./useMarketData";
+} from "@/components/shared/market/engine";
+import { useMarketData } from "@/components/shared/market/useMarketData";
 import { useMarketAlerts } from "./alerts";
 import { MarketCard } from "./MarketCard";
 import { RegimePanel } from "./RegimePanel";
@@ -182,7 +182,7 @@ export function MarketView() {
         </div>
       </BentoGrid>
 
-      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4" role="list" aria-label={t("market.cardsAria")}>
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4" role="list" aria-label={t("market.cardsAria")}>
         {INDICATORS.map((def) => (
           <div key={def.id} role="listitem" className="min-w-0">
             <MarketCard def={def} reading={readById.get(def.id)} rule={alerts[def.id]} focused={focus === def.id} onFocus={setFocus} onSaveAlert={onSaveAlert} />
@@ -204,7 +204,7 @@ export function MarketView() {
       ) : (
         <BentoGrid>
           <div className="min-w-0 lg:col-span-8">
-            <EdgeByRegime focusDef={focusDef} focusResult={focusResult} pre={pre} day={day} base={base} totalDays={joined.length} totalTrades={totalTrades} />
+            <EdgeByRegime focusDef={focusDef} focusResult={focusResult} pre={pre} day={day} base={base} totalDays={joined.length} totalTrades={totalTrades} trader={trader || null} self={!!me && trader === me} />
           </div>
           <div className="min-w-0 lg:col-span-4"><AnaloguesPanel analogues={analogues} trader={trader} /></div>
         </BentoGrid>

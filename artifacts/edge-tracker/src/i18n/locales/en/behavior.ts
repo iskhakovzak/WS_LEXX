@@ -4,7 +4,6 @@ import type ru from "../ru/behavior";
 export default {
   title: "Behavior & setups",
   description: "Where behavior costs money, what to do about it, and which setup is behind a trade. Rule-based, no AI; money is net.",
-  period: { "30d": "30 days", "90d": "90 days", ytd: "Year to date", all: "All time" },
   periodAria: "Period",
   traderAria: "Trader",
   sectionsAria: "Sections",
@@ -49,7 +48,7 @@ export default {
   dur: { seconds: "{count} s", minutes: "{count} min", hm: "{h} h {m} min", days: "{value} d" },
   severity: { none: "costs nothing", few: "too few cases", low: "low", medium: "medium", high: "high" },
   pattern: {
-    revenge: "revenge", martingale: "martingale", overtrading: "overtrading", tilt: "tilt", chase: "chasing",
+    revenge: "quick re-entry", martingale: "martingale", overtrading: "overtrading", tilt: "tilt", chase: "chasing",
     euphoria: "euphoria", fatigue: "fatigue", disposition: "holding losers", firstTrade: "first trade",
   },
   marker: { revenge: "R", tilt: "T", martingale: "M", euphoria: "E", chase: "C", overtrading: "+", disposition: "H" },
@@ -199,6 +198,12 @@ export default {
   },
 
   aggregates: {
+    rowToggle: "Trades of the «{setup}» setup: show or hide",
+    drillTitle: "Trades of the «{setup}» setup: {trades}",
+    drillAria: "Trades of the «{setup}» setup",
+    drillOpen: "Open the {ticker} trade of {date}",
+    drillAll: "All in Trades",
+    drillHint: "A table row opens its trades",
     few: "too little data",
     fewTitle: "Fewer than 5 trades",
     edge: "edge",
@@ -296,7 +301,7 @@ export default {
     fromPatternTitle: "Created with “Make a rule” on a pattern card",
     fromPattern: "from pattern “{pattern}”",
     editAria: "Edit the threshold of “{name}”",
-    deleteAria: "Delete trigger “{name}”",
+    moreAria: "More actions: {name}",
     save: "Save",
     fires: { one: "In the period it would have fired {count} time over {days};", other: "In the period it would have fired {count} times over {days};" },
     under: "{trades} under the trigger with net",

@@ -138,7 +138,7 @@ export function CheatCard({
         <section className="flex min-w-0 flex-col gap-4">
           <LiveChecklist setup={setup} date={date} onGrade={setGrade} />
           <div className="border-t border-[var(--glass-border)] pt-3">
-            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("card.size")}</h3>
+            <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">{t("card.size")}</h3>
             <SizeCalc setupId={setup.id} oneR={oneR} grade={grade} date={date} />
           </div>
         </section>

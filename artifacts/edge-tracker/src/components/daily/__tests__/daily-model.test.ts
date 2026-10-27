@@ -100,7 +100,7 @@ describe("tier title in three languages", () => {
     await setLang("en", { source: "init" });
     expect(tierTitle(progress)).toBe("To Junior: 3 of 5");
     await setLang("uz", { source: "init" });
-    expect(tierTitle(progress)).toBe("Junior darajasigacha: 3/5 bajarildi");
+    expect(tierTitle(progress)).toBe("Juniorgacha: 3/5");
   });
 
   it("top tier and custom tiers", async () => {

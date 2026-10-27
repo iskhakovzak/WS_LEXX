@@ -3,7 +3,6 @@
  * (ds.tsx has no LimitBar/ProgressRing yet — the shell agent may promote these later.)
  */
 import * as React from "react";
-import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { Pill, type Tone } from "@/components/ds";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronsUpDown, CircleDashed, OctagonX, type LucideIcon } from "lucide-react";
@@ -349,17 +348,6 @@ export function Sparkline({
 
 // ─── misc ───────────────────────────────────────────────────────────────────
 
-export const CHART_TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
-export const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
 
 /** localStorage-backed string state (never throws). */
 export function useStoredState<T extends string>(key: string, initial: T, allowed: readonly T[]): [T, (v: T) => void] {

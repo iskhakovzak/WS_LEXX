@@ -20,6 +20,7 @@
 import * as React from "react";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
+import { motionReduced } from "@/lib/motion";
 import { commonI18n } from "@/i18n/ns/common";
 
 /* ── Error ─────────────────────────────────────────────────────────────────── */
@@ -66,20 +67,20 @@ export function SkeletonBlock({ className, ...rest }: React.HTMLAttributes<HTMLD
   return <div aria-hidden="true" className={cn("skeleton h-4 w-full", className)} {...rest} />;
 }
 
-/** Placeholder for a StatGrid of KPI cards (same min width, same height as StatCard). */
+/** Placeholder for a StatGrid: the same strip shape (one panel, hairline-divided cells: label, number, hint). */
 export function StatGridSkeleton({ count = 4, min = "11rem", className }: { count?: number; min?: string; className?: string }) {
   return (
     <div
       role="status"
       aria-label={commonI18n.t("ds.loadingKpis")}
-      className={cn("grid gap-[var(--grid-gap)]", className)}
+      className={cn("glass-panel grid overflow-hidden rounded-2xl", className)}
       style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}, 100%), 1fr))` }}
     >
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="glass-panel flex min-h-[104px] flex-col gap-2 rounded-2xl p-4">
+        <div key={i} className="flex flex-col gap-2 px-4 py-3 shadow-[-1px_0_0_var(--glass-border),0_-1px_0_var(--glass-border)]">
           <SkeletonBlock className="h-3 w-20" />
           <SkeletonBlock className="h-7 w-28" />
-          <SkeletonBlock className="mt-auto h-3 w-16" />
+          <SkeletonBlock className="h-3 w-16" />
         </div>
       ))}
     </div>
@@ -131,6 +132,81 @@ export function PanelSkeleton({ height = 240, title = true, className }: { heigh
   );
 }
 
+/**
+ * Chart panel placeholder: title + legend line, a plot area with faint gridlines and a bar / line silhouette, an
+ * x-axis row — the shape of the coming chart, so nothing jumps when it draws. `bare` = no glass card (inside a Panel).
+ */
+export function ChartSkeleton({
+  height = 280,
+  kind = "line",
+  title = true,
+  bare = false,
+  className,
+}: { height?: number | string; kind?: "line" | "bars"; title?: boolean; bare?: boolean; className?: string }) {
+  const bars = [46, 62, 38, 71, 55, 80, 44, 66, 58, 74, 49, 85, 61, 70];
+  return (
+    <div
+      role="status"
+      aria-label={commonI18n.t("ds.loadingChart")}
+      className={cn("flex flex-col gap-3", !bare && "glass-panel rounded-2xl p-[var(--panel-p)]", className)}
+    >
+      {title && (
+        <div className="flex items-center justify-between gap-3">
+          <SkeletonBlock className="h-4 w-36" />
+          <SkeletonBlock className="h-6 w-28 rounded-full" />
+        </div>
+      )}
+      <div className="relative flex-1 overflow-hidden rounded-xl" style={{ height }} aria-hidden="true">
+        {/* Gridlines */}
+        <div className="absolute inset-0 flex flex-col justify-between py-2">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="h-px w-full bg-foreground/[0.06]" />)}
+        </div>
+        {kind === "bars" ? (
+          <div className="absolute inset-x-1 bottom-2 top-4 flex items-end gap-[3%]">
+            {bars.map((h, i) => <SkeletonBlock key={i} className="w-full rounded-t-md rounded-b-none" style={{ height: `${h}%` }} />)}
+          </div>
+        ) : (
+          <svg className="absolute inset-0 h-full w-full text-foreground/[0.09]" viewBox="0 0 100 40" preserveAspectRatio="none">
+            <path d="M0 32 L8 30 L16 31 L24 25 L32 27 L40 20 L48 22 L56 16 L64 18 L72 12 L80 14 L88 8 L100 10 L100 40 L0 40 Z" fill="currentColor" />
+          </svg>
+        )}
+      </div>
+      <div className="flex justify-between gap-2" aria-hidden="true">
+        {[0, 1, 2, 3, 4].map((i) => <SkeletonBlock key={i} className="h-2.5 w-10" />)}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Master–detail placeholder (a list on the left, the opened item on the right): course list + lesson tree, exam list
+ * + exam, setup list + setup card. `side` = the list column width (CSS length).
+ */
+export function SplitSkeleton({ side = "340px", rows = 6, detailHeight = 384, className }: { side?: string; rows?: number; detailHeight?: number; className?: string }) {
+  return (
+    <div role="status" aria-label={commonI18n.t("states.loading")} className={cn("grid gap-[var(--grid-gap)] lg:grid-cols-[var(--split-side)_minmax(0,1fr)]", className)} style={{ "--split-side": side } as React.CSSProperties}>
+      <div className="glass-panel flex flex-col gap-1 rounded-2xl p-2">
+        {Array.from({ length: rows }, (_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-xl px-2 py-2.5">
+            <SkeletonBlock className="h-8 w-8 shrink-0 rounded-lg" />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <SkeletonBlock className="h-3.5" style={{ width: `${78 - ((i * 17) % 34)}%` }} />
+              <SkeletonBlock className="h-2.5 w-1/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]" style={{ minHeight: detailHeight }}>
+        <SkeletonBlock className="h-5 w-1/2" />
+        <SkeletonBlock className="h-3.5 w-3/4" />
+        <div className="mt-2 flex flex-col gap-2.5">
+          {Array.from({ length: 5 }, (_, i) => <SkeletonBlock key={i} className="h-10 rounded-xl" style={{ opacity: 1 - i * 0.12 }} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Query wrapper ─────────────────────────────────────────────────────────── */
 
 type QueryLike<T> = {
@@ -166,12 +242,32 @@ export function QueryState<T>({
   errorTitle?: string;
 }) {
   const { data } = query;
+  // Content that replaces a skeleton cross-fades in; content that was cached from the start just shows.
+  const [sawSkeleton] = React.useState(data === undefined);
   if (data === undefined) {
     if (query.isError) {
       return <ErrorState error={query.error} onRetry={query.refetch} compact={errorCompact} inset={errorInset} title={errorTitle} />;
     }
     return <>{skeleton ?? <ListSkeleton rows={4} />}</>;
   }
-  if (isEmpty?.(data) && empty) return <>{empty}</>;
-  return <>{children(data)}</>;
+  const body = isEmpty?.(data) && empty ? empty : children(data);
+  return sawSkeleton ? <FadeInOnMount>{body}</FadeInOnMount> : <>{body}</>;
+}
+
+/**
+ * Fades its content in once, on mount (180 ms), without a wrapper element that could break the parent's grid / flex:
+ * two hidden markers bracket the content and the elements between them (up to 8) are animated with WAAPI. A refetch
+ * keeps it mounted, so it never replays. Nothing with «Движение и анимации» off.
+ */
+function FadeInOnMount({ children }: { children: React.ReactNode }) {
+  const start = React.useRef<HTMLSpanElement>(null);
+  const end = React.useRef<HTMLSpanElement>(null);
+  React.useLayoutEffect(() => {
+    if (motionReduced()) return;
+    let el = start.current?.nextElementSibling ?? null;
+    for (let n = 0; el && el !== end.current && n < 8; n++, el = el.nextElementSibling) {
+      (el as HTMLElement).animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+    }
+  }, []);
+  return <><span ref={start} hidden />{children}<span ref={end} hidden /></>;
 }

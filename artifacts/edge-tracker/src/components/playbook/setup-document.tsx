@@ -64,7 +64,7 @@ export function ThesisView({ text }: { text: string }) {
   const blocks = structureConditions(text);
   if (!blocks) return <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{text}</p>;
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {blocks.map((b) => (
         <div key={b.key} className={cn("relative overflow-hidden rounded-xl bg-[var(--glass-bg)] py-2.5 pl-4 pr-3", (b.key.startsWith("intro") || b.key.startsWith("thesis")) && "sm:col-span-2")}>
           <span className={cn("absolute inset-y-2 left-1.5 w-[3px] rounded-full", BLOCK_BAR[b.tone])} aria-hidden="true" />

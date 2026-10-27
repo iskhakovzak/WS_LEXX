@@ -34,6 +34,8 @@ import { setupLabelOf } from "../lib/setupClassifier";
 import { langOf } from "../i18n";
 import { contractDeltas } from "../lib/daily/discipline";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
+import { facetSqlTail, type FacetFilters } from "../lib/tradeFacetsSql";
 
 const router: IRouter = Router();
 
@@ -45,6 +47,7 @@ const querySchema = z.object({
   to: z.string().regex(YMD_RE).optional(),
   revengeMin: z.coerce.number().int().min(1).max(120).optional(),
   euphoriaMin: z.coerce.number().int().min(1).max(240).optional(),
+  ...FACET_QUERY, // «Разрезы» of the page (lib/tradeFacetsSql): the report, the day and the triggers read the same trades
 });
 
 function normQuery(q: Request["query"]): Record<string, string> {
@@ -139,7 +142,7 @@ export function rowToBehaviorTrade(r: BehaviorRow): BehaviorTrade {
  * Сделки трейдера за период (без удалённых). `scope` = имя трейдера, null = все (staff), GUEST_SCOPE — пусто.
  * Переиспользуется классификатором сетапов (routes/setups-auto.ts).
  */
-export async function loadBehaviorRows(scope: string | null, from?: string, to?: string, ids?: number[], traders?: string[]): Promise<BehaviorRow[]> {
+export async function loadBehaviorRows(scope: string | null, from?: string, to?: string, ids?: number[], traders?: string[], facets?: FacetFilters): Promise<BehaviorRow[]> {
   const params: unknown[] = [];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   const cond = ["t.deleted_at IS NULL"];
@@ -148,6 +151,7 @@ export async function loadBehaviorRows(scope: string | null, from?: string, to?:
   if (to) cond.push(`substring(t.date, 1, 10) <= ${p(to)}`);
   if (ids && ids.length) cond.push(`t.id = ANY(${p(ids)}::int[])`);
   if (traders) cond.push(`t.trader = ANY(${p(traders)}::text[])`);
+  const tail = facetSqlTail(facets, params);
   // One trader / explicit ids → per-trade index probe; desk-wide scans → one hash aggregate (cheaper above ~10k trades).
   const execJoin = execSpanJoin(scope != null || (ids && ids.length) || (traders && traders.length <= 12) ? "lateral" : "global");
   const sql = `
@@ -166,7 +170,7 @@ export async function loadBehaviorRows(scope: string | null, from?: string, to?:
            e.first_entry, e.last_exit
     FROM trades t
     ${execJoin}
-    WHERE ${cond.join(" AND ")}
+    WHERE ${cond.join(" AND ")}${tail}
     ORDER BY substring(t.date, 1, 10), e.first_entry NULLS LAST, t.id`;
   const { rows } = await pool.query<BehaviorRow>(sql, params);
   return rows;
@@ -206,7 +210,7 @@ router.get("/behavior", asyncHandler(async (req, res) => {
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
 
-  const rows = await loadBehaviorRows(scope, q.from, q.to);
+  const rows = await loadBehaviorRows(scope, q.from, q.to, undefined, undefined, facetFiltersOf(q));
   const trades = await withAutoSetups(rows.map(rowToBehaviorTrade));
   const lang = langOf(req);
   // Own contract verdicts (lib/daily) move the day's discipline score: kept +, broken −.
@@ -276,7 +280,7 @@ router.get("/behavior/day", asyncHandler(async (req, res) => {
   const inPeriod = (!q.from || q.date >= q.from) && (!q.to || q.date <= q.to);
   const from = inPeriod ? q.from : shiftDate(q.date, -89);
   const to = inPeriod ? q.to : q.date;
-  const rows = await loadBehaviorRows(scope, from, to);
+  const rows = await loadBehaviorRows(scope, from, to, undefined, undefined, facetFiltersOf(q));
   const tl = dayTimeline(rows.map(rowToBehaviorTrade), q.date, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin }, langOf(req));
   res.json({ scope, normsFrom: from ?? null, normsTo: to ?? null, ...tl, generatedAt: new Date().toISOString() });
 }));
@@ -310,6 +314,7 @@ const triggersQuery = z.object({
   trader: z.string().trim().max(120).optional(),
   from: z.string().regex(YMD_RE).optional(),
   to: z.string().regex(YMD_RE).optional(),
+  ...FACET_QUERY,
 });
 
 router.get("/behavior/triggers", asyncHandler(async (req, res) => {
@@ -329,7 +334,7 @@ router.get("/behavior/triggers", asyncHandler(async (req, res) => {
     `SELECT * FROM behavior_triggers WHERE trader = $1 AND deleted_at IS NULL ORDER BY enabled DESC, created_at DESC, id DESC`,
     [trader],
   );
-  const trades = (await loadBehaviorRows(trader, q.from, q.to)).map(rowToBehaviorTrade).filter((t) => t.result !== "open");
+  const trades = (await loadBehaviorRows(trader, q.from, q.to, undefined, undefined, facetFiltersOf(q))).map(rowToBehaviorTrade).filter((t) => t.result !== "open");
   const byDay = groupByDay(trades);
   const dates = [...byDay.keys()].sort();
   res.json({

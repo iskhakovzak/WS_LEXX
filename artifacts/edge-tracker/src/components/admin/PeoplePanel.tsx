@@ -3,10 +3,10 @@
  * Every change asks for a reason (ReasonDialog) and lands in the audit log. Status: active / frozen (banned,
  * login blocked) / archived (active=false, soft — nothing is deleted).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
-  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, Search, Snowflake, Sun,
+  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, PencilLine, RotateCcw, Snowflake, Sun,
   UserCog, UserPlus, Users, UsersRound, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,13 +21,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { QueryError } from "@/components/query-error";
 import {
-  DataTable, EmptyState, FilterChip, Kbd, Panel, Pill, Segmented, SortableTh, TableSkeleton, useTableSort, type Tone,
+  DataTable, EmptyState, FilterChip, Panel, Pill, Segmented, SortableTh, TableSkeleton, Toolbar, useTableSort, type Tone,
 } from "@/components/ds";
 import { VirtualRows } from "@/components/ds/virtual";
+import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
+import { StageMedal, medalStageOf } from "@/components/shared/medals";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { downloadCsv, isTypingTarget, roleLabel, tierDisplayName, tierFallbackLabel, timeAgo, type DeskPulse } from "./api";
+import { downloadCsv, roleLabel, tierDisplayName, tierFallbackLabel, timeAgo, type DeskPulse } from "./api";
 import {
   NotDeployedError, useCreatePerson, useMapAccount, usePeople, usePeopleAction, useSetNameLatin, useTiers,
   type PeopleActionInput, type PeopleActionKind, type Person, type PersonStatus,
@@ -45,12 +47,15 @@ import { authI18n } from "@/i18n/ns/auth";
 import { adminI18n } from "@/i18n/ns/admin";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { onboardingI18n } from "@/i18n/ns/onboarding";
+import { resetOnboardingFor } from "@/lib/onboarding/store";
 import { FillLatinButton, LatinSuggestion, NameLatinDialog } from "./latin-names";
 
 export type PeopleView = "manage" | "activity";
 type Filter = "all" | "traders" | "staff" | "active" | "frozen" | "archived" | "nocurator" | "noaccount";
 export type PeopleFilter = Filter;
 
+const DEFAULT_FILTER: Filter = "active";
 const FILTERS: readonly Filter[] = ["all", "traders", "staff", "active", "frozen", "archived", "nocurator", "noaccount"];
 /** Problem filters: shown only when they match someone (or are selected) — fewer chips at once. */
 const SIGNAL_FILTERS = new Set<Filter>(["frozen", "nocurator", "noaccount"]);
@@ -130,22 +135,12 @@ export function PeoplePanel({
   const canTier = can("scaling.approve");
   const canMap = can("propreports.configure");
 
-  const [filter, setFilter] = useState<Filter>(initialFilter ?? "active");
+  const [filter, setFilter] = useState<Filter>(initialFilter ?? DEFAULT_FILTER);
   useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [dialog, setDialog] = useState<ReasonDialogState>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (view !== "manage") return;
-      if (e.key === "/" && !isTypingTarget(e.target) && !e.ctrlKey && !e.metaKey) { e.preventDefault(); searchRef.current?.focus(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [view]);
 
   const tierName = useMemo(() => {
     const m: Record<string, string> = Object.fromEntries(TIER_FALLBACK_KEYS.map((k) => [k, tierFallbackLabel(k)]));
@@ -326,8 +321,10 @@ export function PeoplePanel({
             </DropdownMenuSub>
           )}
           {touch && <DropdownMenuItem onSelect={() => window.setTimeout(() => setLatinFor(p), 0)}><Languages /> {t("people.menu.latin")}</DropdownMenuItem>}
+          {touch && (p.role !== "curator" || canAdmins || self) && <DropdownMenuItem onSelect={() => window.setTimeout(() => legacy.rename(p), 0)}><PencilLine /> {t("people.menu.rename")}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => legacy.setPassword(p)}><KeyRound /> {t("people.menu.password")}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => ask("sessions", [p])}><LogOut /> {t("people.menu.sessions")}</DropdownMenuItem>}
+          {touch && <DropdownMenuItem onSelect={() => void resetOnboardingFor(p.id).then(() => toast({ title: onboardingI18n.t("admin.resetDone", { name: personName(p.name) }) }), (e: Error) => toast({ title: tc("states.error"), description: e.message, variant: "destructive" }))}><RotateCcw /> {onboardingI18n.t("admin.reset")}</DropdownMenuItem>}
           {touch && !self && (
             <>
               <DropdownMenuSeparator />
@@ -346,6 +343,15 @@ export function PeoplePanel({
     );
   };
 
+  const viewSwitch = (
+    <Segmented<PeopleView>
+      ariaLabel={t("people.viewAria")}
+      value={view}
+      onChange={onViewChange}
+      options={[{ value: "manage", label: t("people.view.manage") }, { value: "activity", label: t("people.view.activity") }]}
+    />
+  );
+
   const unmatched = [
     ...(people.data?.accounts.unmatched ?? []).map((a) => ({ account: a, kind: "new" as const })),
     ...(people.data?.accounts.unmapped ?? []).map((a) => ({ account: a.account, kind: "unmapped" as const })),
@@ -353,18 +359,6 @@ export function PeoplePanel({
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Segmented<PeopleView>
-          ariaLabel={t("people.viewAria")}
-          value={view}
-          onChange={onViewChange}
-          options={[{ value: "manage", label: t("people.view.manage") }, { value: "activity", label: t("people.view.activity") }]}
-        />
-        {view === "manage" && people.data?.source === "fallback" && (
-          <span className="text-xs text-muted-foreground">{t("people.fallbackNote")}</span>
-        )}
-      </div>
-
       {view === "activity" ? (
         <TradersTable
           actor={actor}
@@ -377,9 +371,29 @@ export function PeoplePanel({
           filter={activityFilter}
           onFilterChange={onActivityFilterChange}
           riskStatus={riskStatus}
+          viewSwitch={viewSwitch}
         />
       ) : (
         <>
+          <Toolbar>
+            <ToolbarSearch value={q} onChange={setQ} placeholder={t("people.searchPlaceholder")} ariaLabel={t("people.searchAria")} />
+            {viewSwitch}
+            <FiltersButton count={filter !== DEFAULT_FILTER ? 1 : 0} onReset={() => setFilter(DEFAULT_FILTER)} resultCount={rows.length}>
+              <FilterSection title={t("people.filterAria")}>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("people.filterAria")}>
+                  {FILTERS.filter((f) => !SIGNAL_FILTERS.has(f) || counts[f] > 0 || filter === f).map((f) => (
+                    <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={counts[f]} className="shrink-0">
+                      {t(`people.filter.${f}`)}
+                    </FilterChip>
+                  ))}
+                </div>
+              </FilterSection>
+            </FiltersButton>
+            <span className="ml-auto" />
+            {people.data?.source === "fallback" && <span className="text-xs text-muted-foreground">{t("people.fallbackNote")}</span>}
+            {all.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{t("shownOf", { shown: rows.length, total: all.length })}</span>}
+          </Toolbar>
+          <ActiveFilters items={[filter !== DEFAULT_FILTER && { key: "filter", label: t(`people.filter.${filter}`), onRemove: () => setFilter(DEFAULT_FILTER) }]} />
           {canMap && unmatched.length > 0 && (
             <Panel title={t("people.unmatched.title")} icon={Link2} description={t("people.unmatched.description")}>
               <ul className="flex flex-col gap-2">
@@ -395,36 +409,12 @@ export function PeoplePanel({
             actions={
               <>
                 {canManage && <FillLatinButton people={all.filter(canTouch)} />}
-                <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download /> CSV</Button>
+                {rows.length > 0 && <Button variant="outline" size="sm" onClick={exportCsv}><Download /> CSV</Button>}
                 {canManage && <Button size="sm" onClick={() => setAddOpen(true)}><UserPlus /> {t("people.add")}</Button>}
               </>
             }
           >
             <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-2">
-                <div className="relative w-full md:max-w-sm">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                  <Input
-                    ref={searchRef}
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
-                    placeholder={t("people.searchPlaceholder")}
-                    title={t("people.searchTitle")}
-                    aria-label={t("people.searchAria")}
-                    className="pl-9 pr-10"
-                  />
-                  <Kbd className="absolute right-3 top-1/2 -translate-y-1/2">/</Kbd>
-                </div>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("people.filterAria")}>
-                  {FILTERS.filter((f) => !SIGNAL_FILTERS.has(f) || counts[f] > 0 || filter === f).map((f) => (
-                    <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={counts[f]} className="shrink-0">
-                      {t(`people.filter.${f}`)}
-                    </FilterChip>
-                  ))}
-                </div>
-              </div>
-
               {selectedRows.length > 0 && (
                 <BulkBar
                   count={selectedRows.length}
@@ -507,7 +497,7 @@ export function PeoplePanel({
                             ) : canTouch(p) && <LatinSuggestion person={p} onEdit={() => setLatinFor(p)} />}
                           </td>
                           <td><Pill tone={roleTone(p.role)}>{roleLabel(p.role)}</Pill></td>
-                          <td>{p.role === "trader" ? (p.tier ? <span>{tierName[p.tier] ?? p.tier}</span> : <span className="text-muted-foreground">—</span>) : <span className="text-muted-foreground">—</span>}</td>
+                          <td>{p.role === "trader" ? (p.tier ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap">{medalStageOf(p.tier) && <StageMedal stage={medalStageOf(p.tier) ?? "junior"} size={20} decorative />}{tierName[p.tier] ?? p.tier}</span> : <span className="text-muted-foreground">—</span>) : <span className="text-muted-foreground">—</span>}</td>
                           <td>{p.role === "trader" ? (p.curator ? personName(p.curator) : <span className="whitespace-nowrap text-[hsl(var(--chart-3))]">{t("people.curatorNotSet")}</span>) : <span className="text-muted-foreground">—</span>}</td>
                           <td>
                             {p.accounts.length

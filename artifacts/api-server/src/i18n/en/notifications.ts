@@ -63,7 +63,56 @@ export default {
   },
   // ── server-b (translation wave) ──
   /** Type labels and descriptions (preferences panel, chips); key = canonical type (lib/notificationCore.ts). */
+  curator_digest: {
+    title: "Evening digest for {date}",
+    body: "Days closed: {closed}, waiting for review: {unreviewed}",
+    top: "Look at these first:",
+    nothing: "The money queue is empty.",
+    line: "{n}. {trader} — {reason}",
+    lineCost: "{n}. {trader} — {reason}, {cost}",
+    reason: { breach_review: "breach to review", stopped: "on stop", near_stop: "close to stop", eod_review: "closed day waits for review", weekly_review: "weekly report", overdue_action: "1:1 agreements overdue", no_limits: "no limits", template_drift: "limits off the template", missing_plan: "no plan", missing_eod: "day not closed", one_on_one: "no 1:1 for long", plateau_review: "pace below the stage target", at_stake: "red and leaks", dropout_risk: "dropout risk", trial_review: "rule trial ending", stop_breach: "limit breach", focus_broken: "focus broken", disputed: "“not a mistake” on the focus", fees: "fees", loss_streak: "losing streak", giveback: "profit given back", rule: "rule violations", other: "needs a look" },
+  },
+  mentor_escalation: {
+    title: "AI mentor: {trader} needs your eye",
+    body: "The mentor sees a pattern better handled together. Open the mentor's notes.",
+    tilt_streak: { title: "AI mentor: {trader} — tilt {days} days in a row", body: "{days} trading days in a row with tilt, revenge or averaging down. Talk today; the mentor's notes are on the trader's card." },
+    rule_breaks: { title: "AI mentor: {trader} keeps breaking commitments", body: "{count} commitment breaks in {days} trading days. The mentor needs your support." },
+    drawdown_near_limit: { title: "AI mentor: {trader} — drawdown near the limit", body: "Drawdown {drawdown} — {pct}% of the {limit} limit. Worth discussing size and the plan before the next session." },
+    silence: { title: "AI mentor: {trader} silent for {days} days", body: "{days} trading days without trades, a check-in or a word to the mentor. Maybe reach out first." },
+  },
+  mentor_ready: {
+    title: "Mentor: ready",
+    body: "Open the mentor.",
+    brief: { title: "Mentor: today's brief is ready", body: "The market regime, your edge in it and one rule for today." },
+    debrief: { title: "Mentor: session debrief is ready", body: "What happened against the plan, one lesson and the rule for tomorrow." },
+  },
+  ai_review_ready: {
+    title: "AI review ready",
+    body: "Your review is ready — open it to see.",
+    day: { title: "Day review ready", body: "AI review of {period}: what worked, what did not, and one focus for today." },
+    week: { title: "Week review ready", body: "AI review of the week from {period}: the result, the week's habits and one focus for the next one." },
+    month: { title: "Month review ready", body: "AI review of the month from {period}: the result, the month's habits and one focus for the next one." },
+  },
+  leak_guard: {
+    pattern: { after_loss: "entering right after a loss", first_trade: "the first trade of the day", rule_violation: "trading on after a rule violation", near_stop: "trading near the daily stop" },
+    trader: {
+      after_loss: { title: "Pause {minutes} min — until {until} (NY)", body: "Entering right after a loss costs you {usd} per trade on average." },
+      first_trade: { title: "First trade of the day — at half size", body: "Your first trade of the day costs you {usd} on average. Start with half your usual size." },
+      rule_violation: { title: "Rule broken — pause {minutes} min, until {until} (NY)", body: "After a rule violation you lose {usd} per trade on average." },
+      near_stop: { title: "Close to the stop — pause {minutes} min, until {until} (NY)", body: "Near the daily stop you lose {usd} per trade on average." },
+    },
+    level: { firm: "Confirm the pause on the site.", hard: "You are on pause: the risk manager has been told." },
+    ignored: { title: "{trader}: pause not kept", noAck: "{trader} did not confirm the pause ({pattern}) within {minutes} min.", traded: "{trader} traded during the pause ({pattern})." },
+    risk: {
+      title: "{trader} on pause until {until} (NY)",
+      titleDay: "{trader} on pause",
+      body: "Leak guard: {pattern}, {usd} per trade on average. Restrict trading in the broker's platform — the site cannot block orders.",
+    },
+  },
   types: {
+    mentor_escalation: { label: "Mentor: curator needed", description: "The AI mentor sees a pattern better handled by a person: tilt for several days, commitment breaks, drawdown near the limit, silence" },
+    mentor_ready: { label: "Mentor: brief or debrief ready", description: "The pre-session brief or the post-session debrief was prepared ahead (when the admin turned scheduled pushes on)" },
+    ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },
     mention: { label: "Mention", description: "Someone mentioned you with @name in a discussion, idea or note" },
     reply: { label: "Reply", description: "A reply to your post or in your discussion, or a “solution” mark" },
     review_request: { label: "Review request", description: "A trader asks a curator to review a trade or topic" },
@@ -83,6 +132,7 @@ export default {
     risk_breach_review: { label: "Breach review", description: "The curator recorded a review of your limit breach" },
     limit_change: { label: "Limit change", description: "The curator changed your risk limits or tier" },
     rule_violation: { label: "Rule violation", description: "The scanner found a discipline rule violation or a curator ruled on it" },
+    leak_guard: { label: "Leak guard", description: "Pause after a loss, the first trade of the day, trading after a rule violation or near the stop — from your own numbers" },
     scaling_proposal: { label: "Scaling proposal", description: "A proposal to raise / lower the tier was created" },
     scaling_decision: { label: "Scaling decision", description: "The proposal was approved or rejected" },
     academy_promotion_ready: { label: "Ready for promotion", description: "Promotion criteria for the next stage are met" },
@@ -114,6 +164,7 @@ export default {
     reward_declined: { label: "Reward declined", description: "A reward request was declined" },
     curator_request: { label: "Curator request", description: "A trader asked a curator for help" },
     curator_request_done: { label: "Curator answered your request", description: "A curator closed your request" },
+    curator_digest: { label: "Curator evening digest", description: "One digest on weekdays: your traders' closed days and what to look at first (in Telegram — instead of a message per day)" },
     system: { label: "System", description: "Service messages" },
   },
   groups: {

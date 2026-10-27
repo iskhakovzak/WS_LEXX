@@ -3,7 +3,7 @@ import type ru from "../ru/daily";
 
 export default {
   mistake: {
-    "behavior:revenge": "Zarardan keyin qasos savdosi",
+    "behavior:revenge": "Zarardan keyin tez qayta kirish",
     "behavior:martingale": "Zarardan keyin hajmni oshirish",
     "behavior:overtrading": "Overtreyding",
     "behavior:fatigue": "Kun oxiridagi charchoq",
@@ -43,7 +43,7 @@ export default {
     none: "Soʻnggi {days} savdo kunida takrorlanadigan xato yoʻq. Bugun: oʻz rejangiz boʻyicha savdo qiling.",
     noTrades: "Soʻnggi {days} savdo kunida hali savdo yoʻq — fokus birinchi savdolardan keyin paydo boʻladi.",
     own: "Oʻz fokusingiz: {text}",
-    "behavior:revenge": "Qasos: zarardan keyin darhol kirish — {days} kunda {count} marta, ${cost} ketdi. Bugun: zarardan keyin 10 daqiqa tanaffus.",
+    "behavior:revenge": "Tez qayta kirish: zarardan keyin darhol kirish — {days} kunda {count} marta, ${cost} ketdi. Bugun: zarardan keyin 10 daqiqa tanaffus.",
     "behavior:martingale": "Zarardan keyin hajmni oshirish — {days} kunda {count} marta, ${cost} ketdi. Bugun: zarardan keyin hajm avvalgidan katta emas.",
     "behavior:overtrading": "Meʼyoringizdan ortiq savdolar — {days} kunda {count} ta, ${cost} ketdi. Bugun: faqat rejadagi savdolar.",
     "behavior:fatigue": "Kech savdolar ertalabkilardan yomonroq: {days} kunda {count} ta, ${cost}. Bugun: qachon toʻxtashni oldindan hal qiling.",

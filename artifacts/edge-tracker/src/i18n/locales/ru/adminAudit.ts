@@ -46,12 +46,18 @@ export default {
     stage: "Ступень",
     dailyQuote: "Цитата дня",
     latin: "Латинское имя",
+    rename: "Переименование",
     jobs: "Задачи",
     playbook: "Плейбук",
     login: "Вход",
+    regime: "Режим рынка",
+    leakGuard: "Защита от утечек",
+    capitalAllocation: "Распределение риска",
   },
 
   text: {
+    leakGuardLevel: "изменил уровень защиты от утечек для {trader}",
+    leakGuardRelease: "снял паузу защиты от утечек с {trader}",
     ban: "забанил {who}",
     unban: "разбанил {who}",
     freeze: "заморозил учётку {who}{bulk}",
@@ -137,6 +143,11 @@ export default {
     rulesUpdate: "изменил правила масштабирования",
     permissionsUpdate: "изменил матрицу прав доступа",
     deskSettingUpdate: "изменил настройку деска «{setting}»",
+    regimeSet: "задал режим рынка на {day}",
+    capitalApply: "изменил дневной лимит {trader} по распределению риска",
+    capitalReject: "отклонил решение по лимитам {trader}",
+    capitalRevert: "откатил изменение лимита {trader}",
+    capitalRecompute: "пересчитал распределение риска: новых {created}, обновлено {updated}, применено {applied}",
     deskSettingReset: "вернул настройку деска «{setting}» к значению по умолчанию",
 
     seedDemo: "создал демо-челленджи академии",
@@ -174,6 +185,7 @@ export default {
     quoteCron: "цитата дня обновлена по расписанию",
 
     latinSet: "задал латинское имя {who}: {to}",
+    rename: "переименовал {from} → {to}",
     latinRemove: "убрал латинское имя {who}",
     jobRun: "запустил задачу «{job}»",
     queueRestore: {
@@ -186,14 +198,25 @@ export default {
     noteRestoreFor: "восстановил заметку о {trader}",
     lockout: "вход заблокирован на {minutes} мин",
     logoutOthers: "вышел на всех других устройствах",
+    screenLock: "заблокировал экран",
+    screenUnlock: "разблокировал экран",
+    screenUnlockWith: { quick_code: "кодом", password: "паролем" },
+    screenUnlockFailed: "неверный код разблокировки",
+    screenUnlockLeft: "осталось попыток: {count}",
+    screenUnlockSignedOut: "сеанс завершён после неверных кодов разблокировки",
+    quickCodeSet: "задал код быстрой разблокировки",
+    quickCodeChange: "сменил код быстрой разблокировки",
+    quickCodeRemove: "убрал код быстрой разблокировки",
 
     /** Unknown action: «удалил: widget». */
     fallbackVerb: "{verb}: {subject}",
   },
 
+  leakGuardLevel: { off: "выключено", soft: "мягкий", firm: "твёрдый", hard: "жёсткий", default: "по ступени" },
   detail: {
     curator: "куратор {name}",
     was: "было: {value}",
+    renameRows: "записей перенесено: {count}",
     wasTier: "был: {tier}",
     wasTierLong: "был тир: {tier}",
     wasStage: "была: {stage}",
@@ -362,11 +385,6 @@ export default {
     objectId: "ID / имя",
     objectIdAria: "ID объекта",
     period: "Период",
-    quick: { day: "24ч", week: "7д", month: "30д", all: "Всё", custom: "Даты" },
-    from: "с",
-    to: "по",
-    fromAria: "С даты",
-    toAria: "По дату",
     shown: "показано {shown} из {total}",
     timeTitle: "{ny} NY · у вас {local}",
     groups: {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { BarChart3, CalendarClock, Plus, Star, Swords, Trophy, UserRound } from "lucide-react";
+import { CalendarClock, ListOrdered, Plus, Star, Swords, Trophy, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
-import { Page, PageHeader, Segmented } from "@/components/ds";
-import { ScrollEdgeHint, useStoredState } from "@/components/ratings/shared";
+import { Page, PageHeader, SectionTabs } from "@/components/ds";
+import { useStoredState } from "@/components/ratings/shared";
 import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
@@ -105,20 +105,23 @@ export default function RatingsPage() {
   const thisWeek = weekOf();
   const pendingCount = isCurator ? ratingTraders.filter((name) => !ratings.some((r) => r.trader === name && r.week === thisWeek)).length : 0;
 
+  // The views of the page are SectionTabs (design audit wave 3: Segmented is for filters and modes only).
   const tabOptions = [
-    { value: "leaderboard" as const, label: <span className="inline-flex items-center gap-1.5"><BarChart3 className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabLeaderboard")}</span> },
+    { value: "leaderboard" as const, icon: ListOrdered, label: t("page.tabLeaderboard") },
     {
       value: "curator" as const,
-      label: <span className="inline-flex items-center gap-1.5"><Star className="hidden h-4 w-4 sm:block" aria-hidden="true" /><span className="sm:hidden">{t("page.tabCuratorShort")}</span><span className="hidden sm:inline">{t("page.tabCurator")}</span></span>,
+      icon: Star,
+      label: <><span className="sm:hidden">{t("page.tabCuratorShort")}</span><span className="hidden sm:inline">{t("page.tabCurator")}</span></>,
       count: isCurator && pendingCount > 0 && !ratingsQ.isLoading ? pendingCount : undefined,
     },
-    ...(me ? [{ value: "me" as const, label: <span className="inline-flex items-center gap-1.5"><UserRound className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabMe")}</span> }] : []),
+    ...(me ? [{ value: "me" as const, icon: UserRound, label: t("page.tabMe") }] : []),
     ...(questsOn ? [{
       value: "quests" as const,
-      label: <span className="inline-flex items-center gap-1.5"><Swords className="hidden h-4 w-4 sm:block" aria-hidden="true" /><span className="sm:hidden">{tq("tab.short")}</span><span className="hidden sm:inline">{tq("tab.label")}</span></span>,
+      icon: Swords,
+      label: <><span className="sm:hidden">{tq("tab.short")}</span><span className="hidden sm:inline">{tq("tab.label")}</span></>,
     }] : []),
     // Season ranking + curator league: one tab for everyone (traders see aliases, staff names).
-    { value: "season" as const, label: <span className="inline-flex items-center gap-1.5"><CalendarClock className="hidden h-4 w-4 sm:block" aria-hidden="true" />{tg("season.tab")}</span> },
+    { value: "season" as const, icon: CalendarClock, label: tg("season.tab") },
   ];
   const activeTab: Tab = (tab === "me" && !me) || (tab === "quests" && !questsOn) ? (isCurator ? "curator" : "leaderboard") : tab;
   // Usage (internal): the quests / season tabs opened (the tab lives in local storage, not in the URL).
@@ -139,9 +142,7 @@ export default function RatingsPage() {
       >
         <div className="flex flex-wrap items-center gap-2">
           {/* Five tabs overflow a 375 px screen: the bar scrolls sideways and the cut edge fades as a hint. */}
-          <ScrollEdgeHint>
-            <Segmented ariaLabel={t("page.tabsAria")} options={tabOptions} value={activeTab} onChange={setTab} />
-          </ScrollEdgeHint>
+          <SectionTabs ariaLabel={t("page.tabsAria")} tabs={tabOptions} value={activeTab} onChange={setTab} className="min-w-0 flex-1" />
           {isCurator && pendingCount > 0 && activeTab !== "curator" && (
             <button type="button" className="chip min-h-8 px-3 text-sm" onClick={() => setTab("curator")}>
               {t("page.pending", { week: weekLabel(thisWeek), count: pendingCount })}

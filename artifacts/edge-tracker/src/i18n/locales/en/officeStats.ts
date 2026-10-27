@@ -25,13 +25,12 @@ export default {
     ytd: "Year to date",
     quarter: "Quarter",
     month: "Month",
-    custom: "Custom",
     quarterShort: "Q{q}",
     quarterOfYear: "Q{q} {year}",
     monthOfYear: "{month} {year}",
     ytdOf: "{year} YTD",
-    from: "From",
-    to: "To",
+    /** Option hints of the calendar period picker (the words are the shared vocabulary: Year / Quarter / Month). */
+    hints: { ytd: "Calendar year: from 1 January of the chosen year", quarter: "A quarter of the chosen year: Q1–Q4", month: "A month of the chosen year" },
   },
   filters: {
     years: "Years",

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, NotebookPen, Plus } from "lucide-react";
 import { Panel } from "@/components/ds";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { KEYS } from "@/lib/api/keys";
@@ -303,7 +304,7 @@ export function DayJournalEditor({
               )}
 
               <Step n={1} title={t("editor.step1")} aside={<MorningCheckin trader={trader} date={date} />}>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <ScaleField label={t("editor.mood")} labels={MOOD_LABELS} value={draft.mood} editable={editable} onChange={(v) => update({ mood: v })} />
                   <ScaleField label={t("editor.discipline")} labels={DISCIPLINE_LABELS} value={draft.discipline} editable={editable} onChange={(v) => update({ discipline: v })} />
                 </div>
@@ -318,7 +319,7 @@ export function DayJournalEditor({
               </Step>
 
               <Step n={2} title={t("editor.step2")}>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <ReviewField id="journal-well" label={t("editor.well")} tone="up" value={draft.well} editable={editable}
                     placeholder={t("editor.wellPlaceholder")} onChange={(v) => update({ well: v })} />
                   <ReviewField id="journal-mistakes" label={t("editor.mistakes")} tone="down" value={draft.mistakes} editable={editable}
@@ -449,6 +450,7 @@ function TomorrowFocus({
   }
   return (
     <div className="space-y-2">
+      <div className="-mb-1 flex justify-end"><AssistHelp field="plan" value={text} onAccept={change} /></div>
       <Textarea
         aria-label={t("editor.focusAria")}
         value={text}

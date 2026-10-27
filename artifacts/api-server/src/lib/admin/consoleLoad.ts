@@ -23,6 +23,8 @@ export type ReviewLoad = {
   windowDays: number;
   curators: { name: string; wards: number; count: number; overdue: number }[];
   unassigned: { traders: number; count: number; overdue: number };
+  /** The whole queue (curators + unassigned): the one number the admin KPI, «Требует действий» and this panel show. */
+  total: { count: number; overdue: number };
 };
 
 /**
@@ -50,20 +52,24 @@ export function groupReviewLoad(
   const orphan = { count: 0, overdue: 0 };
   for (const [k, v] of by) if (k === null || !known.has(k)) { orphan.count += v.count; orphan.overdue += v.overdue; }
   curators.sort((a, b) => b.overdue - a.overdue || b.count - a.count || a.name.localeCompare(b.name, "ru"));
-  return { slaHours: REVIEW_SLA_HOURS, windowDays: QUEUE_DEFAULT_DAYS, curators, unassigned: { traders: noCuratorTraders, ...orphan } };
+  const total = { count: 0, overdue: 0 };
+  for (const v of by.values()) { total.count += v.count; total.overdue += v.overdue; }
+  return { slaHours: REVIEW_SLA_HOURS, windowDays: QUEUE_DEFAULT_DAYS, curators, unassigned: { traders: noCuratorTraders, ...orphan }, total };
 }
 
 const rows = <T>(sql: string, params: unknown[] = []): Promise<T[]> => pool.query(sql, params).then((r) => r.rows as T[]).catch(() => []);
 
 /**
- * The queue rule of routes/eod.ts (closed, not reviewed, not acknowledged, closed within QUEUE_DEFAULT_DAYS) per
- * curator, with SLA breaches in trading hours (lib/eodLogic).
+ * The queue rule of routes/eod.ts (closed, not reviewed, not acknowledged, closed within QUEUE_DEFAULT_DAYS; the
+ * roster of lib/eodQueue: active, not banned, role trader) per curator, with SLA breaches in trading hours
+ * (lib/eodLogic). «Без куратора» = traders whose curator is empty or no longer active staff, so the traders count and
+ * their days in the queue describe the same people.
  */
 export async function reviewLoad(): Promise<ReviewLoad> {
   const [days, staff, noCurator, closed] = await Promise.all([
     rows<{ curator: string | null; closed_at: Date }>(
       `SELECT NULLIF(u.assigned_curator, '') AS curator, d.closed_at
-         FROM eod_days d LEFT JOIN users u ON u.name = d.trader
+         FROM eod_days d JOIN users u ON u.name = d.trader AND u.active = true AND COALESCE(u.banned, false) = false AND u.role = 'trader'
         WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL
           AND d.closed_at > NOW() - make_interval(days => $1::int)
           AND NOT EXISTS (SELECT 1 FROM curator_queue_acks a WHERE a.revoked_at IS NULL AND a.item_id = 'eod:' || d.id)`,
@@ -73,7 +79,11 @@ export async function reviewLoad(): Promise<ReviewLoad> {
       `SELECT c.name, c.role, (SELECT COUNT(*)::int FROM users w WHERE w.assigned_curator = c.name AND w.active = true AND w.role = 'trader') AS wards
          FROM users c WHERE c.active = true AND c.role IN ('curator', 'admin') ORDER BY c.name`,
     ),
-    rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM users WHERE role = 'trader' AND active = true AND NULLIF(assigned_curator, '') IS NULL`),
+    rows<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM users t
+        WHERE t.role = 'trader' AND t.active = true AND COALESCE(t.banned, false) = false
+          AND NOT EXISTS (SELECT 1 FROM users c WHERE c.name = NULLIF(t.assigned_curator, '') AND c.active = true AND c.role IN ('curator', 'admin'))`,
+    ),
     marketClosedDays(nyDate()).catch(() => new Set<string>()),
   ]);
   return groupReviewLoad(days.map((d) => ({ curator: d.curator, closedAt: d.closed_at })), staff, noCurator[0]?.n ?? 0, closed);

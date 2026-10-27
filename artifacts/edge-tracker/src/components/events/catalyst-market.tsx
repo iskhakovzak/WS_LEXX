@@ -158,7 +158,7 @@ export function MarketReporters({ day, prev, data, onOpenTicker }: {
   const loading = data.upcoming.isLoading || (data.watch.isLoading && open.length + after.length === 0);
   return (
     <section aria-label={t("market.title")}>
-      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" /> {t("market.title")}
         {open.length + after.length > 0 && <Pill tone="neutral" className="ml-1 normal-case tracking-normal">{open.length + after.length}</Pill>}
       </h3>

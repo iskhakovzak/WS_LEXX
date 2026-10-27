@@ -158,6 +158,7 @@ export const ERROR_CODES = {
   INVALID_LOCALE: 400,
   ADMIN_ONLY: 403,
   USER_NAME_TAKEN: 409,
+  RENAME_DATA_CONFLICT: 409,
   CANNOT_DEACTIVATE_SELF: 400,
   PASSWORD_CHANGE_REQUIRED: 403,
   GUEST_NO_PERSONAL: 403,
@@ -210,6 +211,9 @@ export const ERROR_CODES = {
   PROPOSAL_NOT_FOUND: 404,
   PROPOSAL_DECIDED: 409,
   PROPOSAL_TIER_GONE: 400,
+  CAPITAL_LIMITS_CHANGED: 409,
+  CAPITAL_ALREADY_REVERTED: 409,
+  CAPITAL_NOT_REVERTIBLE: 400,
   AUDIENCE_INVALID: 400,
   AUDIENCE_UNKNOWN: 400,
   AUDIENCE_TOO_MANY: 400,
@@ -226,6 +230,7 @@ export const ERROR_CODES = {
   EOD_OWN_ONLY: 403,
   INVALID_RANGE: 400,
   TRADE_REVIEW_OWN_ONLY: 403,
+  WHATIF_FEE_PLAN_STAFF_ONLY: 403,
   EOD_DAY_CLOSED: 409,
   EOD_ALREADY_CLOSED: 409,
   EOD_FUTURE_DAY: 422,
@@ -378,6 +383,16 @@ export const ERROR_CODES = {
   JUNIOR_NOTES_RETIRED: 410,
   // ── Stage access (desk setting access.sections, lib/access/sections.ts) ──
   SECTION_BLOCKED: 403,
+  // ── Screen lock (lib/security/screenLock.ts, routes/screen-lock.ts) ──
+  SESSION_LOCKED: 423,
+  UNLOCK_CODE_INVALID: 403,
+  UNLOCK_SIGNED_OUT: 401,
+  QUICK_CODE_INVALID: 400,
+  // «Ассистент WS» (routes/ai-assistant.ts)
+  AI_NOT_CONFIGURED: 503,
+  AI_ASSISTANT_OFF: 403,
+  AI_ASSISTANT_STAGE: 403,
+  AI_BUDGET_EXCEEDED: 429,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

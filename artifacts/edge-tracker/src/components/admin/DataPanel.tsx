@@ -271,7 +271,7 @@ function DataQualityCard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{c.label}</span>
                   <Pill tone={c.count ? sev.tone : "up"}>{c.count ? (c.groups ? t("data.quality.inGroups", { count: c.count, groups: c.groups }) : c.count) : t("data.quality.ok")}</Pill>
-                  {c.count > 0 && <span className="text-2xs uppercase tracking-wide text-muted-foreground">{sev.label}</span>}
+                  {c.count > 0 && <span className="text-2xs text-muted-foreground">{sev.label}</span>}
                   {link && c.count > 0 && (
                     <Button asChild variant="ghost" size="sm" className="ml-auto h-8">
                       <Link href={link.href}>{t(`data.quality.${link.label}`)} <ArrowRight /></Link>
@@ -323,7 +323,7 @@ function ExportCard({ actor }: { actor: string }) {
     try {
       const text = (await http.get<string | null>(adminUrl("/admin/db-export", actor, { tables: all ? undefined : [...picked].join(",") }), { responseType: "text" })) ?? "";
       const day = new Date().toISOString().slice(0, 10);
-      downloadBlob(text, `ws-lexx-${all ? "backup" : "export"}-${day}.json`, "application/json");
+      downloadBlob(text, `ws-desk-${all ? "backup" : "export"}-${day}.json`, "application/json");
       let summary = "";
       try {
         const j = JSON.parse(text) as { summary?: Record<string, number> };

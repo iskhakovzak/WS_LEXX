@@ -4,6 +4,7 @@ export default {
   aria: "Разрезы сделок: годы, время, стратегия, теги",
   open: "Показать разрезы",
   close: "Скрыть разрезы",
+  allIn: "всё",
   hidden: { one: "скрыто {count} значение", few: "скрыто {count} значения", many: "скрыто {count} значений", other: "скрыто {count} значения" },
   dims: {
     years: "Годы",
@@ -49,6 +50,13 @@ export default {
   restore: "Вернуть «{label}» ({dim})",
   exclude: "Исключить «{label}»",
   include: "Вернуть «{label}»",
+  tickerSearch: "Найти тикер",
+  tickerSearchPlaceholder: "Тикер, напр. NVDA",
+  tickerFound: "Найдено тикеров: {n}",
+  tickerNotFound: "Тикер «{q}» в этих сделках не встречается",
+  tickerOnly: "Только найденные",
+  tickerOnlyHint: "Оставить в отчёте только найденные тикеры, остальные исключить",
+  tickerClear: "Очистить поиск",
   clickHint: "Клик по строке исключает значение, повторный клик возвращает",
   single: "Одно значение:",
   hints: {
@@ -71,6 +79,7 @@ export default {
   },
   imx: {
     toggle: "Исключить IMX",
+    chip: "Без IMX",
     hint: "IMX — сделки закрывающего аукциона (любое исполнение 15:50–16:00 по Нью-Йорку, тег «IMX»). По умолчанию они остаются в списках и итогах.",
     line: "Итог {total} · из них IMX {imx}",
     lineExcluded: "Итог {total} без IMX · IMX исключены: {imx}",

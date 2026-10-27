@@ -4,6 +4,7 @@
  *   registerJob({ name, cron, run, timeoutMs })   declare (module import has no side effects)
  *   startJobScheduler()                          index.ts, after listen
  *   stopJobScheduler()                           graceful shutdown: no new runs, waits for in-flight ones
+ *   schedulerStopSignal()                        aborted when the shutdown starts (a long job may stop claiming work)
  *   runJobNow(name, { trigger, payload })        admin «Запустить» / tests; resolves with the run status
  *   emitJobEvent(event, payload)                 domain event → every job with `on: [event]` (fire-and-forget)
  *
@@ -63,6 +64,16 @@ let tickTimer: NodeJS.Timeout | null = null;
 const startTimers = new Set<NodeJS.Timeout>();
 let stopping = false;
 let started = false;
+let stopAc = new AbortController();
+
+/**
+ * Aborted as soon as stopJobScheduler starts (a fresh signal after the next start). A job that drains a queue checks it
+ * to stop claiming new work and give back what it holds before the pool closes; other jobs simply finish (the run's
+ * own signal still fires only at its timeout).
+ */
+export function schedulerStopSignal(): AbortSignal {
+  return stopAc.signal;
+}
 const HOST = `${os.hostname()}:${process.pid}`;
 
 /** Tests: inject a pool/logger (e.g. a scratch database). */
@@ -271,6 +282,7 @@ export function startJobScheduler(): void {
   if (started) return;
   started = true;
   stopping = false;
+  if (stopAc.signal.aborted) stopAc = new AbortController();
   for (const j of jobs.values()) {
     if (j.runOnStartMs == null || !isEnabled(j)) continue;
     const t = setTimeout(() => {
@@ -291,6 +303,7 @@ export function startJobScheduler(): void {
 export async function stopJobScheduler(waitMs = 10_000): Promise<void> {
   stopping = true;
   started = false;
+  stopAc.abort(new Error("job scheduler stopping"));
   if (tickTimer) clearTimeout(tickTimer);
   tickTimer = null;
   for (const t of startTimers) clearTimeout(t);

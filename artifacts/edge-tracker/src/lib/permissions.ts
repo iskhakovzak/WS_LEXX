@@ -65,6 +65,7 @@ export const CAPABILITIES = [
   { key: "risk.read.own", group: G.risk, own: true },
   { key: "risk.read.team", group: G.risk, team: true },
   { key: "risk.limits.edit", group: G.risk, team: true },
+  { key: "regime.set", group: G.risk },
   { key: "scaling.read.team", group: G.risk, team: true },
   { key: "scaling.configure", group: G.risk },
   { key: "scaling.approve", group: G.risk, team: true },
@@ -88,6 +89,7 @@ export const CAPABILITIES = [
   { key: "discussions.moderate", group: G.content },
   { key: "discussions.edit.any", group: G.content, adminOnly: true },
   { key: "watchlist.manage", group: G.content },
+  { key: "assistant.use", group: G.content, own: true },
 
   { key: "users.manage", group: G.admin, sensitive: true },
   { key: "users.manage.admins", group: G.admin, adminOnly: true },
@@ -114,7 +116,7 @@ export function capabilityDef(cap: string): CapabilityDef | undefined {
 
 const MEMBER_CAPS: readonly Capability[] = [
   "trades.read.own", "trades.write.own", "journal.write.own", "risk.read.own", "propreports.import",
-  "playbook.edit", "ideas.publish", "watchlist.manage",
+  "playbook.edit", "ideas.publish", "watchlist.manage", "assistant.use",
 ];
 
 /** Curator defaults: everything except adminOnly and `sensitive` caps (same as the API). */
@@ -123,7 +125,7 @@ const CURATOR_CAPS: readonly Capability[] = [
   "team.read", "users.read.team",
   "trades.read.team", "trades.write.any", "trades.review",
   "journal.read.team", "journal.review", "gameplan.publish", "dailyfeed.manage", "errors.manage.team",
-  "risk.read.team", "risk.limits.edit", "scaling.read.team", "scaling.configure", "scaling.approve",
+  "risk.read.team", "risk.limits.edit", "regime.set", "scaling.read.team", "scaling.configure", "scaling.approve",
   "rules.manage.team",
   "propreports.read.team",
   "ratings.read.team", "ratings.write",
@@ -167,6 +169,11 @@ export type PermissionsMe = {
   nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior"; authorNotes?: boolean; blocked?: string[] };
   /** Do I see other traders' real names on shared screens (staff: always)? Absent on older API builds. */
   names?: boolean;
+  /**
+   * Share cards of own trades (desk settings shareCards.enabled / shareCards.money): the «image» button at all, and
+   * whether a card may show $ ("r_only" = R and % only). Absent on older API builds (then: on, $ allowed).
+   */
+  shareCards?: { enabled: boolean; money: "usd" | "r_only" };
 };
 
 /** Section hrefs closed for the viewer's stage (GET /api/permissions/me → nav.blocked). */

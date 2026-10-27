@@ -25,6 +25,7 @@ import { PersonSelect } from "@/components/people/person-select";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { NetBars } from "./net-bars";
 
 const WEEKDAY_IDX: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
@@ -44,42 +45,9 @@ export function fmtHold(seconds: number | null | undefined, raw?: string | null)
 /** Win rate already in percent (PropReports): "57.1%". */
 const pct = (v: number | null | undefined, digits = 1) => fmtPct(v, { decimals: digits, signed: false });
 
+/** «Jan 2, 2026 — Oct 15, 2026»: the same date shape as the broker card on Analytics (was raw ISO). */
 function periodText(r: { periodFrom: string; periodTo: string }): string {
-  return `${r.periodFrom} — ${r.periodTo}`;
-}
-
-/* ── bars ─────────────────────────────────────────────────────────────────── */
-
-function NetBars({ rows, labelOf, title }: { rows: PerfRow[]; labelOf: (label: string) => string; title: string }) {
-  const { t } = propreportsI18n.useT();
-  const max = Math.max(1, ...rows.map((r) => Math.abs(r.totals.net)));
-  if (!rows.length) return null;
-  return (
-    <div className="grid gap-2">
-      <div className="text-xs font-medium text-muted-foreground">{title}</div>
-      <div className="grid gap-1.5" role="list" aria-label={title}>
-        {rows.map((r) => {
-          const w = Math.max(2, Math.round((Math.abs(r.totals.net) / max) * 100));
-          const up = r.totals.net >= 0;
-          return (
-            <div key={r.label} role="listitem" className="grid grid-cols-[88px_1fr_auto] items-center gap-2 text-xs" title={t("perf.barTitle", { label: labelOf(r.label), trades: commonI18n.t("units.trades", { count: r.trades }), winRate: pct(r.totals.winRate), gross: fmtUsd(r.totals.gross), fees: fmtUsd(r.totals.fees) })}>
-              <span className="truncate text-muted-foreground">{labelOf(r.label)}</span>
-              <div className="relative h-4 rounded bg-[var(--glass-bg)]">
-                <div
-                  className={cn("absolute inset-y-0 rounded", up ? "bg-up/70" : "bg-down/70")}
-                  style={{ left: up ? "50%" : `${50 - w / 2}%`, width: `${w / 2}%` }}
-                  aria-hidden="true"
-                />
-                <div className="absolute inset-y-0 left-1/2 w-px bg-border" aria-hidden="true" />
-              </div>
-              <span className={cn("w-24 text-right font-medium tabular-nums", up ? "text-up" : "text-down")}>{fmtUsd(r.totals.net, { signed: true })}</span>
-              <span className="sr-only">{commonI18n.t("units.trades", { count: r.trades })}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  return `${fmtDate(r.periodFrom, "medium")} — ${fmtDate(r.periodTo, "medium")}`;
 }
 
 /* ── side comparison ──────────────────────────────────────────────────────── */
@@ -94,11 +62,11 @@ function SideCard({ title, row }: { title: string; row: PerfRow | null }) {
         <Pill tone={toneOf(row.totals.net)}>{t("perf.netPill", { value: fmtUsd(row.totals.net, { signed: true }) })}</Pill>
       </div>
       <StatRow label={t("perf.trades")} value={t("perf.tradesWL", { count: row.trades, wins: row.wins.count, losses: row.losses.count })} />
-      <StatRow label="Win rate" value={pct(row.totals.winRate)} tone={row.totals.winRate != null && row.totals.winRate >= 50 ? "up" : "neutral"} />
-      <StatRow label="Gross" value={fmtUsd(row.totals.gross, { signed: true })} tone={toneOf(row.totals.gross)} />
+      <StatRow label={commonI18n.t("trading.winRate")} value={pct(row.totals.winRate)} />
+      <StatRow label={commonI18n.t("trading.gross")} value={fmtUsd(row.totals.gross, { signed: true })} tone={toneOf(row.totals.gross)} />
       <StatRow label={t("perf.fees")} value={fmtUsd(row.totals.fees)} />
       <StatRow label={t("perf.avgWinLoss")} value={`${fmtUsd(row.wins.avgGross)} / ${fmtUsd(row.losses.avgGross)}`} />
-      <StatRow label="W/L ratio" value={fmtNum(row.totals.wlRatio)} />
+      <StatRow label={propreportsI18n.t("perf.wlRatio")} value={fmtNum(row.totals.wlRatio)} />
       <StatRow label={t("perf.avgHold")} value={fmtHold(row.totals.avgHoldSeconds, row.totals.avgHold)} />
     </div>
   );
@@ -151,7 +119,7 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
             <tr>
               <SortableTh {...sorted.thProps("label")}>{t("perf.col.ticker")}</SortableTh>
               <SortableTh {...sorted.thProps("trades")} align="right">{t("perf.col.trades")}</SortableTh>
-              <SortableTh {...sorted.thProps("winRate")} align="right">Win rate</SortableTh>
+              <SortableTh {...sorted.thProps("winRate")} align="right">{commonI18n.t("trading.winRate")}</SortableTh>
               <SortableTh {...sorted.thProps("gross")} align="right">Gross</SortableTh>
               <SortableTh {...sorted.thProps("fees")} align="right">{t("perf.col.fees")}</SortableTh>
               <SortableTh {...sorted.thProps("net")} align="right">Net</SortableTh>
@@ -198,11 +166,11 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
       {/* Seven cards in one row from 1600 px (tighter padding); below that 4 + 3, so long EN/UZ values («20 daq 12 s») never truncate. */}
       <StatGrid className="md:grid-cols-4 min-[1600px]:grid-cols-7">
         <StatCard className={TIGHT} label={t("perf.trades")} value={s.trades} hint={`${s.wins} W / ${s.losses} L`} />
-        <StatCard className={TIGHT} label="Win rate" value={pct(s.winRate)} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
-        <StatCard className={TIGHT} label="Gross P&L" value={fmtUsd(s.gross, { signed: true })} tone={toneOf(s.gross)} />
-        <StatCard className={TIGHT} label={t("perf.fees")} value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"} hint={s.feesPctOfGross != null ? t("perf.feesHint", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }) }) : undefined} />
-        <StatCard className={TIGHT} label="Net P&L" value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} />
-        <StatCard className={TIGHT} label="W/L ratio" value={fmtNum(s.wlRatio)} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
+        <StatCard className={TIGHT} label={commonI18n.t("trading.winRate")} value={pct(s.winRate)} />
+        <StatCard className={TIGHT} label={commonI18n.t("trading.gross")} value={fmtUsd(s.gross, { signed: true })} tone={toneOf(s.gross)} />
+        <StatCard className={TIGHT} label={t("perf.fees")} value={fmtUsd(s.fees)} hint={s.feesPctOfGross != null ? t("perf.feesHint", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }) }) : undefined} />
+        <StatCard className={TIGHT} label={commonI18n.t("trading.net")} value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} />
+        <StatCard className={TIGHT} label={t("perf.wlRatio")} value={fmtNum(s.wlRatio)} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
         <StatCard className={TIGHT} label={t("perf.avgHoldShort")} value={fmtHold(s.avgHoldSeconds, s.avgHold)} />
       </StatGrid>
 
@@ -212,13 +180,13 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <SideCard title="Long" row={data.bySide.long} />
-        <SideCard title="Short" row={data.bySide.short} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <SideCard title={commonI18n.t("trading.long")} row={data.bySide.long} />
+        <SideCard title={commonI18n.t("trading.short")} row={data.bySide.short} />
       </div>
 
       {!compact && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
           <NetBars rows={data.byTime} labelOf={timeLabel} title={t("perf.byTime")} />
           <NetBars rows={data.byWeekday} labelOf={dayLabel} title={t("perf.byWeekday")} />
         </div>
@@ -281,8 +249,8 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
         t("perf.descReport"),
         t("perf.descAccount", { account: latest.account }),
         periodText(latest),
-        latest.traderName ?? "",
-        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "short"), by: personName(latest.uploadedBy) }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "short") }),
+        latest.traderName ? personName(latest.traderName) : "",
+        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "medium"), by: personName(latest.uploadedBy) }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "medium") }),
       ].filter(Boolean).join(" · ")
     : t("perf.descEmpty");
 

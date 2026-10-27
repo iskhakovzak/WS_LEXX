@@ -71,7 +71,7 @@ export function TopCalendar({
     >
       <div className="grid grid-cols-7 gap-1" role="grid" aria-label={title}>
         {WEEKDAYS.map((wd) => (
-          <div key={wd} className={cn("pb-1 text-center text-2xs font-medium uppercase text-muted-foreground", (wd === 0 || wd === 6) && "opacity-60")}>
+          <div key={wd} className={cn("pb-1 text-center text-2xs font-medium text-muted-foreground", (wd === 0 || wd === 6) && "opacity-60")}>
             {fmtWeekday(wd, "short")}
           </div>
         ))}
@@ -156,7 +156,7 @@ function DayCell({ date, stats, maxAbs, muted, holiday, today, selected, onSelec
         {Number(date.slice(8))}
       </span>
       {traded && (
-        <span className={cn("max-w-full truncate px-0.5 text-[10px] leading-none tabular-nums", selected ? "text-primary-foreground/90" : net != null ? toneText(toneOf(net)) : "text-muted-foreground")}>
+        <span className={cn("max-w-full truncate px-0.5 text-2xs leading-none tabular-nums", selected ? "text-primary-foreground/90" : net != null ? toneText(toneOf(net)) : "text-muted-foreground")}>
           {net != null ? fmtCompact(net, { signed: true }) : stats.traders}
         </span>
       )}

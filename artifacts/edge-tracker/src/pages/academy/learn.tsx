@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { BarChart3, BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler } from "lucide-react";
+import { BookOpen, BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler, TrendingUp } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, SectionTabs, Toolbar } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, SectionTabs, SplitSkeleton, Toolbar } from "@/components/ds";
 import { api, invalidateAcademy, useAcademyMeta, useProgramTree, usePrograms } from "@/components/academy/content/api";
 import { ProgramCard, ProgramOutline } from "@/components/academy/content/program-view";
-import { ReviewQueue } from "@/components/academy/content/review-queue";
+import { ReviewQueue, ReviewStatusSegmented, type ReviewStatus } from "@/components/academy/content/review-queue";
 import { ProgressMatrix } from "@/components/academy/content/progress-matrix";
 import { academyLinks } from "@/components/academy/content/links";
 import { PersonSelect } from "@/components/people/person-select";
@@ -71,6 +70,7 @@ export default function AcademyLearn() {
   // undefined = not chosen yet → default to the viewer's own cohort when they mentor exactly one.
   const [cohortPick, setCohortId] = useState<number | null | undefined>(undefined);
   const [progressProgram, setProgressProgram] = useState<number | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("submitted");
   useEffect(() => { if (!progressProgram && selectedId) setProgressProgram(selectedId); }, [selectedId, progressProgram]);
 
   const traders = useMemo(
@@ -112,7 +112,7 @@ export default function AcademyLearn() {
     <Page>
       <PageHeader
         title={shellI18n.t("nav.academyLearn")}
-        icon={GraduationCap}
+        icon={BookOpen}
         description={t("learn.description")}
         actions={staff ? (
           <>
@@ -128,7 +128,7 @@ export default function AcademyLearn() {
             tabs={[
               { value: "catalog", label: t("learn.tabCourses"), icon: BookOpenCheck },
               { value: "review", label: t("learn.tabReview"), icon: Inbox, count: pending || undefined },
-              { value: "progress", label: t("learn.tabProgress"), icon: BarChart3 },
+              { value: "progress", label: t("learn.tabProgress"), icon: TrendingUp },
             ]}
           />
         )}
@@ -144,25 +144,24 @@ export default function AcademyLearn() {
           )}
 
           {programs.isLoading ? (
-            <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]"><Skeleton className="h-48 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
+            <SplitSkeleton side="340px" rows={3} />
           ) : programs.isError ? (
             <ErrorState error={programs.error} onRetry={programs.refetch} title={t("learn.coursesFailed")} />
           ) : !list.length ? (
             <Panel>
               <EmptyState
+                art="laurel"
                 icon={GraduationCap}
                 title={t("learn.noCourses")}
                 description={staff ? t("learn.noCoursesStaff") : t("learn.noCoursesStudent")}
-                action={staff ? (
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>
-                    <Button variant="outline" asChild><Link href={academyLinks.admin()}>{t("learn.openEditor")}</Link></Button>
-                  </div>
-                ) : undefined}
+                action={staff
+                  ? <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>
+                  : <EmptyLink href="/academy/my">{shellI18n.t("nav.academyMy")}</EmptyLink>}
+                secondaryAction={staff ? <Link href={academyLinks.admin()}>{t("learn.openEditor")}</Link> : undefined}
               />
             </Panel>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
               <nav aria-label={t("learn.programsAria")} className="flex flex-col gap-3">
                 {list.map((p) => <ProgramCard key={p.id} p={p} active={p.id === selectedId} onSelect={() => setParams({ program: p.id })} />)}
               </nav>
@@ -170,7 +169,7 @@ export default function AcademyLearn() {
                 {tree.isError ? (
                   <ErrorState error={tree.error} onRetry={tree.refetch} title={t("learn.programFailed")} />
                 ) : tree.isLoading || !tree.data ? (
-                  <Skeleton className="h-96 rounded-2xl" />
+                  <div className="glass-panel min-h-96 rounded-2xl p-[var(--panel-p)]"><ListSkeleton rows={7} /></div>
                 ) : (
                   /* Switching programs keeps the previous outline (dimmed) instead of flashing a skeleton. */
                   <div aria-busy={tree.isPlaceholderData || undefined} className={cn("transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", tree.isPlaceholderData && "pointer-events-none opacity-60")}>
@@ -185,8 +184,12 @@ export default function AcademyLearn() {
 
       {tab === "review" && staff && (
         <>
-          {cohortSelect && <Toolbar><span className="px-2 text-sm text-muted-foreground">{t("learn.cohort")}</span>{cohortSelect}</Toolbar>}
-          <ReviewQueue cohortId={cohortId} />
+          {/* One Toolbar: the queue status (main mode) + the cohort (scope) (design audit wave 3). */}
+          <Toolbar>
+            <ReviewStatusSegmented value={reviewStatus} onChange={setReviewStatus} />
+            {cohortSelect}
+          </Toolbar>
+          <ReviewQueue cohortId={cohortId} status={reviewStatus} />
         </>
       )}
 

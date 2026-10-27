@@ -10,7 +10,9 @@
  *   experienced tiers (Трейдер, Сеньор) keep the full menu. Волна 1, item 1.11: the ladder has no «Стажёр» any more, so
  *   the desk setting nav.simpleUntilTier never goes below «junior» (an old «trainee» value means «newcomers» = juniors);
  *   a trader without a resolved tier counts as a junior (the stage default).
- * - Phone tab bar for juniors (item 1.3): Дашборд · План · Дневник (labelled «Вечер») · Сделки · Ещё.
+ * - Phone dock (mobile wave): Главная · Сделки · Дневник · Аналитика · Риск · Ещё for everyone (juniors see the journal
+ *   as «Вечер», the evening step of the day); «План дня» heads the juniors' sheet. The sheet lists the rest of the
+ *   sidebar in the same groups, «Закреплённые» first (`pinnedNavItems`).
  * - Sections closed for the viewer's ladder stage (desk setting access.sections → GET /api/permissions/me nav.blocked;
  *   staff never): gone from the sidebar, the phone sheet, the palette and pinned items (`navItemOpen`); a closed row's
  *   open pages move up as rows of their own. The route guard (App.tsx) shows «Раздел закрыт» for a closed URL
@@ -46,7 +48,11 @@ export function navItemOpen(i: NavItem, isCurator: boolean, nav: unknown): boole
   return (!i.staff || isCurator) && navFeatureOn(i.feature, nav) && !blockedSections(nav).includes(i.href);
 }
 
-/** Full nav for the role (staff-only pages filtered, hidden ones, switched-off and closed sections dropped). */
+/**
+ * Full nav for the role (staff-only pages filtered, hidden ones, switched-off and closed sections dropped). No
+ * single-item sub-menus: a row left with one visible child (role, desk switch, closed section) lists that child as a
+ * row of its own right below it, so a chevron never opens a list of one.
+ */
 export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
   const closed = new Set(blockedSections(nav));
   const ok = (i: NavItem) => !i.hidden && navItemOpen(i, isCurator, nav);
@@ -57,8 +63,9 @@ export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
       if (closed.has(r.href)) return (r.children ?? []).filter(ok);
       if (!r.children) return [r];
       const copy = withGetters(r);
-      copy.children = r.children.filter(ok);
-      return [copy];
+      const kids = r.children.filter(ok);
+      copy.children = kids.length > 1 ? kids : undefined;
+      return kids.length === 1 ? [copy, kids[0]!] : [copy];
     });
     return { id: g.id, get label() { return g.label; }, rows, items: rows.flatMap((r) => [r, ...(r.children ?? [])]) };
   }).filter((g) => g.rows.length);
@@ -95,10 +102,12 @@ export function isSimpleNav(v: { role: string | null | undefined; tier: string |
 
 /** Primary rows of the simple menu, in order. `/ratings` opens on the quests tab as «Мой прогресс». */
 export const SIMPLE_PRIMARY = ["/", "/game-plan", "/playbook", "/trainer", "/academy/my", "/journal", "/trades", "/ratings"] as const;
-/** Phone tab bar in the simple menu (the 5th slot is «Ещё»): the day's loop — morning plan, evening journal, trades. */
-export const SIMPLE_MOBILE_TABS = ["/", "/game-plan", "/journal", "/trades"] as const;
-/** Phone tab bar in the full menu. */
-export const MOBILE_TABS = ["/", "/game-plan", "/trades", "/journal"] as const;
+/**
+ * Phone bottom dock (below 768 px): the five main screens, the same for every menu — Главная, Сделки, Дневник,
+ * Аналитика, Риск — then «Ещё» (the sheet with the rest of the sidebar). A screen the viewer cannot open (closed for the
+ * stage, staff-only) is left out and stays reachable through «Ещё» / the palette; the dock never shows a dead tab.
+ */
+export const MOBILE_TABS = ["/", "/trades", "/journal", "/analytics", "/risk"] as const;
 
 export type SimpleNav = {
   /** Seven primary rows (labels adapted: «Сегодня», «Мой прогресс»). */
@@ -127,7 +136,7 @@ export function simpleNav(groups: VisibleGroup[], _prefs?: Partial<NavPrefs> | n
     if (!i) return [];
     // «Квесты и достижения» = that ratings tab, named exactly like it; the ratings' own pages (Бенчмарк, Топ, Офис) go to «Ещё».
     if (href === "/ratings") return [relabel(i, () => shellI18n.t("simple.progress"), { to: "/ratings?tab=quests", children: undefined })];
-    // A page that is a child in the full menu (Тренажёр under «Инструменты») becomes a row of its own.
+    // A page that would be a child in the full menu becomes a row of its own here.
     return [withGetters(i)];
   });
   const more: NavItem[] = [];
@@ -169,12 +178,14 @@ export function withoutPinned<T extends { href: string }>(items: readonly T[], p
 }
 
 /**
- * OWNER-28 (desktop): a set's children. Open → all of them in the list. Closed → the pinned ones stay visible under the
- * row and the folded list keeps only the others, so a pinned page is never in the DOM twice (two «Открепить»).
+ * «Закреплённые» (top of the sidebar and of the phone sheet): the pinned pages this viewer may open, in pin order. A
+ * staff-only page pinned while signed in as curator never shows for a trader, nor a section closed for the stage or
+ * a hidden one. Each pinned page is listed there only (`withoutPinned` takes it out of its row / group).
  */
-export function rowKidLists<T extends { href: string }>(kids: readonly T[], open: boolean, isPinned: (href: string) => boolean): { list: T[]; pinned: T[] } {
-  if (open) return { list: [...kids], pinned: [] };
-  return { list: kids.filter((k) => !isPinned(k.href)), pinned: kids.filter((k) => isPinned(k.href)) };
+export function pinnedNavItems(pins: readonly string[], isCurator: boolean, nav: unknown): NavItem[] {
+  return pins
+    .map((h) => ALL_NAV_ITEMS.find((i) => i.href === h))
+    .filter((i): i is NavItem => !!i && !i.hidden && navItemOpen(i, isCurator, nav));
 }
 
 /** A copy with another phone-tab label (the sidebar keeps the page's own name). */
@@ -184,17 +195,46 @@ function withShort(i: NavItem, label: () => string): NavItem {
   return copy;
 }
 
-/** The phone tab bar: four sections (the 5th slot is «Ещё»). Juniors see the journal as «Вечер» (the evening step). */
+/**
+ * The phone dock: up to five main screens (the 6th slot is «Ещё»), in MOBILE_TABS order, only those this viewer may
+ * open (`groups` is already filtered by role, desk switches and stage-closed sections). The home tab is labelled
+ * «Главная»; juniors see the journal as «Вечер» (the evening step).
+ */
 export function mobileTabs(groups: VisibleGroup[], simple: SimpleNav | null): NavItem[] {
-  if (simple) {
-    return SIMPLE_MOBILE_TABS.flatMap((h) => {
-      const i = simple.primary.find((x) => x.href === h);
-      if (!i) return [];
-      return [h === "/journal" ? withShort(i, () => shellI18n.t("simple.evening")) : i];
-    });
-  }
   const all = groups.flatMap((g) => g.items);
-  return MOBILE_TABS.flatMap((h) => all.find((i) => i.href === h) ?? []);
+  return MOBILE_TABS.flatMap((h) => {
+    const i = all.find((x) => x.href === h);
+    if (!i) return [];
+    if (h === "/") return [withShort(i, () => shellI18n.t("mobile.home"))];
+    if (h === "/journal" && simple) return [withShort(i, () => shellI18n.t("simple.evening"))];
+    return [i];
+  });
+}
+
+/**
+ * The phone sheet behind «Ещё» lists the rest of the sidebar: the dock's own screens are taken out (their children —
+ * Статистика, Поведение… — stay). Label getters survive (the copy keeps property descriptors).
+ */
+export function withoutDock(groups: VisibleGroup[], dock: readonly string[]): VisibleGroup[] {
+  if (!dock.length) return groups;
+  const drop = new Set(dock);
+  return groups
+    .map((g) => {
+      const copy = Object.create(Object.getPrototypeOf(g), Object.getOwnPropertyDescriptors(g)) as VisibleGroup;
+      copy.items = g.items.filter((i) => !drop.has(i.href));
+      return copy;
+    })
+    .filter((g) => g.items.length);
+}
+
+/**
+ * Simple menu in the sheet: the dock's screens out of «Главное» (a dock row's children — Разбор дня, Отчёт недели under
+ * the journal — move up as rows of their own) and out of the folded «Ещё» list.
+ */
+export function simpleWithoutDock(simple: SimpleNav, dock: readonly string[]): SimpleNav {
+  const drop = new Set(dock);
+  const primary = simple.primary.flatMap((r) => (drop.has(r.href) ? (r.children ?? []).filter((c) => !drop.has(c.href)) : [r]));
+  return { ...simple, primary, moreItems: simple.moreItems.filter((i) => !drop.has(i.href)) };
 }
 
 // ─── Sections closed per stage ───────────────────────────────────────────────
@@ -228,6 +268,8 @@ export type BlockableGroup = { id: NavGroup["id"]; readonly label: string; secti
 /** Pages a trader can open that are not in the nav but can be closed per stage (cross-trader views). */
 const EXTRA_BLOCKABLE: { href: string; group: NavGroup["id"]; label: () => string }[] = [
   { href: "/desk-day", group: "team", label: () => shellI18n.t("titles.deskDay") },
+  // The team feed: now the «Команда» tab of /notifications (its nav item is hidden), still closable per stage.
+  { href: "/activity", group: "team", label: () => shellI18n.t("nav.activity") },
 ];
 
 /**

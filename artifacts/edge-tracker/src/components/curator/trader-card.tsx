@@ -8,8 +8,10 @@ import type { PatternBrief, TraderSignal } from "./api";
 import { actionTone, disciplineTone, riskTone, worstUsage } from "./curator-math";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { coachI18n } from "@/i18n/ns/coach";
 import { personName } from "@/i18n";
 import { tierDisplay } from "@/components/shared/tier-labels";
+import { StageMedal, medalStageOf } from "@/components/shared/medals";
 
 /** One trader in «Мои трейдеры»: trend, discipline, risk usage, patterns, last review, stage and the next action. */
 export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading = false, title }: {
@@ -39,6 +41,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
       )}
     >
       <header className="flex min-w-0 items-start gap-2">
+        {medalStageOf(s.stage.key) && <StageMedal stage={medalStageOf(s.stage.key) ?? "junior"} size={32} decorative className="mt-0.5" />}
         <button type="button" onClick={() => onOpen()} className="min-w-0 flex-1 text-left">
           <span className="block truncate text-base font-semibold text-foreground hover:text-primary" title={s.nameLatin && s.nameLatin !== personName(s.trader) ? `${personName(s.trader)} · ${s.nameLatin}` : personName(s.trader)}>{title ?? personName(s.trader)}</span>
           <span className="block truncate text-xs text-muted-foreground" title={stageLine}>
@@ -46,6 +49,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
           </span>
         </button>
         <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : t("noLimits")}</Pill>
+        {s.plateau?.severity && <Pill tone={s.plateau.escalationOpen ? "warn" : "neutral"}>{coachI18n.t(`stuck.severity.${s.plateau.severity}`)}</Pill>}
       </header>
 
       <div className="grid grid-cols-3 gap-2">

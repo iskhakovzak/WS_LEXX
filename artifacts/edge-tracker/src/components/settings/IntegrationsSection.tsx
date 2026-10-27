@@ -27,7 +27,8 @@ type LinkData = { token: string; deep_link: string; bot_username: string; expire
 
 const LINK_TTL_S = 600;
 
-function TelegramConnect() {
+/** The viewer's own Telegram link (personal: shown under «Уведомления»). */
+export function TelegramConnect() {
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const { user } = useAuth();
@@ -228,7 +229,8 @@ function TelegramConnect() {
 /** Message templates (the message goes out in the language the admin picked them in). */
 const BROADCAST_TEMPLATES = ["premarket", "redDay", "dayReview"] as const;
 
-function TelegramBroadcast() {
+/** Desk-wide Telegram broadcast (admins): lives in the desk console, «Данные» tab (pages/admin.tsx). */
+export function TelegramBroadcast() {
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const { can } = useAuth();
@@ -342,17 +344,4 @@ function TelegramPreview({ text }: { text: string }) {
   }
   if (last < text.length) parts.push(text.slice(last));
   return <p className="whitespace-pre-wrap text-sm text-foreground">{parts}</p>;
-}
-
-export function IntegrationsSection() {
-  const { can } = useAuth();
-  const { t } = settingsI18n.useT();
-  return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <TelegramConnect />
-      {can("telegram.broadcast") ? <TelegramBroadcast /> : (
-        <Callout icon={Send}>{t("telegram.about")}</Callout>
-      )}
-    </div>
-  );
 }

@@ -5,6 +5,7 @@
  * order in one column. ?id= of an office setup opens its cheat sheet here.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { scrollBehavior } from "@/lib/motion";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -77,14 +78,14 @@ export function TodayView({
   const take = () => {
     save.mutate(picks.prompt, { onSuccess: () => toast({ title: t("picks.savedToast") }), onError: failed });
   };
-  const jump = (key: string) => document.getElementById(`pb-window-${key}`)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  const jump = (key: string) => document.getElementById(`pb-window-${key}`)?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
 
   let body: ReactNode;
   if (q.isLoading) {
     body = (
       <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true">
         <Skeleton className="h-28 rounded-2xl" />
-        <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div>
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div>
       </div>
     );
   } else if (q.isError) {
@@ -117,7 +118,7 @@ export function TodayView({
     } else {
       body = (
         <div className="flex min-w-0 flex-col gap-[calc(var(--page-gap)+0.5rem)]">
-          <MorningScreener planDate={today.date} />
+          {/* The plan and today's setups first; the screener (folded to a few rows) after them (design audit wave 2B). */}
           {canPick && (
             <PlanToday
               today={today}
@@ -132,7 +133,7 @@ export function TodayView({
           <section aria-labelledby="pb-all-h" className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
             <h2 id="pb-all-h" className="text-lg font-semibold tracking-tight text-foreground">{canPick ? t("all.title") : t("all.titleStaff")}</h2>
             <DayMap windows={today.windows} now={now} onPick={jump} nextSession={session?.ahead ? today.date : null} />
-            <div className="grid min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="grid grid-cols-1 min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]">
               <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)] lg:sticky lg:top-[var(--sticky-top)] lg:order-2">
                 {canPick ? <EdgeSummaryPanel setups={today.setups} onOpen={(id) => onOpen(id)} /> : <p className="glass-panel rounded-2xl p-[var(--panel-p)] text-sm text-foreground/80">{t("staffNote")}</p>}
               </aside>
@@ -141,6 +142,7 @@ export function TodayView({
               </div>
             </div>
           </section>
+          <MorningScreener planDate={today.date} />
         </div>
       );
     }

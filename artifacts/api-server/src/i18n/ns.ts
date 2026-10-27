@@ -1,5 +1,8 @@
 /** Server namespaces. Add one per area: `export const <area>T = defineNamespace(ru<Area>, { en: en<Area>, uz: uz<Area> });` */
 import { defineNamespace } from ".";
+import ruAssistant from "./ru/assistant";
+import enAssistant from "./en/assistant";
+import uzAssistant from "./uz/assistant";
 import ruCommon from "./ru/common";
 import enCommon from "./en/common";
 import uzCommon from "./uz/common";
@@ -18,6 +21,9 @@ import uzRisk from "./uz/risk";
 import ruPropreports from "./ru/propreports";
 import enPropreports from "./en/propreports";
 import uzPropreports from "./uz/propreports";
+import ruCapital from "./ru/capital";
+import enCapital from "./en/capital";
+import uzCapital from "./uz/capital";
 import ruScaling from "./ru/scaling";
 import enScaling from "./en/scaling";
 import uzScaling from "./uz/scaling";
@@ -82,6 +88,9 @@ import ruGamification from "./ru/gamification";
 import enGamification from "./en/gamification";
 import uzGamification from "./uz/gamification";
 import ruNewsChannel from "./ru/newsChannel";
+import ruCoach from "./ru/coach";
+import enCoach from "./en/coach";
+import uzCoach from "./uz/coach";
 import enNewsChannel from "./en/newsChannel";
 import uzNewsChannel from "./uz/newsChannel";
 
@@ -167,3 +176,10 @@ export const gamificationT = defineNamespace(ruGamification, { en: enGamificatio
 
 /** `newsChannel`: WS_NEWS Telegram channel briefs (lib/newsChannel/render.ts); the channel posts in `ru`. */
 export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, uz: uzNewsChannel });
+
+/** `coach`: coaching evidence for staff — the plateau 1:1 agenda and edge-map slice labels (lib/plateauStore.ts). */
+export const coachT = defineNamespace(ruCoach, { en: enCoach, uz: uzCoach });
+/** `assistant`: «Ассистент WS» server texts (lib/assistant): «✦ Помочь» instructions, the dev demo model's lines. */
+export const assistantT = defineNamespace(ruAssistant, { en: enAssistant, uz: uzAssistant });
+/** `capital`: capital allocation (lib/capital) — the why of a limits proposal, gates and decisions. */
+export const capitalT = defineNamespace(ruCapital, { en: enCapital, uz: uzCapital });

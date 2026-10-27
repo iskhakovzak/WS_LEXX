@@ -19,6 +19,7 @@ export default {
   never: "never",
   you: "(you)",
   namesMore: "{names} and {count} more",
+  shownOf: "{shown} of {total} shown",
   notDeployed: "{what} will be available after the API restarts (new admin-console router).",
   needRestart: "API restart needed",
 
@@ -129,7 +130,7 @@ export default {
     unavailable: "Integration status unavailable.",
     lastSync: "Last sync",
     never: "not yet",
-    status: { ok: "success", running: "running", partial: "partial", error: "error" },
+    status: { ok: "success", running: "running", partial: "partial", error: "error", stale: "stale" },
     fromFile: "From file",
     viaApi: "Via API",
     runCounts: "+{inserted} · updated {updated}",
@@ -234,6 +235,7 @@ export default {
       tier: "Tier: {name}",
       role: "Role: {name}",
       latin: "Latin name…",
+      rename: "Rename…",
       password: "Set password",
       sessions: "Reset sessions",
       unfreeze: "Unfreeze",
@@ -460,6 +462,8 @@ export default {
     roleUpdatedHint: "{name} → {role}",
     passwordUpdated: "Password for {name} updated",
     passwordUpdatedHint: "The user’s active sessions were ended.",
+    renamed: "{from} is now {to}",
+    renamedHint: "Trades, journal, academy and notifications moved to the new name. The user signs in again under the new name.",
     ban: {
       title: "Ban {name}?",
       text: "The user will be signed out and can’t sign in until unbanned. The action goes to the audit log.",
@@ -470,6 +474,7 @@ export default {
     unban: { title: "Unban {name}?", text: "The user will be able to sign in again. The unban goes to the audit log.", confirm: "Unban" },
     role: { title: "Change the role of {name}?", text: "{from} → {to}. The user will need to sign in again.", confirm: "Change role" },
     password: { title: "New password for {name}", text: "All of the user’s active sessions will be ended.", confirm: "Save password", label: "New password" },
+    rename: { title: "Rename {name}?", text: "The new name shows everywhere: trades, journal, academy, notifications, the PropReports link. All of the user’s sessions end — they sign in again under the new name.", textSelf: "The new name shows everywhere. Your sessions end — sign in again under the new name.", label: "New name", confirm: "Rename" },
   },
 
   roles: {

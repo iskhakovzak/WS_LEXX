@@ -41,7 +41,7 @@ export function baseChartOptions(theme: ChartTheme, o: BaseChartOpts): DeepParti
   return {
     width: o.width, height: o.height,
     layout: {
-      background: { color: "transparent" }, textColor: theme.muted(), fontFamily: theme.font, fontSize: 11, attributionLogo: false,
+      background: { color: "transparent" }, textColor: theme.muted(), fontFamily: theme.font, fontSize: 12, attributionLogo: false,
       panes: { separatorColor: theme.border(0.9), separatorHoverColor: theme.primary(0.25), enableResize: true },
     },
     grid: { vertLines: { color: grid }, horzLines: { color: grid } },

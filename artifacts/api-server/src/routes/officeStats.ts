@@ -32,6 +32,8 @@ import {
 import { AppError, sendError, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { insightsT } from "../i18n/ns";
+import { facetSqlTail, type FacetFilters } from "../lib/tradeFacetsSql";
+import { facetCacheKey, facetsOfQuery } from "../lib/tradeFacetsFilter";
 
 const router: IRouter = Router();
 
@@ -182,6 +184,23 @@ async function queryTrades(years: number[]): Promise<Map<number, OfficeTrade[]>>
   return byYear;
 }
 
+/**
+ * Partners' «Разрезы» (lib/tradeFacetsSql): the cached year rows are kept, only the ids passing the selection are read
+ * (one query over the same years) and the rest dropped. Members never get a selection applied (no panel for them).
+ */
+async function applyFacets(trades: OfficeTrade[], years: number[], facets: FacetFilters | undefined): Promise<OfficeTrade[]> {
+  if (!facets) return trades;
+  const CLOSE = closeDateSql();
+  const params: unknown[] = [years.map(String)];
+  const tail = facetSqlTail(facets, params);
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT t.id FROM trades t WHERE t.deleted_at IS NULL AND LEFT(${CLOSE}, 4) = ANY($1::text[])${tail}`,
+    params,
+  );
+  const ok = new Set(rows.map((r) => Number(r.id)));
+  return trades.filter((t) => ok.has(t.id));
+}
+
 /** Years (close date) with at least one closed desk trade — the page offers only those (empty 2023/2024 chips). */
 let dataYearsCache: { at: number; promise: Promise<number[]> } | null = null;
 async function loadDataYears(now = Date.now()): Promise<number[]> {
@@ -252,14 +271,17 @@ router.get("/office-stats", asyncHandler(async (req, res) => {
   const years = parseYears(req.query.years, today);
   const { from, to } = parsePeriod(req.query.from, req.query.to, years, today);
   const loadYears = [...new Set([...years, Number(from.slice(0, 4)), Number(to.slice(0, 4)), Number(shiftYear(from, -1).slice(0, 4)), Number(shiftYear(to, -1).slice(0, 4))])].sort();
-  const [settings, { trades, gen }, dataYears] = await Promise.all([loadSettings(), loadTrades(loadYears), loadDataYears()]);
   const isAdmin = actor.role === "admin";
+  const facets = isAdmin ? facetsOfQuery(req.query as Record<string, unknown>) : undefined;
+  const [settings, loaded, dataYears] = await Promise.all([loadSettings(), loadTrades(loadYears), loadDataYears()]);
+  const { gen } = loaded;
+  const trades = await applyFacets(loaded.trades, loadYears, facets);
   const base = { years, period: { from, to }, today, dataYears, rules: rulesPayload(langOf(req)) };
   const viewOpts = { years, settings, from, to, today, lang: langOf(req) };
   const settingsKey = [...settings.values()].map((s) => `${s.year}:${s.capital}:${s.goalPct}`).join(",");
   const view = <T,>(kind: string, build: () => T): T => gen < 0
     ? build()
-    : (memo(viewMemo, `${gen}|${kind}|${years.join(",")}|${loadYears.join(",")}|${from}|${to}|${today}|${viewOpts.lang}|${settingsKey}`, build) as T);
+    : (memo(viewMemo, `${gen}|${kind}|${years.join(",")}|${loadYears.join(",")}|${from}|${to}|${today}|${viewOpts.lang}|${settingsKey}|${facetCacheKey(facets)}`, build) as T);
 
   res.setHeader("Cache-Control", "private, no-store");
   if (isAdmin) {

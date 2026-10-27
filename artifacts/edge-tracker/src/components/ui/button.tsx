@@ -11,9 +11,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-           // @replit: no hover, and add primary border
-           // Solid fill is a touch deeper than --primary so white text clears 4.5:1 (WCAG AA).
-           "bg-primary-solid text-primary-foreground font-semibold border border-[hsl(var(--primary-solid)/0.6)] shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_6px_18px_-8px_hsl(var(--primary)/0.6)] hover:not-disabled:brightness-110",
+           // Primary = the accent (index.css --action-*): the accent fill with its AA label when an accent colour is picked,
+           // a solid ring in the ink accent. The white / ink fill is the selected segment's alone (design audit).
+           "bg-[var(--action-bg)] text-[var(--action-fg)] font-semibold border border-[var(--action-border)] hover:not-disabled:bg-[var(--action-hover-bg)] active:scale-[0.97]",
         destructive:
           "border border-destructive/30 bg-destructive/12 text-destructive hover:not-disabled:bg-destructive/18",
         // Glass family: outline = hairline glass pill, secondary = thicker glass pill,
@@ -32,15 +32,22 @@ const buttonVariants = cva(
         default: "min-h-9 px-4 py-1.5",
         sm: "min-h-8 px-3 text-xs [&_svg]:size-3.5",
         lg: "min-h-10 px-6 py-2",
-        // Touch screens: an invisible ::before grows the tap target to 40px without changing the layout
-        // (::after is taken by hover-elevate).
-        icon: "h-9 w-9 pointer-coarse:before:absolute pointer-coarse:before:-inset-0.5",
-        "icon-sm": "h-8 w-8 [&_svg]:size-3.5 pointer-coarse:before:absolute pointer-coarse:before:-inset-1",
+        // Touch screens: index.css grows every control's hit area to 44×44 px with an invisible ::before
+        // (::after is taken by hover-elevate), so the look stays the same.
+        icon: "h-9 w-9",
+        "icon-sm": "h-8 w-8 [&_svg]:size-3.5",
+      },
+      // A long or dynamic label (a lesson title, a uz / ru phrase) wraps to two balanced lines inside its card
+      // instead of being clipped or pushing the button out of it. The pill turns into a 18px-radius capsule.
+      wrap: {
+        true: "h-auto min-w-0 max-w-full whitespace-normal text-balance text-left leading-ui rounded-[1.125rem] py-1.5",
+        false: "",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      wrap: false,
     },
   }
 )
@@ -52,11 +59,12 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, wrap, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, wrap, className }))}
         ref={ref}
         {...props}
       />

@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, ImagePlus, LayoutTemplate, Loader2, Split, StickyNote, Target, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToastAction } from "@/components/ui/toast";
 import { toneText } from "@/components/ds";
@@ -324,7 +325,10 @@ function FieldEditor({
   const id = React.useId();
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {label && <label htmlFor={id} className={cn("text-xs font-medium", toneText(tone))}>{label}</label>}
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        {label ? <label htmlFor={id} className={cn("text-xs font-medium", toneText(tone))}>{label}</label> : <span />}
+        <AssistHelp field="playbook" value={draft} onAccept={(v) => { setDraft(v); onChange(v); }} />
+      </div>
       <Textarea
         id={id}
         value={draft}

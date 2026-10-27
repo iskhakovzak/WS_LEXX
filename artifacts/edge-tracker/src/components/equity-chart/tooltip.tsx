@@ -5,6 +5,7 @@ import { dateRu, fmtValue, rangeRu, weekdayRu, type EquityCandle, type EquityUni
 import type { EquityAgg } from "./model";
 import { fmtMonth, fmtRate, fmtUsd } from "@/lib/format";
 import { equityChartI18n } from "@/i18n/ns/equityChart";
+import { TOOLTIP_SURFACE } from "@/components/shared/charts/tooltip";
 
 const TIP_W = 272;
 
@@ -54,7 +55,7 @@ export function EquityTooltip({
   const action = t(`tip.action.${agg}`);
   return (
     <div
-      className="pointer-events-none absolute z-raised flex flex-col gap-2 rounded-xl border border-border/70 bg-popover/95 p-3 text-xs text-popover-foreground shadow-xl tabular-nums animate-in fade-in-0 duration-[var(--dur-1)] motion-reduce:animate-none"
+      className={cn(TOOLTIP_SURFACE, "absolute z-raised flex flex-col gap-2 p-3 animate-in fade-in-0 duration-[var(--dur-1)] motion-reduce:animate-none")}
       style={{ left, top, width: w }}
       aria-hidden="true"
     >

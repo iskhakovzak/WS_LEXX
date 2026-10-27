@@ -6,6 +6,7 @@
  */
 import * as React from "react";
 import { Link } from "wouter";
+import { scrollBehavior } from "@/lib/motion";
 import { AlertTriangle, OctagonX, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
@@ -140,8 +141,7 @@ export function BreachList({ rows, trader, max, className, labels, focusAlert = 
   const focusRef = React.useRef<HTMLLIElement>(null);
   React.useEffect(() => {
     if (focusIdx < 0) return;
-    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    focusRef.current?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+    focusRef.current?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [focusIdx]);
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>

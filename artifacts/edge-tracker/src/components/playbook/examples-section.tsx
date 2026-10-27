@@ -212,7 +212,7 @@ export function ExamplesSection({ entryId, canEdit = true }: { entryId: number; 
         </form>
       )}
 
-      {isLoading && <div className="grid gap-2 sm:grid-cols-2"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div>}
+      {isLoading && <div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div>}
       {isError && <InlineError text={t("cases.loadFailed")} onRetry={() => refetch()} />}
       {!isLoading && !isError && ideas.length === 0 && !formOpen && (
         <p className="text-sm text-muted-foreground">
@@ -221,7 +221,7 @@ export function ExamplesSection({ entryId, canEdit = true }: { entryId: number; 
       )}
 
       {ideas.length > 0 && (
-        <ul className="grid gap-2 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {ideas.map((i) => {
             const st = STATUS[i.status] ?? STATUS.studying;
             return (

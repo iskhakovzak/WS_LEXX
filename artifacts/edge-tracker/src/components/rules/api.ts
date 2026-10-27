@@ -1,9 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { DayRange } from "@/lib/period-range";
 import { useCallback } from "react";
 import { http } from "@/lib/api/http";
 import type { BehaviorResponse, DisciplineResponse, Mistake, MistakesSummary, Rule, RuleKindDef, RuleReport, RulesReportResponse, SelfChecksResponse, Violation } from "./types";
 
 const q = (trader: string) => `trader=${encodeURIComponent(trader)}`;
+/** «Период…» on the page: the report / summary take from&to (the server's `days` is then the range length). */
+const win = (days: number, range?: DayRange | null) => (range ? `days=${days}&from=${range.from}&to=${range.to}` : `days=${days}`);
 
 export const rulesKeys = {
   kinds: ["rules", "kinds"] as const,
@@ -13,9 +16,9 @@ export const rulesKeys = {
   violationTotal: (t: string) => ["rules", "violations-total", t] as const,
   mistakes: (t: string) => ["rules", "mistakes", t] as const,
   discipline: (t: string, days: number) => ["rules", "discipline", t, days] as const,
-  report: (t: string, days: number) => ["rules", "report", t, days] as const,
+  report: (t: string, days: number, range?: DayRange | null) => ["rules", "report", t, days, range?.from ?? null, range?.to ?? null] as const,
   preview: (t: string, days: number, kind: string, th: string) => ["rules", "preview", t, days, kind, th] as const,
-  errorsSummary: (t: string, days: number) => ["rules", "errors-summary", t, days] as const,
+  errorsSummary: (t: string, days: number, range?: DayRange | null) => ["rules", "errors-summary", t, days, range?.from ?? null, range?.to ?? null] as const,
   behavior: (t: string, from: string, to: string) => ["rules", "behavior", t, from, to] as const,
   selfChecks: (t: string, day: string) => ["rules", "self-checks", t, day] as const,
 };
@@ -79,10 +82,10 @@ export function useDiscipline(trader: string, days: number) {
 }
 
 /** Live discipline report: per-rule compliance, $ impact, examples, calendar (computed on fresh trades). */
-export function useRulesReport(trader: string, days: number) {
+export function useRulesReport(trader: string, days: number, range?: DayRange | null) {
   return useQuery({
-    queryKey: rulesKeys.report(trader, days),
-    queryFn: () => http.get<RulesReportResponse>(`/api/rules/report?${q(trader)}&days=${days}`),
+    queryKey: rulesKeys.report(trader, days, range),
+    queryFn: () => http.get<RulesReportResponse>(`/api/rules/report?${q(trader)}&${win(days, range)}`),
     enabled: !!trader,
     staleTime: 60_000,
     placeholderData: (prev) => (prev && prev.trader === trader ? prev : undefined),
@@ -101,10 +104,10 @@ export function useRulePreview(trader: string, days: number, kind: string, thres
   });
 }
 
-export function useMistakesSummary(trader: string, days: number) {
+export function useMistakesSummary(trader: string, days: number, range?: DayRange | null) {
   return useQuery({
-    queryKey: rulesKeys.errorsSummary(trader, days),
-    queryFn: () => http.get<MistakesSummary>(`/api/errors/summary?${q(trader)}&days=${days}`),
+    queryKey: rulesKeys.errorsSummary(trader, days, range),
+    queryFn: () => http.get<MistakesSummary>(`/api/errors/summary?${q(trader)}&${win(days, range)}`),
     enabled: !!trader,
     // A period switch keeps the old numbers on screen until the new ones arrive (same trader only).
     placeholderData: (prev, prevQuery) => (prev && prevQuery?.queryKey[2] === trader ? prev : undefined),

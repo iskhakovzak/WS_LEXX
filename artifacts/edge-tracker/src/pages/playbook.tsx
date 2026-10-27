@@ -4,7 +4,7 @@
  *   «Мой»   — the viewer's personal setups (private by default);
  *   «Общие» — personal setups other people (seniors) shared with the viewer; «Команда» — all other personal setups (staff only).
  * The space is picked in a page-level bar under the header (every view), with counts and a one-line hint.
- * Library view: left column (search, one filter row, folder tree) + setup card with tabs
+ * Library view: left column (search + «Фильтры», folder tree) + setup card with tabs
  * «Описание / Эталоны / Статистика / История». Nothing open → home: «Разобрать сделки» (own trades without an
  * example), Tier 1 showcase, edge / recent lists. Other views: «Эталоны» gallery (+ «Все» scope) and a card grid.
  * URL: ?id= (setup), ?tab= (setup tab), ?space= (office default), ?view= (library default), ?f= (quick filter),
@@ -16,28 +16,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { playbookTodayQuery } from "@/lib/api/queries";
-import {
-  Activity, BookOpen, Building2, ChevronsDownUp, ChevronsUpDown, Columns2, Download, FileArchive, LayoutGrid,
-  Library, Lock, MoreHorizontal, Plus, Search, Send, Share2, Tag, Trophy, User, Users, X, ZoomIn, ZoomOut, type LucideIcon,
-} from "lucide-react";
+import { Activity, BookMarked, BookOpen, Building2, Columns2, Download, FileArchive, Images, LayoutGrid, Library, Lock, MoreHorizontal, Plus, Search, Send, Share2, type LucideIcon, User, Users, ZoomIn, ZoomOut } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ToastAction } from "@/components/ui/toast";
-import { EmptyState, Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
+import { EmptyState, Page, PageHeader, Segmented } from "@/components/ds";
+import { useAssistantContext } from "@/components/shared/ask-assistant";
 import { IconAction, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { localDateString } from "@/lib/local-date";
 import { cn } from "@/lib/utils";
 import { generatePlaybookMarkdown, downloadMarkdown, generateNotionZip, downloadBlob, type ExportEntry } from "@/components/playbook/export";
 import {
-  invalidateExamples, invalidatePlaybook, notLiveMessage, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
+  invalidateExamples, invalidatePlaybook, notLiveMessage, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer, useRegimeToday,
   type InboxTrade,
 } from "@/components/playbook/api";
 import { http } from "@/lib/api/http";
@@ -55,6 +50,7 @@ import { patchSearch } from "@/components/playbook/url-state";
 import { SetupFormDialog, type FormMode } from "@/components/playbook/setup-form-dialog";
 import { CompareDialog } from "@/components/playbook/compare-dialog";
 import { QuickFind } from "@/components/playbook/quick-find";
+import { FILTER_KEYS, LibraryFilters } from "@/components/playbook/library-toolbar";
 import { TradePickerDialog } from "@/components/playbook/trade-picker-dialog";
 import { ShareDialog } from "@/components/playbook/share-dialog";
 import { hasExampleDrag, patchExample, readExampleDrag } from "@/components/playbook/examples-board";
@@ -73,20 +69,8 @@ const VIEWS: View[] = ["library", "gallery", "grid"];
 const UNFILED = "__unfiled";
 const LS_SPACE = "playbook-space";
 
-/** Labels are getters (current UI language): `short` is what the closed select shows (the sidebar is 320px); `label` is the menu item. */
 const pt = playbookI18n.t;
-const SORT_KEYS: SortKey[] = ["folder", "edge", "used", "new", "name"];
-const SORT_OPTIONS = SORT_KEYS.map((value) => ({
-  value,
-  get label() { return pt(`page.sort.${value}.label`); },
-  get short() { return pt(`page.sort.${value}.short`); },
-}));
-const FILTER_KEYS: QuickFilter[] = ["all", "today", "edge", "untested", "noExamples", "unreviewed"];
-const FILTERS = FILTER_KEYS.map((value) => ({
-  value,
-  get label() { return pt(`page.filter.${value}.label`); },
-  get short() { return pt(`page.filter.${value}.short`); },
-}));
+const isQuick = (v: unknown): v is QuickFilter => FILTER_KEYS.includes(v as QuickFilter);
 /** `label` — short (menus, export), `long` — the scope bar. */
 const spaceRow = (value: SpaceTab | "all", icon: LucideIcon) => ({
   value, icon,
@@ -128,6 +112,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   const { data: entries = [], isLoading, isError, error, refetch, isFetching } = usePlaybookEntries();
   const summaryQ = usePlaybookSummary();
   const summary = summaryQ.map;
+  const todayRegime = useRegimeToday().data?.day?.regime ?? null; // «Подходит сегодня»
   const { data: folderSettings } = useFolderSettings();
   /** New API is running (spaces / examples / stats). Older API: client-side fallbacks and friendly «после обновления сервера» states. */
   const live = viewer.live || entries.some((e) => !!e.access);
@@ -147,8 +132,8 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   });
   const [sort, setSortState] = useState<SortKey>(() => lsGet<SortKey>(LS.sort, "folder"));
   const [quick, setQuickState] = useState<QuickFilter>(() => {
-    const u = urlParam("f"); if (FILTERS.some((f) => f.value === u)) return u as QuickFilter;
-    const v = lsGet<string>(LS.filter, "all"); return FILTERS.some((f) => f.value === v) ? (v as QuickFilter) : "all";
+    const u = urlParam("f"); if (isQuick(u)) return u;
+    const v = lsGet<string>(LS.filter, "all"); return isQuick(v) ? v : "all";
   });
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(lsGet<string[]>(LS.openFolders, [])));
   const [folderOrder, setFolderOrder] = useState<string[]>(() => lsGet<string[]>(LS.folderOrder, []));
@@ -165,6 +150,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
 
   /* ---------- transient UI state ---------- */
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const [tagFilter, setTagFilter] = useState<string[]>(() => (urlParam("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean));
   const [formMode, setFormMode] = useState<FormMode | null>(null);
   const [deleting, setDeleting] = useState<PlaybookEntry | null>(null);
@@ -250,25 +236,21 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   // The box updates at once; filtering the tree / grid follows at a lower priority (no lag while typing).
   const deferredQuery = useDeferredValue(query);
   const q = deferredQuery.trim().toLowerCase();
-  const passes = useCallback(
-    (e: PlaybookEntry) => {
-      if (!matchesQuickFilter(e, quick, summary)) return false;
-      if (tagFilter.length) {
-        const t = splitTags(e.tags);
-        if (!tagFilter.every((x) => t.includes(x))) return false;
-      }
-      if (q && !q.split(/\s+/).every((term) => searchHaystack(e).includes(term))) return false;
-      return true;
-    },
-    [quick, summary, tagFilter, q],
-  );
+  const passes = useCallback((e: PlaybookEntry) => {
+    if (!matchesQuickFilter(e, quick, summary, todayRegime)) return false;
+    if (tagFilter.length) {
+      const t = splitTags(e.tags);
+      if (!tagFilter.every((x) => t.includes(x))) return false;
+    }
+    return !q || q.split(/\s+/).every((term) => searchHaystack(e).includes(term));
+  }, [quick, summary, tagFilter, q, todayRegime]);
 
   const quickCounts = useMemo(() => {
     const c = {} as Record<QuickFilter, number>;
-    for (const f of FILTERS) c[f.value] = 0;
-    for (const e of topLevel) for (const f of FILTERS) if (matchesQuickFilter(e, f.value, summary)) c[f.value]++;
+    for (const f of FILTER_KEYS) c[f] = 0;
+    for (const e of topLevel) for (const f of FILTER_KEYS) if (matchesQuickFilter(e, f, summary, todayRegime)) c[f]++;
     return c;
-  }, [topLevel, summary]);
+  }, [topLevel, summary, todayRegime]);
 
   const filtering = !!q || quick !== "all" || tagFilter.length > 0;
 
@@ -332,6 +314,8 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQuery]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
+  // The page header's assistant question («Чего не хватает этому сетапу?») reads the open entry.
+  useAssistantContext(selectedId ? { playbookId: selectedId } : null);
 
   // URL → state (back / forward, pasted links).
   const urlSpace = params.get("space");
@@ -343,7 +327,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     if (!urlSynced.current) { urlSynced.current = true; return; }
     const s: Scope = isScope(urlSpace) ? urlSpace : "office";
     const v: View = isView(urlView) ? urlView : "library";
-    const f: QuickFilter = FILTERS.some((x) => x.value === urlF) ? (urlF as QuickFilter) : "all";
+    const f: QuickFilter = isQuick(urlF) ? urlF : "all";
     if (s !== space) setSpaceState(s);
     if (v !== view) setViewState(v);
     if (f !== quick) setQuickState(f);
@@ -719,7 +703,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTypingTarget(e.target) || overlayOpen()) return;
       const k = e.key;
-      if (k === "/") { e.preventDefault(); setFindOpen(true); return; }
+      if (k === "/") { if (searchRef.current?.isConnected) return; e.preventDefault(); setFindOpen(true); return; } // the list search takes «/» (ToolbarSearch)
       if (k === "?") { e.preventDefault(); setHelpOpen((v) => !v); return; }
       // Cyrillic letters below are the same physical keys on a RU keyboard layout.
       // i18n-ignore
@@ -750,14 +734,10 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   const header = (
     <PageHeader
       title={t("page.title")}
-      icon={BookOpen}
+      icon={BookMarked}
       description={t("page.description")}
       actions={
         <>
-          <Button variant="outline" onClick={() => setFindOpen(true)} className="gap-2" aria-keyshortcuts="Control+K /" title={t("page.findTitle")}>
-            <Search className="h-4 w-4" aria-hidden="true" />
-            <span>{t("page.find")}</span>
-          </Button>
           {modeTabs}
           {!traderView && <Segmented<View>
             ariaLabel={t("page.viewAria")}
@@ -765,7 +745,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
             onChange={setView}
             options={[
               { value: "library", label: <><Library className="h-4 w-4" aria-hidden="true" />{t("page.view.library")}</> },
-              { value: "gallery", label: <><Trophy className="h-4 w-4" aria-hidden="true" />{t("page.view.gallery")}</> },
+              { value: "gallery", label: <><Images className="h-4 w-4" aria-hidden="true" />{t("page.view.gallery")}</> },
               { value: "grid", label: <><LayoutGrid className="h-4 w-4" aria-hidden="true" />{t("page.view.grid")}</> },
             ]}
           />}
@@ -854,103 +834,26 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     </div>
   );
 
-  const tagPopover = (
-    <Popover>
-      <PopoverTrigger asChild>
-        <IconAction aria-label={tagFilter.length ? t("page.tagsSelected", { count: tagFilter.length }) : t("page.tagFilter")} title={tagFilter.length ? t("page.tagsSelected", { count: tagFilter.length }) : t("page.tagFilter")} aria-pressed={tagFilter.length > 0} disabled={!allTags.length} className={cn("relative h-9 w-9", tagFilter.length > 0 && "text-primary")}>
-          <Tag />
-          {tagFilter.length > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-xs leading-none text-primary-foreground tabular-nums">{tagFilter.length}</span>}
-        </IconAction>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-semibold">{t("page.tagFilter")}</span>
-          {tagFilter.length > 0 && <button type="button" onClick={() => setTagFilter([])} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">{commonI18n.t("actions.reset")}</button>}
-        </div>
-        <p className="mb-2 text-xs text-muted-foreground">{t("page.tagFilterHint")}</p>
-        <div className="flex max-h-[min(55dvh,420px)] flex-wrap gap-1.5 overflow-y-auto">
-          {allTags.map(([t, n]) => (
-            <button
-              key={t}
-              type="button"
-              aria-pressed={tagFilter.includes(t)}
-              onClick={() => setTagFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))}
-              className="chip min-h-7 px-2.5 text-xs"
-            >
-              {t} <span className="tabular-nums text-muted-foreground">{n}</span>
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-
-  /** One filter row: «Вид» (sort) + filter. Tags and «collapse all» sit next to the search box. */
-  const filterRow = (
-    <div className="grid min-w-0 grid-cols-2 items-center gap-1.5">
-      <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-        <SelectTrigger className="h-9 min-w-0" aria-label={t("page.listView")} title={`${t("page.listView")}: ${SORT_OPTIONS.find((o) => o.value === sort)?.label ?? ""}`}><SelectValue>{SORT_OPTIONS.find((o) => o.value === sort)?.short}</SelectValue></SelectTrigger>
-        <SelectContent>
-          {SORT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Select value={quick} onValueChange={(v) => setQuick(v as QuickFilter)}>
-        <SelectTrigger className={cn("h-9 min-w-0", quick !== "all" && "border-primary/60")} aria-label={t("page.filterAria")} title={`${t("page.filterAria")}: ${FILTERS.find((f) => f.value === quick)?.label ?? ""}`}><SelectValue>{FILTERS.find((f) => f.value === quick)?.short}</SelectValue></SelectTrigger>
-        <SelectContent>
-          {FILTERS.filter((f) => f.value !== "unreviewed" || activeSpace === "office" || quick === "unreviewed").map((f) => (
-            <SelectItem key={f.value} value={f.value}>
-              {f.value === "all" ? f.label : t("page.filterCount", { label: f.label, count: quickCounts[f.value] })}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-  const searchRow = (withCollapse: boolean) => (
-    <div className="flex min-w-0 items-center gap-1.5">
-      <div className="min-w-0 flex-1">{searchBox}</div>
-      {tagPopover}
-      {withCollapse && !flat && (
-        <IconAction aria-label={allOpen ? t("page.collapseAll") : t("page.expandAll")} title={allOpen ? t("page.collapseAll") : t("page.expandAll")} onClick={toggleAll} className="h-9 w-9">
-          {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />}
-        </IconAction>
-      )}
-    </div>
-  );
-
-  const searchBox = (
-    <div className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { e.stopPropagation(); setQuery(""); (e.target as HTMLInputElement).blur(); }
-          if (e.key === "Enter" && flat?.[0]) { setView("library"); openSetup(flat[0].id); }
-        }}
-        placeholder={t("page.searchPlaceholder")}
-        aria-label={t("page.searchPlaceholder")}
-        className="h-9 pl-9 pr-9"
-      />
-      {query && (
-        <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
-      )}
-    </div>
-  );
-
-  const activeFilterNote = filtering && (
-    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      {tagFilter.map((t) => (
-        <button key={t} type="button" onClick={() => setTagFilter((p) => p.filter((x) => x !== t))} className="chip min-h-6 px-2 text-xs" aria-label={playbookI18n.t("page.removeTag", { tag: t })}>
-          #{t} <X className="h-3 w-3" aria-hidden="true" />
-        </button>
-      ))}
-      <button type="button" onClick={() => { setQuery(""); setQuick("all"); setTagFilter([]); }} className="underline underline-offset-2 hover:text-foreground">
-        {commonI18n.t("actions.resetFilters")}
-      </button>
-    </div>
+  const libFilters = (inline: boolean) => (
+    <LibraryFilters
+      inline={inline}
+      query={query}
+      onQuery={setQuery}
+      inputRef={searchRef}
+      onSearchKeyDown={(e) => { if (e.key === "Enter" && flat?.[0]) { setView("library"); openSetup(flat[0].id); } }}
+      sort={sort}
+      onSort={setSort}
+      quick={quick}
+      onQuick={setQuick}
+      quickCounts={quickCounts}
+      showUnreviewed={activeSpace === "office"}
+      tags={allTags}
+      tagFilter={tagFilter}
+      onTagFilter={setTagFilter}
+      collapse={inline && !flat ? { allOpen, onToggle: toggleAll } : null}
+      resultCount={flat ? flat.length : topLevel.filter(passes).length}
+      onResetAll={() => setQuery("")}
+    />
   );
 
   const proposedBlock = activeSpace === "office" && proposed.length > 0 && (
@@ -980,26 +883,27 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     <div className="glass-panel rounded-2xl">
       {activeSpace === "office" ? (
         <EmptyState
-          icon={Building2}
+          art="amphora" icon={Building2}
           title={t("page.empty.officeTitle")}
           description={viewer.isCurator ? t("page.empty.officeCurator") : t("page.empty.officeTrader")}
-          action={viewer.isCurator ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.officeAction")}</Button> : undefined}
+          action={viewer.isCurator ? <Button onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.officeAction")}</Button> : <Button onClick={() => setSpace("mine")}>{SPACES[1]!.long}</Button>}
         />
       ) : activeSpace === "mine" ? (
         <EmptyState
-          icon={User}
+          art="amphora" icon={User}
           title={t("page.empty.mineTitle")}
           description={traderView ? t("page.empty.mineDescTrader") : t("page.empty.mineDesc")}
-          action={canCreate ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.mineAction")}</Button> : undefined}
+          action={canCreate ? <Button onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.mineAction")}</Button> : undefined}
         />
       ) : activeSpace === "shared" ? (
         <EmptyState
-          icon={Share2}
+          art="scroll" icon={Share2}
           title={t("page.empty.sharedTitle")}
           description={t("page.empty.sharedDesc")}
+          action={<Button onClick={() => setSpace("mine")}>{SPACES[1]!.long}</Button>}
         />
       ) : (
-        <EmptyState icon={Users} title={t("page.empty.teamTitle")} />
+        <EmptyState art="temple" icon={Users} title={t("page.empty.teamTitle")} action={<Button onClick={() => setSpace("office")}>{SPACES[0]!.long}</Button>} />
       )}
     </div>
   );
@@ -1021,7 +925,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
           icon={BookOpen}
           title={t("page.loadFailed")}
           description={(error as Error)?.message}
-          action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>{commonI18n.t("actions.retry")}</Button>}
+          action={<Button onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>{commonI18n.t("actions.retry")}</Button>}
         />
       </div>
     );
@@ -1034,15 +938,9 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
       : [...allFolders, null].map((f) => ({ title: f ?? commonI18n.t("fields.noFolder"), items: list.filter((e) => (e.folder ?? null) === f) })).filter((s) => s.items.length);
     body = (
       <div className="flex flex-col gap-[var(--grid-gap)]">
-        {topLevel.length > 0 && (
-          <Toolbar className="gap-3">
-            <div className="w-full sm:w-72">{searchRow(false)}</div>
-            <div className="w-full sm:w-[300px]">{filterRow}</div>
-          </Toolbar>
-        )}
-        {activeFilterNote}
+        {topLevel.length > 0 && libFilters(false)}
         {topLevel.length === 0 ? spaceEmpty : list.length === 0 ? (
-          <div className="glass-panel rounded-2xl"><EmptyState icon={Search} title={commonI18n.t("states.nothingFound")} description={t("page.changeFilters")} /></div>
+          <div className="glass-panel rounded-2xl"><EmptyState art="amphora" icon={Search} title={commonI18n.t("states.nothingFound")} description={t("page.changeFilters")} action={<Button onClick={() => { setQuery(""); setQuick("all"); setTagFilter([]); }}>{commonI18n.t("actions.resetFilters")}</Button>} /></div>
         ) : (
           sections.map((sec) => (
             <section key={sec.title ?? "all"} aria-label={sec.title ?? commonI18n.t("trading.setups")}>
@@ -1071,9 +969,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         >
           {topLevel.length > 0 ? (
             <>
-              {searchRow(true)}
-              {filterRow}
-              {activeFilterNote}
+              {libFilters(true)}
               {proposedBlock}
               <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
                 <FolderTree
@@ -1151,7 +1047,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
             </div>
           ) : selectedId ? (
             <div className="glass-panel rounded-2xl">
-              <EmptyState icon={BookOpen} title={t("page.notFoundTitle")} description={t("page.notFoundDesc")} action={<Button variant="outline" onClick={() => openSetup(null)}>{t("page.toOverview")}</Button>} />
+              <EmptyState art="amphora" icon={BookOpen} title={t("page.notFoundTitle")} description={t("page.notFoundDesc")} action={<Button onClick={() => openSetup(null)}>{t("page.toOverview")}</Button>} />
             </div>
           ) : topLevel.length === 0 ? (
             // An empty «Мой» is where a trader starts: the inbox of own trades is the quickest way in.
@@ -1236,7 +1132,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         onPick={(id) => openFromElsewhere(id)}
         actions={[
           ...(canCreate ? [{ id: "new", label: newLabel, icon: Plus, hint: "N", run: () => newSetup(selected?.folder ?? null) }] : []),
-          ...(traderView ? [] : [{ id: "gallery", label: t("page.action.gallery"), icon: Trophy, run: () => setView("gallery") }]),
+          ...(traderView ? [] : [{ id: "gallery", label: t("page.action.gallery"), icon: Images, run: () => setView("gallery") }]),
           { id: "compare", label: t("page.compare"), icon: Columns2, hint: "C", run: () => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null) },
           ...visibleSpaces.map((s) => ({ id: `space-${s.value}`, label: t("page.action.space", { name: s.label }), icon: s.icon, run: () => { setView("library"); setSpace(s.value); openSetup(null); } })),
           ...(traderView ? [] : [{ id: "grid", label: view === "grid" ? t("page.action.viewLibrary") : t("page.action.viewGrid"), icon: view === "grid" ? Library : LayoutGrid, run: () => setView(view === "grid" ? "library" : "grid") }]),

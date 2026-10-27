@@ -6,6 +6,7 @@ export default {
   aria: "Savdo kesimlari: yillar, vaqt, strategiya, teglar",
   open: "Kesimlarni koʻrsatish",
   close: "Kesimlarni yashirish",
+  allIn: "hammasi",
   hidden: { one: "{count} ta qiymat yashirilgan", other: "{count} ta qiymat yashirilgan" },
   dims: {
     years: "Yillar",
@@ -51,6 +52,13 @@ export default {
   restore: "«{label}» ni qaytarish ({dim})",
   exclude: "«{label}» ni chiqarib tashlash",
   include: "«{label}» ni qaytarish",
+  tickerSearch: "Tikerni topish",
+  tickerSearchPlaceholder: "Tiker, masalan NVDA",
+  tickerFound: "Topilgan tikerlar: {n}",
+  tickerNotFound: "«{q}» bo'yicha bu yerda bitimlar yo'q",
+  tickerOnly: "Faqat topilganlar",
+  tickerOnlyHint: "Hisobotda faqat topilgan tikerlarni qoldirish, qolganlarini chiqarib tashlash",
+  tickerClear: "Qidiruvni tozalash",
   clickHint: "Qatorni bosish qiymatni chiqarib tashlaydi, qayta bosish qaytaradi",
   single: "Bitta qiymat:",
   hints: {
@@ -73,6 +81,7 @@ export default {
   },
   imx: {
     toggle: "IMX ni chiqarib tashlash",
+    chip: "IMXsiz",
     hint: "IMX — yopilish auksioni savdolari (Nyu-York vaqti bilan 15:50–16:00 dagi istalgan ijro, «IMX» tegi). Odatda ular roʻyxat va jamilarda qoladi.",
     line: "Jami {total} · shundan IMX {imx}",
     lineExcluded: "Jami {total} IMXsiz · IMX chiqarilgan: {imx}",

@@ -161,7 +161,7 @@ export function ProgramForm({ program, onCreated }: { program: Program | null; o
       <div className="flex flex-col gap-4">
         <Field label={commonI18n.t("fields.name")} htmlFor={`${idp}-title`}><Input id={`${idp}-title`} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
         <Field label={commonI18n.t("fields.description")} htmlFor={`${idp}-desc`}><Textarea id={`${idp}-desc`} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} rows={3} maxLength={4000} /></Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={commonI18n.t("tiers.step")} hint={t("editor.program.stageHint")}>
             <Select value={f.stage || "none"} onValueChange={(v) => setF({ ...f, stage: v === "none" ? "" : (v as Stage) })}>
               <SelectTrigger aria-label={commonI18n.t("tiers.step")}><SelectValue /></SelectTrigger>
@@ -284,7 +284,7 @@ export function LessonEditor({ lesson, moduleId, modules, onCreated }: { lesson:
   return (
     <Panel title={lesson ? t("kind.lesson") : t("editor.lesson.new")} actions={f.draft ? <Pill tone="warn">{commonI18n.t("states.draft")}</Pill> : <Pill tone="up">{t("editor.published")}</Pill>}>
       <div className="flex flex-col gap-5">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_140px]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_140px]">
           <Field label={commonI18n.t("fields.name")} htmlFor={`${idp}-title`}><Input id={`${idp}-title`} value={f.title} onChange={(e) => set("title", e.target.value)} maxLength={200} /></Field>
           <Field label={t("editor.lesson.duration")} htmlFor={`${idp}-dur`} hint={t("editor.lesson.durationHint", { count: readingMinutes(f.bodyMd) })}>
             <Input id={`${idp}-dur`} inputMode="numeric" value={f.durationMin} onChange={(e) => set("durationMin", e.target.value.replace(/[^\d]/g, ""))} className="tabular-nums" />
@@ -468,7 +468,7 @@ export function QuizEditor({ quiz, moduleId, modules, onCreated }: { quiz: Admin
       <div className="flex flex-col gap-5">
         <Field label={commonI18n.t("fields.name")} htmlFor={`${idp}-title`}><Input id={`${idp}-title`} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
         <Field label={t("editor.quiz.intro")} htmlFor={`${idp}-desc`}><Textarea id={`${idp}-desc`} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} rows={2} maxLength={4000} /></Field>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label={t("editor.quiz.passPct")} htmlFor={`${idp}-pass`}><Input id={`${idp}-pass`} inputMode="numeric" value={f.passPct} onChange={(e) => setF({ ...f, passPct: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
           <Field label={t("editor.quiz.attempts")} htmlFor={`${idp}-att`} hint={t("editor.quiz.attemptsHint")}><Input id={`${idp}-att`} inputMode="numeric" value={f.maxAttempts} onChange={(e) => setF({ ...f, maxAttempts: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
           <div className="flex flex-col justify-end text-sm text-muted-foreground tabular-nums">{t("units.questions", { count: f.questions.length })} · {commonI18n.t("units.points", { count: totalPoints })}</div>
@@ -536,7 +536,7 @@ function QuestionCard({ q, index, count, onChange, onMove, onRemove }: {
       <Textarea value={q.prompt} onChange={(e) => onChange({ ...q, prompt: e.target.value })} rows={2} placeholder={t("editor.quiz.promptPh")} aria-label={t("editor.quiz.promptAria", { n: index + 1 })} />
 
       {q.kind === "numeric" ? (
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Field label={t("editor.quiz.correctAnswer")} htmlFor={`${idp}-ans`}>
             <Input id={`${idp}-ans`} inputMode="decimal" defaultValue={String(q.answer)} onBlur={(e) => onChange({ ...q, answer: numOrNull(e.target.value) ?? 0 })} className="tabular-nums" />
           </Field>
@@ -614,7 +614,7 @@ export function AssignmentEditor({ assignment, moduleId, modules, onCreated }: {
       <div className="flex flex-col gap-5">
         <Field label={commonI18n.t("fields.name")} htmlFor={`${idp}-title`}><Input id={`${idp}-title`} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
         <MarkdownField id={`${idp}-body`} label={t("editor.assignment.body")} value={f.bodyMd} onChange={(v) => setF({ ...f, bodyMd: v })} rows={12} />
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label={t("editor.quiz.passPct")} htmlFor={`${idp}-pass`}><Input id={`${idp}-pass`} inputMode="numeric" value={f.passPct} onChange={(e) => setF({ ...f, passPct: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
           <Field label={t("editor.assignment.minTrades")} htmlFor={`${idp}-min`} hint={t("editor.assignment.minTradesHint")}><Input id={`${idp}-min`} inputMode="numeric" value={f.minTrades} onChange={(e) => setF({ ...f, minTrades: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
           <div className="flex flex-col justify-end text-sm text-muted-foreground tabular-nums">{t("editor.assignment.max", { count: maxTotal })}</div>
@@ -623,7 +623,7 @@ export function AssignmentEditor({ assignment, moduleId, modules, onCreated }: {
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1.5 text-xs font-medium text-muted-foreground">{t("editor.assignment.rubric")}</legend>
           {f.rubric.map((c, i) => (
-            <div key={c.key} className="grid items-start gap-2 md:grid-cols-[minmax(0,14rem)_5rem_minmax(0,1fr)_auto]">
+            <div key={c.key} className="grid grid-cols-1 items-start gap-2 md:grid-cols-[minmax(0,14rem)_5rem_minmax(0,1fr)_auto]">
               <Input value={c.label} onChange={(e) => updC(i, { label: e.target.value })} placeholder={t("assignment.criterion")} aria-label={t("editor.assignment.criterionAria", { n: i + 1 })} maxLength={120} />
               <Input inputMode="numeric" value={String(c.maxPoints)} onChange={(e) => updC(i, { maxPoints: Math.min(100, Number(e.target.value.replace(/[^\d]/g, "")) || 0) })} aria-label={t("editor.assignment.maxAria", { n: i + 1 })} className="tabular-nums" />
               <Input value={c.description ?? ""} onChange={(e) => updC(i, { description: e.target.value })} placeholder={t("editor.assignment.descPh")} aria-label={t("editor.assignment.descAria", { n: i + 1 })} maxLength={500} />

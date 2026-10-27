@@ -7,7 +7,7 @@ import * as React from "react";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { ClipboardList, Lock, RefreshCw, ServerOff, ShieldAlert, Sun, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, PanelSkeleton, Pill, QueryState, SectionTabs, Segmented, SkeletonBlock, StatGridSkeleton, TableSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, PanelSkeleton, Pill, QueryState, SectionTabs, Segmented, SkeletonBlock, StatGridSkeleton, TableSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -18,9 +18,11 @@ import { GroupView } from "@/components/curator/group-view";
 import { TraderProfile, PROFILE_TABS, type ProfileTab } from "@/components/curator/trader-profile";
 import { RiskProcessesView } from "@/components/curator/risk-processes-view";
 import { CuratorQuestsPanel } from "@/components/quests/curator-panel";
+import { MentorCuratorPanel } from "@/components/mentor/curator-panel";
 import { RewardQueueItems } from "@/components/gamification/reward-queue";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { shellI18n } from "@/i18n/ns/shell";
+import { commonI18n } from "@/i18n/ns/common";
 import { fmtDate } from "@/lib/format";
 
 type View = "today" | "traders" | "risk";
@@ -33,7 +35,7 @@ export default function CuratorPage() {
     return (
       <Page>
         <PageHeader title={shellI18n.t("nav.curator")} icon={ClipboardList} />
-        <EmptyState icon={Lock} title={t("page.staffOnly")} description={t("page.staffOnlyHint")} />
+        <EmptyState art="temple" icon={Lock} title={t("page.staffOnly")} description={t("page.staffOnlyHint")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
       </Page>
     );
   }
@@ -137,9 +139,11 @@ function CuratorCabinet() {
 
       {notAvailable ? (
         <EmptyState
+          art="temple"
           icon={ServerOff}
           title={t("page.notConnected")}
           description={t("page.notConnectedHint")}
+          action={<EmptyLink href="/risk">{shellI18n.t("nav.risk")}</EmptyLink>}
         />
       ) : view === "today" ? (
         <QueryState query={today} skeleton={<TodaySkeleton />} errorTitle={t("page.todayFailed")}>
@@ -147,7 +151,7 @@ function CuratorCabinet() {
         </QueryState>
       ) : view === "traders" ? (
         trader ? (
-          <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} />
+          <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} mentor={<MentorCuratorPanel trader={trader} />} />
         ) : (
           <QueryState query={traders} skeleton={<GroupSkeleton />} errorTitle={t("page.tradersFailed")}>
             {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}
@@ -165,7 +169,7 @@ function TodaySkeleton() {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <StatGridSkeleton count={6} />
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
         <PanelSkeleton className="lg:col-span-7" height={280} />
         <PanelSkeleton className="lg:col-span-5" height={280} />
       </div>
@@ -177,7 +181,7 @@ function TodaySkeleton() {
 function GroupSkeleton() {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <SkeletonBlock className="h-[5.5rem] rounded-2xl" />
+      <SkeletonBlock className="h-[3.25rem] rounded-2xl" />
       <div className="glass-panel overflow-hidden rounded-2xl"><TableSkeleton rows={10} cols={8} /></div>
     </div>
   );

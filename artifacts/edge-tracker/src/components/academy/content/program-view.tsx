@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ArrowRight, Clock, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill, ProgressRing } from "@/components/ds";
+import { StageBadge } from "@/components/shared/medals";
 import { cn } from "@/lib/utils";
 import { kindLabel, stageLabel, type CatalogProgram, type ProgramTree, type TreeItem } from "./api";
 import { KindIcon, PctBar, RuContentPill, StatusIcon, SubmissionPill } from "./bits";
@@ -27,7 +28,7 @@ export function ProgramCard({ p, active, onSelect }: { p: CatalogProgram; active
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
           <span className="font-semibold text-foreground">{p.title}</span>
-          {p.stage && <Pill tone="purple">{stageLabel(p.stage)}</Pill>}
+          {p.stage && <StageBadge stage={p.stage} label={stageLabel(p.stage)} className="min-h-5.5 rounded-full bg-foreground/[0.05] py-0.5 pl-0.5 pr-2" />}
           {!p.published && <Pill tone="warn">{commonI18n.t("states.draft")}</Pill>}
           <RuContentPill scope="course" />
         </span>
@@ -74,7 +75,7 @@ export function ProgramOutline({ tree, user, viewingOther }: { tree: ProgramTree
             </p>
           </div>
           {next ? (
-            <Button asChild>
+            <Button asChild wrap>
               <Link href={academyLinks.item(next.kind, next.id, { user: linkUser })} title={next.title}>
                 <PlayCircle aria-hidden="true" />
                 {t(tree.progress.done ? "program.continueWith" : "program.startWith", { title: next.title.length > 36 ? `${next.title.slice(0, 36)}…` : next.title })}

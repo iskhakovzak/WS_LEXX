@@ -14,7 +14,7 @@ export function ScoreRing({ score, size = 36, className, pending }: { score: num
   const tone = scoreTone(score);
   return (
     <span
-      className={cn("relative inline-grid shrink-0 place-items-center", toneText(tone), className)}
+      className={cn("relative [display:inline-grid] shrink-0 place-items-center", toneText(tone), className)}
       style={{ width: size, height: size }}
       role="img"
       aria-label={pending ? watchlistI18n.t("score.pending") : score == null ? watchlistI18n.t("score.none") : watchlistI18n.t("score.of100", { score })}

@@ -222,7 +222,6 @@ export default {
     audienceAria: "Who the thread is for",
     allThreads: "All threads",
     forMe: "For me",
-    typeTickerAria: "Filter by type and ticker",
     typeAria: "Thread type",
     allTypes: "All types",
     found: "Found: {count}",

@@ -15,7 +15,15 @@ import type { BadgeId } from "./types";
 export const BADGE_IDS: readonly BadgeId[] = ["streak_1", "streak_2", "streak_3", "reviews", "focus", "clean_month", "sim_first", "sim_beat"];
 
 /** Inputs, all sorted or sortable by date. */
-export type ReviewDay = { date: string; reviewedOn: string | null };
+/**
+ * `reviewedOn` = the NY day it was closed (one-tap «Разобрал» or the journal form); `fullOn` = the NY day of the FULL
+ * EOD review (journal form with ≥ 1 trade review or mistake verdict, eod_days.full_review_at) — rewards count only that
+ * (roadmap R3: reviews_total, review_streak, full_loop). Absent = unknown (treated as not full).
+ */
+export type ReviewDay = { date: string; reviewedOn: string | null; fullOn?: string | null };
+
+/** The same day judged by its full review only (the one-tap close is «seen», not reviewed). */
+export const asFullReview = (r: ReviewDay): ReviewDay => ({ date: r.date, reviewedOn: r.fullOn ?? null });
 export type FocusDay = { date: string; status: string; disputed: boolean };
 export type StopDay = { date: string; trough: number; limit: number | null };
 export type OwnGame = { finishedOn: string; verdict: string | null };

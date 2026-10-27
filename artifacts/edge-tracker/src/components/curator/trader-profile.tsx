@@ -16,11 +16,16 @@ import { GoalDialog } from "./goal-dialog";
 import { NotesPanel } from "./notes-panel";
 import { FocusPanel } from "./focus-panel";
 import { TemplateDialog } from "./template-dialog";
+import { InterventionsPanel } from "./coach-interventions";
+import { EdgeMapPanel } from "@/components/shared/edge-map/edge-verdicts";
+import { JuniorCostPanel } from "@/components/shared/junior-cost/junior-cost-panel";
 import { fmtDate, fmtDeskDateTime, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
+import { PersonLink } from "@/components/shared/person-link";
 import { commonI18n } from "@/i18n/ns/common";
 import { tierDisplay } from "@/components/shared/tier-labels";
+import { StageBadge, StageMedal, medalStageOf } from "@/components/shared/medals";
 
 export type ProfileTab = "overview" | "risk" | "journal" | "weekly" | "academy" | "notes";
 export const PROFILE_TABS: ProfileTab[] = ["overview", "risk", "journal", "weekly", "academy", "notes"];
@@ -53,9 +58,10 @@ const WEEK_ACCESSORS = {
 
 /**
  * Trader profile inside the cabinet: header with actions + tabs overview / risk / journal / weekly / academy / notes.
- * `quests` — the quests & achievements block, composed by the page (components/quests is another feature).
+ * `quests` — the quests & achievements block, `mentor` — the AI mentor's notes, signals and commitments; both composed by
+ * the page (components/quests and components/mentor are other features).
  */
-export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void; quests?: React.ReactNode }) {
+export function TraderProfile({ trader, tab, onTab, onBack, quests, mentor }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void; quests?: React.ReactNode; mentor?: React.ReactNode }) {
   const q = useCuratorProfile(trader);
   const { t } = curatorI18n.useT();
   const [goalOpen, setGoalOpen] = React.useState(false);
@@ -80,7 +86,7 @@ export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: 
                 { value: "notes", label: t("profile.tab.notes"), icon: NotebookPen, count: p.notes.length || undefined },
               ]}
             />
-            {tab === "overview" && <OverviewTab p={p} onTab={onTab} onGoal={() => setGoalOpen(true)} quests={quests} />}
+            {tab === "overview" && <OverviewTab p={p} onTab={onTab} onGoal={() => setGoalOpen(true)} quests={quests} mentor={mentor} />}
             {tab === "risk" && <RiskTab p={p} onTemplate={() => setTplOpen(true)} />}
             {tab === "journal" && <JournalTab p={p} />}
             {tab === "weekly" && <WeeklyTab p={p} />}
@@ -120,11 +126,16 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
         <Button type="button" variant="ghost" size="sm" onClick={onBack} aria-label={t("profile.back")}>
           <ArrowLeft className="h-4 w-4" /> {t("profile.allTraders")}
         </Button>
-        <span className="tile grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary"><UserRound className="h-5 w-5" aria-hidden="true" /></span>
+        {/* The trader's rank as their academy medal; the plain avatar tile when no stage is set. */}
+        {medalStageOf(s.stage.key)
+          ? <StageMedal stage={medalStageOf(s.stage.key) ?? "junior"} size={48} />
+          : <span className="tile grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary"><UserRound className="h-5 w-5" aria-hidden="true" /></span>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-lg font-semibold text-foreground" title={personName(p.trader)}>{personName(p.trader)}</h2>
-            {s.stage.label && <Pill tone="purple">{s.stage.label}</Pill>}
+            <h2 className="truncate text-lg font-semibold text-foreground" title={personName(p.trader)}><PersonLink name={p.trader} /></h2>
+            {s.stage.label && (medalStageOf(s.stage.key)
+              ? <StageBadge stage={medalStageOf(s.stage.key) ?? "junior"} label={s.stage.label} className="min-h-5.5 rounded-full bg-foreground/[0.05] py-0.5 pl-0.5 pr-2" />
+              : <Pill tone="purple">{s.stage.label}</Pill>)}
             {/* The limit tier in the UI language; hidden when it says the same as the academy stage («Junior» once). */}
             {s.tierName && tierDisplay(s.tierName) !== s.stage.label && <Pill tone="neutral">{tierDisplay(s.tierName)}</Pill>}
             <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : t("noLimits")}</Pill>
@@ -153,7 +164,7 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
   );
 }
 
-function OverviewTab({ p, onTab, onGoal, quests }: { p: ProfilePayload; onTab: (t: ProfileTab) => void; onGoal: () => void; quests?: React.ReactNode }) {
+function OverviewTab({ p, onTab, onGoal, quests, mentor }: { p: ProfilePayload; onTab: (t: ProfileTab) => void; onGoal: () => void; quests?: React.ReactNode; mentor?: React.ReactNode }) {
   const s = p.signal;
   const fourWeekNet = s.trend.reduce((a, w) => a + (w.net ?? 0), 0);
   const unreviewed = p.breaches.filter((b) => !b.review);
@@ -192,6 +203,9 @@ function OverviewTab({ p, onTab, onGoal, quests }: { p: ProfilePayload; onTab: (
           >
             <GoalsList goals={activeGoals.length ? activeGoals : p.goals.slice(0, 3)} />
           </Panel>
+          <EdgeMapPanel trader={p.trader} />
+          <InterventionsPanel trader={p.trader} />
+          {mentor}
         </div>
         <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">
           {p.focus && <FocusPanel trader={p.trader} focus={p.focus} />}
@@ -503,6 +517,11 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
       </div>
       <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">
         <Panel title={t("profile.stageTitle")} icon={TrendingUp}>
+          {medalStageOf(s.stage.key) && (
+            <div className="mb-3 flex justify-center">
+              <StageMedal stage={medalStageOf(s.stage.key) ?? "junior"} size={112} />
+            </div>
+          )}
           <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted-foreground">{t("profile.stage")}</dt>
             <dd className="text-right text-foreground">{s.stage.label ?? t("profile.notSetF")}</dd>
@@ -530,6 +549,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
           )}
         </Panel>
       </div>
+      <JuniorCostPanel trader={p.trader} hideEmpty className="lg:col-span-12" />
     </BentoGrid>
   );
 }
