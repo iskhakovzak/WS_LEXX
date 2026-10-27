@@ -33,6 +33,7 @@ import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
 import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
 import { registerLeakGuardJobs } from "../lib/leakGuard/jobDefs";
+import { registerCapitalJobs } from "../lib/capital/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -346,4 +347,5 @@ function registerModuleJobs(): void {
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
   registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
   registerLeakGuardJobs(registerJob); // live leak guard: detect / ladder / settle after each sync (lib/leakGuard/jobDefs.ts)
+  registerCapitalJobs(registerJob); // weekly capital allocation proposals into the scaling queue (lib/capital/jobDefs.ts)
 }

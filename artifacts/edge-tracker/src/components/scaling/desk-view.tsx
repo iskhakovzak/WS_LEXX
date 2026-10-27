@@ -12,6 +12,7 @@ import { personName } from "@/i18n";
 import type { Action, Evaluation, TraderEval } from "./use-scaling";
 import { useEvaluation, useProposals } from "./use-scaling";
 import { ProposalCard } from "./proposal-card";
+import { CapitalPanel } from "./capital-panel";
 import { TraderSheet } from "./trader-sheet";
 import { ProposeButton, TierPopover } from "./curator-actions";
 import { ACTION_TONE, actionLabel, fmtMetric, tierLabel } from "./format";
@@ -130,6 +131,8 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
           )}
         </Panel>
       )}
+
+      <CapitalPanel canDecide={!!data?.canEdit} onOpenTrader={setSelected} />
 
       <Toolbar>
         <div className="relative min-w-[200px] flex-1">

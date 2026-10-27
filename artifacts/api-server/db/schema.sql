@@ -2491,7 +2491,11 @@ CREATE TABLE public.scaling_proposals (
   decided_by text,
   decided_at timestamp with time zone,
   decision_comment text,
-  CONSTRAINT scaling_proposals_pkey PRIMARY KEY (id)
+  kind text DEFAULT 'tier'::text NOT NULL,
+  limits jsonb,
+  CONSTRAINT scaling_proposals_pkey PRIMARY KEY (id),
+  CONSTRAINT scaling_proposals_kind_check CHECK (kind = ANY (ARRAY['tier'::text, 'limits'::text])),
+  CONSTRAINT scaling_proposals_limits_check CHECK (kind = 'tier'::text OR limits IS NOT NULL)
 );
 
 CREATE TABLE public.scaling_rules (
@@ -3612,7 +3616,9 @@ CREATE INDEX rule_violations_rule_idx ON public.rule_violations USING btree (rul
 CREATE UNIQUE INDEX rule_violations_rule_key_uidx ON public.rule_violations USING btree (rule_id, dedup_key);
 CREATE INDEX rule_violations_trade_idx ON public.rule_violations USING btree (trade_id);
 CREATE INDEX rule_violations_trader_idx ON public.rule_violations USING btree (trader);
+CREATE INDEX scaling_history_capital_idx ON public.scaling_history USING btree (created_at DESC) WHERE ((limits ->> 'kind'::text) = 'capital'::text);
 CREATE INDEX scaling_history_trader_idx ON public.scaling_history USING btree (trader, created_at DESC);
+CREATE INDEX scaling_proposals_limits_week_idx ON public.scaling_proposals USING btree (((limits ->> 'week'::text))) WHERE (kind = 'limits'::text);
 CREATE UNIQUE INDEX scaling_proposals_pending_uniq ON public.scaling_proposals USING btree (trader) WHERE (status = 'pending'::text);
 CREATE INDEX scaling_proposals_trader_idx ON public.scaling_proposals USING btree (trader, created_at DESC);
 CREATE INDEX sim_games_daily_date_idx ON public.sim_games USING btree (((params #>> '{daily,date}'::text[]))) WHERE (params ? 'daily'::text);

@@ -1,11 +1,11 @@
 
-import { ArrowDownRight, ArrowUpRight, Flag, History } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Flag, History, Undo2 } from "lucide-react";
 import { EmptyState, Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { HistoryEntry, Tier } from "./use-scaling";
 import { tierName } from "./format";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import { scalingI18n } from "@/i18n/ns/scaling";
 import { personName } from "@/i18n";
 
@@ -13,7 +13,14 @@ const META = {
   promote: { icon: ArrowUpRight, cls: "bg-up/15 text-up" },
   demote: { icon: ArrowDownRight, cls: "bg-down/15 text-down" },
   assign: { icon: Flag, cls: "bg-primary/15 text-primary" },
+  // capital allocation (lib/capital): the daily loss limit moved within the tier, or an applied change taken back
+  raise: { icon: ArrowUpRight, cls: "bg-up/15 text-up" },
+  cut: { icon: ArrowDownRight, cls: "bg-down/15 text-down" },
+  revert: { icon: Undo2, cls: "bg-primary/15 text-primary" },
 } as const;
+
+type CapitalLimits = { kind?: string; before?: { dailyLossLimit?: number | null }; after?: { dailyLossLimit?: number | null } };
+const daily = (v: number | null | undefined) => (v == null ? "—" : fmtUsd(v, { decimals: 0 }));
 
 export function HistoryTimeline({
   entries,
@@ -45,7 +52,8 @@ export function HistoryTimeline({
   return (
     <ol className={cn("relative flex flex-col gap-3 border-l border-[var(--glass-border)] pl-5", className)}>
       {list.map((h) => {
-        const kind: keyof typeof META = h.action === "promote" || h.action === "demote" ? h.action : "assign";
+        const kind: keyof typeof META = h.action in META ? (h.action as keyof typeof META) : "assign";
+        const cap = (h.limits as CapitalLimits | null)?.kind === "capital" ? (h.limits as CapitalLimits) : null;
         const m = META[kind];
         const Icon = m.icon;
         return (
@@ -56,9 +64,9 @@ export function HistoryTimeline({
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
               {showTrader && <span className="font-semibold text-foreground">{personName(h.trader)}</span>}
               <span className="text-foreground">{t(`history.${kind}`)}:</span>
-              <span className="text-muted-foreground">{tierName(tiers, h.fromTier)}</span>
+              <span className="text-muted-foreground">{cap ? daily(cap.before?.dailyLossLimit) : tierName(tiers, h.fromTier)}</span>
               <span className="text-muted-foreground" aria-hidden="true">→</span>
-              <Pill tone="purple">{tierName(tiers, h.toTier)}</Pill>
+              {cap ? <span className="font-medium text-foreground">{daily(cap.after?.dailyLossLimit)}</span> : <Pill tone="purple">{tierName(tiers, h.toTier)}</Pill>}
             </div>
             <div className="mt-0.5 flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
               <span>{fmtDate(h.createdAt, "dateTime")}</span>

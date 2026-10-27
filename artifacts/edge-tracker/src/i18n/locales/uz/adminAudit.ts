@@ -48,6 +48,7 @@ export default {
     login: "Kirish",
     regime: "Bozor rejimi",
     leakGuard: "Sizib chiqish himoyasi",
+    capitalAllocation: "Risk taqsimoti",
   },
 
   text: {
@@ -129,6 +130,10 @@ export default {
     permissionsUpdate: "huquqlar matritsasini oʻzgartirdi",
     deskSettingUpdate: "«{setting}» desk sozlamasini oʻzgartirdi",
     regimeSet: "{day} uchun bozor rejimini belgiladi",
+    capitalApply: "risk taqsimoti boʻyicha {trader} kunlik limitini oʻzgartirdi",
+    capitalReject: "{trader} limitlari boʻyicha qarorni rad etdi",
+    capitalRevert: "{trader} limiti oʻzgarishini bekor qildi",
+    capitalRecompute: "risk taqsimotini qayta hisobladi: yangi {created}, yangilangan {updated}, qoʻllangan {applied}",
     deskSettingReset: "«{setting}» desk sozlamasini standart qiymatga qaytardi",
 
     seedDemo: "akademiya uchun demo sinovlarni yaratdi",

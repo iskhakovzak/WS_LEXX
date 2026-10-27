@@ -71,6 +71,7 @@ import edgeRouter from "./edge";
 import myEdgeRouter from "./my-edge";
 import marketRegimeRouter from "./market-regime";
 import leakGuardRouter from "./leak-guard";
+import capitalRouter from "./capital";
 import profileRouter from "./profile";
 import juniorCostRouter from "./junior-cost";
 import statsAggregateRouter from "./stats-aggregate";
@@ -187,6 +188,7 @@ router.use(edgeRouter);
 router.use(myEdgeRouter); // «Мой edge и рынок» (analytics)
 router.use(marketRegimeRouter); // desk market regime: day, limit multiplier, playbook tags, edge by regime, reflection
 router.use(leakGuardRouter); // live leak guard: active pauses, acknowledgement, impact in $, desk, levels
+router.use(capitalRouter); // capital allocation: risk moves to proven edge (lib/capital), proposals in the scaling queue
 router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)
 router.use(juniorCostRouter); // «Цена джуна до безубытка»: own / ward path, staff desk view (cohorts, «что окупается»)
 router.use(statsAggregateRouter); // GET /stats/aggregate — staff /stats and /analytics without raw trades

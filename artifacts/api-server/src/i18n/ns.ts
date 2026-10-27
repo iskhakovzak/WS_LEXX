@@ -21,6 +21,9 @@ import uzRisk from "./uz/risk";
 import ruPropreports from "./ru/propreports";
 import enPropreports from "./en/propreports";
 import uzPropreports from "./uz/propreports";
+import ruCapital from "./ru/capital";
+import enCapital from "./en/capital";
+import uzCapital from "./uz/capital";
 import ruScaling from "./ru/scaling";
 import enScaling from "./en/scaling";
 import uzScaling from "./uz/scaling";
@@ -178,3 +181,5 @@ export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, 
 export const coachT = defineNamespace(ruCoach, { en: enCoach, uz: uzCoach });
 /** `assistant`: «Ассистент WS» server texts (lib/assistant): «✦ Помочь» instructions, the dev demo model's lines. */
 export const assistantT = defineNamespace(ruAssistant, { en: enAssistant, uz: uzAssistant });
+/** `capital`: capital allocation (lib/capital) — the why of a limits proposal, gates and decisions. */
+export const capitalT = defineNamespace(ruCapital, { en: enCapital, uz: uzCapital });

@@ -266,6 +266,7 @@ export const KEPT: Readonly<Record<string, string>> = {
   "leak_guard_events.at_risk_trade_ids": "trade ids, not names",
   "regime_reflections.answers": "the trader's own free text per regime and question (free prose is never rewritten)",
   "playbook.regimes": "market regime keys (theme_bull, macro, …), not names",
+  "scaling_proposals.limits": "capital allocation payload (lib/capital): week, direction, step and $ limits before / after, no names",
   "ai_batches.created_by": "who started the batch: «system» (the nightly job) or «manual» (the admin's run), never a person name",
   // json: market data, caches, content without people
   ...Object.fromEntries([
