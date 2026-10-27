@@ -15,7 +15,7 @@ export default {
     achievements: { title: "Achievements", description: "Tier thresholds: 1 — bronze, 2 — silver, 3 — gold, 4 — platinum." },
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
     curator: { title: "Curator queue", description: "What stays in the queue of problems by money." },
-    academy: { title: "Academy: pace", description: "When a trader counts as not yet at the stage's pace (curators only)." },
+    academy: { title: "Academy: pace and price of a junior", description: "When a trader counts as not yet at the stage's pace, and how the price of a junior's path to breakeven is counted (curators and partners only)." },
     privacy: { title: "Privacy", description: "What traders see about colleagues and what they may show outside the desk." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
@@ -288,6 +288,10 @@ export default {
       capacity: { label: "Steps in the curator list", help: "How many «Next steps» to show (urgent ones — breaches and stops — always on top). The rest goes to the evening digest." },
     },
     academy: {
+      juniorCost: {
+        seatUsdMonth: { label: "Seat cost per month", help: "Software, data, desk — what the desk spends on one seat. Added to the price of a junior’s path to breakeven (Office → «Price of a junior»). 0 = count only the trading loss." },
+        stableDays: { label: "Breakeven window", help: "How many own trading days in a row the cumulative result after fees must stay ≥ 0 for breakeven to count." },
+      },
       plateau: { minTenure: { label: "Days at the stage before the pace is judged", help: "Trading days at the stage before the curator sees «pace below target». Never shown to the trader." } },
     },
     nav: {

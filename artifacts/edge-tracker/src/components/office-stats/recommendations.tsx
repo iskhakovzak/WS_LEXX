@@ -7,7 +7,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import {
-  AlertTriangle, ArrowRight, BadgeCheck, Coins, EyeOff, Gauge, GraduationCap, HelpCircle, ListChecks, Lock, Scale, Sparkles, TrendingDown, Users, UsersRound,
+  AlertTriangle, ArrowRight, BadgeCheck, Coins, EyeOff, Gauge, GraduationCap, HelpCircle, ListChecks, Lock, PiggyBank, Scale, Sparkles, TrendingDown, Users, UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { EmptyState, Panel } from "@/components/ds";
@@ -30,11 +30,11 @@ const FIRST = 4;
 const NAMES_INLINE = 3;
 
 const KIND_ICON: Record<RecKind, LucideIcon> = {
-  leak: TrendingDown, rule: ListChecks, fees: Coins, crowding: UsersRound, practice: Sparkles, attention: AlertTriangle, readiness: GraduationCap, regime: Gauge,
+  leak: TrendingDown, rule: ListChecks, fees: Coins, crowding: UsersRound, practice: Sparkles, attention: AlertTriangle, readiness: GraduationCap, regime: Gauge, juniorCost: PiggyBank,
 };
 const KIND_TONE: Record<RecKind, string> = {
   leak: "bg-down/12 text-down", crowding: "bg-down/12 text-down", fees: "bg-warn/12 text-warn",
-  rule: "bg-up/12 text-up", practice: "bg-up/12 text-up", attention: "bg-warn/12 text-warn", readiness: "bg-primary/12 text-primary", regime: "bg-warn/12 text-warn",
+  rule: "bg-up/12 text-up", practice: "bg-up/12 text-up", attention: "bg-warn/12 text-warn", readiness: "bg-primary/12 text-primary", regime: "bg-warn/12 text-warn", juniorCost: "bg-up/12 text-up",
 };
 
 const blockerLabel = (metric: string) => academyPathI18n.tryT(`metrics.${metric}.label`) ?? metric;

@@ -18,6 +18,7 @@ import { FocusPanel } from "./focus-panel";
 import { TemplateDialog } from "./template-dialog";
 import { InterventionsPanel } from "./coach-interventions";
 import { EdgeMapPanel } from "@/components/shared/edge-map/edge-verdicts";
+import { JuniorCostPanel } from "@/components/shared/junior-cost/junior-cost-panel";
 import { fmtDate, fmtDeskDateTime, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
@@ -546,6 +547,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
           )}
         </Panel>
       </div>
+      <JuniorCostPanel trader={p.trader} hideEmpty className="lg:col-span-12" />
     </BentoGrid>
   );
 }

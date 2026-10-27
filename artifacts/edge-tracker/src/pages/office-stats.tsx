@@ -6,7 +6,7 @@
  * before the response leaves it, so nothing here relies on hiding for privacy; admin blocks are simply not mounted.
  */
 import * as React from "react";
-import { AlertTriangle, BadgeCheck, Building2, CalendarDays, Clock, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Building2, CalendarDays, Clock, GraduationCap, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
 import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,8 @@ import { MonthlyPanel } from "@/components/office-stats/monthly";
 import { OfficeRecommendations } from "@/components/office-stats/recommendations";
 import { WeeklyPulseCard } from "@/components/office-stats/pulse-card";
 import { officeRecsI18n } from "@/i18n/ns/officeRecs";
+import { JuniorCostDesk } from "@/components/office-stats/junior-cost-desk";
+import { juniorCostI18n } from "@/i18n/ns/juniorCost";
 import { scrollBehavior } from "@/lib/motion";
 import { officeI18n } from "@/i18n/ns/officeStats";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -43,6 +45,7 @@ const minYmd = (a: string, b: string) => (a < b ? a : b);
 const SECTIONS = [
   { id: "overview", icon: LayoutDashboard },
   { id: "advice", icon: BadgeCheck },
+  { id: "juniors", icon: GraduationCap, staff: true },
   { id: "strategies", icon: Layers },
   { id: "time", icon: Clock },
   { id: "risk", icon: ShieldAlert },
@@ -124,7 +127,8 @@ export default function OfficeStatsPage() {
         : t("period.ytdOf", { year: focusYear });
 
   // «Разрезы» for partners only: a member's facet buckets would be the own book, not the office the numbers are about.
-  const partner = useAuth().user?.role === "admin";
+  const { user, isCurator: isStaff } = useAuth();
+  const partner = user?.role === "admin";
   const rf = useRangeFacets({ from: period.from, to: period.to }, partner);
   const q = useOfficeStats({ years: selYears, from: period.from, to: period.to, facets: rf.query || undefined });
   const data = q.data;
@@ -256,9 +260,9 @@ export default function OfficeStatsPage() {
       {ctx && !memberNoCapital && (
         <nav ref={navRef} aria-label={t("page.sectionsNav")} className="sticky top-2 z-sticky -my-1 flex justify-center">
           <div className="glass-panel scrollbar-none flex h-10 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
-            {SECTIONS.filter((s) => !("admin" in s) || isAdmin).map((s) => (
+            {SECTIONS.filter((s) => (!("admin" in s) || isAdmin) && (!("staff" in s) || isStaff)).map((s) => (
               <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{s.id === "advice" ? officeRecsI18n.t("title") : t(`page.sections.${s.id}`)}
+                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{s.id === "advice" ? officeRecsI18n.t("title") : s.id === "juniors" ? juniorCostI18n.t("desk.title") : t(`page.sections.${s.id}`)}
               </button>
             ))}
           </div>
@@ -318,6 +322,8 @@ export default function OfficeStatsPage() {
           <Section id="advice" title={officeRecsI18n.t("title")} hint={officeRecsI18n.t("hint")}>
             <OfficeRecommendations />
           </Section>
+
+          {isStaff && <Section id="juniors" title={juniorCostI18n.t("desk.title")} hint={juniorCostI18n.t("desk.hint")}><JuniorCostDesk /></Section>}
 
           <Section id="strategies" title={t("page.sections.strategies")} hint={t("page.strategiesHint")}>
             <BentoGrid>

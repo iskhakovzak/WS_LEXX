@@ -11,7 +11,7 @@
  *   trader           — anonymised desk aggregates only; staff-only kinds (curator load, readiness) are dropped.
  */
 
-export const REC_KINDS = ["leak", "rule", "fees", "crowding", "practice", "attention", "readiness", "regime"] as const;
+export const REC_KINDS = ["leak", "rule", "fees", "crowding", "practice", "attention", "readiness", "regime", "juniorCost"] as const;
 export type RecKind = (typeof REC_KINDS)[number];
 
 /** desk = any member may see the (anonymised) aggregate; staff = curators and partners only. */
@@ -20,7 +20,7 @@ export type RecAudience = "desk" | "staff";
 export type Interval = { mean: number; lo: number; hi: number };
 
 /** A link to an existing page / sheet (the web maps `kind` to a label). */
-export type RecAction = { kind: "whatif" | "rules" | "curator" | "academy" | "risk" | "benchmark" | "myReview" | "trades"; href: string };
+export type RecAction = { kind: "whatif" | "rules" | "curator" | "academy" | "risk" | "benchmark" | "myReview" | "trades" | "office"; href: string };
 
 export type OfficeRec = {
   /** Stable across runs: `${kind}:${key}` (the «скрыть на неделю» key). */

@@ -45,6 +45,7 @@ export default {
     admin: "Tayinlovlar",
     myReview: "Mening tahlilim",
     trades: "Savdolar",
+    office: "Junior narxi",
   },
   kinds: {
     leak: "Yo'qotish",
@@ -55,6 +56,7 @@ export default {
     attention: "Kuratorlar e'tibori",
     readiness: "Bosqichlar bo'yicha o'tish",
     regime: "Bozor rejimi",
+    juniorCost: "Junior narxi",
   },
   leak: {
     title: "Desk yo'qotmoqda: {slice}",
@@ -81,6 +83,13 @@ export default {
     why: "Komissiyalar diapazon yalpi natijasining {share} qismi (80%: {lo} … {hi}); deskning barcha komissiyalaridan {deskShare} shu yerga to'g'ri keladi.",
     whyAll: "Diapazonning yalpi natijasi komissiyalarni umuman qoplamaydi; deskning barcha komissiyalaridan {deskShare} shu yerga to'g'ri keladi.",
     usd: "Komissiyadan keyin — har savdoga o'rtacha {mean} (80%: {lo} … {hi}).",
+  },
+  juniorCost: {
+    title: "Oʻzini oqlaydi: {practice}",
+    whyUsd: "Juniorning zararsizlikkacha narxi medianasi {usd} past (80%: {lo} … {hi}); {yes} ga qarshi {no}.",
+    whyShare: "Juniorning zararsizlikkacha narxi medianasi {share} past (80%: {lo} … {hi}); {yes} ga qarshi {no}.",
+    days: "Zararsizlik {days} oldinroq.",
+    caveat: "Bu bogʻliqlik, sabab emas — tafsilotlar «Junior narxi» boʻlimida.",
   },
   regime: {
     title: "«{regime}» rejimida desk yoʻqotmoqda",

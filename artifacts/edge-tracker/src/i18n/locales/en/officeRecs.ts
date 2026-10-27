@@ -45,6 +45,7 @@ export default {
     admin: "Assignments",
     myReview: "My review",
     trades: "Trades",
+    office: "Price of a junior",
   },
   kinds: {
     leak: "Leak",
@@ -55,6 +56,7 @@ export default {
     attention: "Curator attention",
     readiness: "Promotion pipeline",
     regime: "Market regime",
+    juniorCost: "Price of a junior",
   },
   leak: {
     title: "The desk loses: {slice}",
@@ -81,6 +83,13 @@ export default {
     why: "Fees are {share} of the band's gross (80%: {lo} … {hi}); it carries {deskShare} of all desk fees.",
     whyAll: "The band's gross does not cover its fees at all; it carries {deskShare} of all desk fees.",
     usd: "After fees — on average {mean} per trade (80%: {lo} … {hi}).",
+  },
+  juniorCost: {
+    title: "Pays off: {practice}",
+    whyUsd: "The median price of a junior to breakeven is {usd} lower (80%: {lo} … {hi}); {yes} vs {no}.",
+    whyShare: "The median price of a junior to breakeven is {share} lower (80%: {lo} … {hi}); {yes} vs {no}.",
+    days: "Breakeven {days} sooner.",
+    caveat: "A correlation, not a cause — details in «Price of a junior».",
   },
   regime: {
     title: "The desk loses in «{regime}»",
