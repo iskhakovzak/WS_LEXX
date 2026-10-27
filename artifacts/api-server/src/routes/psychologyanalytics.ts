@@ -9,6 +9,7 @@ import { badRequest, forbidden } from "../lib/http";
 import { psychologyT } from "../lib/behaviorI18n";
 import { langOf, type Lang } from "../i18n";
 import { facetCacheKey, facetsOfQuery, keepFacetPassing } from "../lib/tradeFacetsFilter";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const psychologyCache = new TtlCache<string, unknown>(3 * 60 * 1000);
 
@@ -78,7 +79,7 @@ function aggregate(trades: TradeRow[]): GroupAgg {
     count: trades.length,
     wins,
     losses,
-    winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+    winRate: winRateOf(wins, losses),
     avgR: rs.length > 0 ? round(rs.reduce((a, b) => a + b, 0) / rs.length) : null,
     rCount: rs.length,
     avgPnl: pnls.length > 0 ? round(pnls.reduce((a, b) => a + b, 0) / pnls.length) : null,

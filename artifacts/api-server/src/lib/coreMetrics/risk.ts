@@ -28,6 +28,17 @@ export async function riskStateOf(trader: string, today: string, lang: Lang = "r
   return { trader, today, limits, days, live, metrics };
 }
 
+/**
+ * The drawdown from the equity peak at the close of `today` per trader (no live P&L, no limits) — the risk desk's own
+ * number (same day rows, same review baseline) for end-of-day readers such as the scaling engine. `trader` null = all.
+ */
+export async function drawdownsFromPeak(trader: string | null, today: string): Promise<Map<string, number>> {
+  const [days, resets] = await Promise.all([loadDaily(trader, today), loadDdResets(trader)]);
+  const by = new Map<string, DayRow[]>();
+  for (const d of days) (by.get(d.trader) ?? by.set(d.trader, []).get(d.trader)!).push(d);
+  return new Map([...by].map(([name, rows]) => [name, computeMetrics(name, rows, [], null, today, "ru", drawdownSince(resets.get(name), today), null).drawdown.currentUsd]));
+}
+
 /** States in which trading is stopped (computeStop sets `halted` exactly for these). */
 export type HaltState = Extract<StopState, "drawdown" | "weekly" | "stop">;
 

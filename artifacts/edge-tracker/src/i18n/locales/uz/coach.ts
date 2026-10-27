@@ -15,7 +15,7 @@ export default {
   },
   breakeven: {
     title: "Vinreyt va zararsizlik",
-    line: "Vinreyt {wr} · zararsiz {be} · zaxira {margin} p.p.",
+    line: "Sof vinreyt {wr} · zararsiz {be} · zaxira {margin} p.p. · {days} savdo kuni",
     hint: "Oʻrtacha foydangiz {avgWin} va zararingiz {avgLoss} boʻlganda {be} vinreytda nolga chiqasiz. {days} savdo kuni, komissiyadan keyin sof.",
     few: "Savdolar kam: {days} savdo kunida kamida 5 ta foydali va 5 ta zararli savdo kerak.",
   },

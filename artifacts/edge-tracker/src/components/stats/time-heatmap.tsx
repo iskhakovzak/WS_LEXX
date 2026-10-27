@@ -11,6 +11,7 @@ import {
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
+import { winRateOf } from "@/lib/trade-math";
 
 const sd = (n: number) => commonI18n.t("units.tradesShort", { count: n });
 
@@ -86,7 +87,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
     };
   }, [trades, cells, metric]);
 
-  const valText = (c: Cell) => (c.v != null ? fmtMetricCompact(c.v, metric) : c.wins + c.losses ? fmtRate(c.wins / (c.wins + c.losses)) : "");
+  const valText = (c: Cell) => (c.v != null ? fmtMetricCompact(c.v, metric) : c.wins + c.losses ? fmtRate((winRateOf(c.wins, c.losses) ?? 0)) : "");
   const toneCls = (v: number | null) => (v == null ? "text-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground");
 
   return (
@@ -112,7 +113,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
                 <tr key={r.d}>
                   <th scope="row" className="pr-1 text-left font-medium text-muted-foreground">{weekdayLabel(r.d)}</th>
                   {r.cells.map((c, i) => {
-                    const label = `${weekdayLabel(r.d)}, ${hourLabel(cols[i])}: ${sd(c.n)}${c.wins + c.losses ? `, WR ${fmtRate(c.wins / (c.wins + c.losses))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
+                    const label = `${weekdayLabel(r.d)}, ${hourLabel(cols[i])}: ${sd(c.n)}${c.wins + c.losses ? `, WR ${fmtRate((winRateOf(c.wins, c.losses) ?? 0))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
                     return (
                       <td
                         key={cols[i]}

@@ -29,6 +29,8 @@ export type InsightScope = {
   statsPeriod?: string;
   /** The window in words for verdicts: «последние 90 дней». */
   periodLong: string;
+  /** The window, compact, for number labels: «90 дн.» (falls back to periodLong). */
+  periodShort?: string;
 };
 
 export function sliceHref(scope: InsightScope): string {

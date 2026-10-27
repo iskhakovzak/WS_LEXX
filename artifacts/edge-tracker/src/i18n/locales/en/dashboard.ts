@@ -211,6 +211,9 @@ export default {
   },
   equity: {
     period: { week: "This week", month: "Last 30 days", quarter: "Last 90 days", year: "Last 365 days", all: "All time" },
+    window: { week: "this wk", month: "30d", quarter: "90d", year: "365d", all: "all time" },
+    winRate: "Win rate · {window}",
+    breakevenLink: "Net win rate vs breakeven — in the weekly review",
     empty: {
       week: "No closed trades this week",
       month: "No closed trades in 30 days",
@@ -230,7 +233,7 @@ export default {
     show: "Show: {period}",
     bestDay: "Best day",
     worstDay: "Worst day",
-    maxDd: "Max drawdown",
+    maxDd: "Max drawdown · {window}",
     periodAria: "Period",
   },
   recent: {

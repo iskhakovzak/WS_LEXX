@@ -25,6 +25,7 @@ import { pickSuggestedRule, planPrefill, type SuggestedRule } from "./planPrefil
 import type { MistakeCost } from "./daily/types";
 import { excludeImxSql, imxTotals, type ImxLine } from "./imxSummary";
 import { edgeMapView, type EdgeVerdict } from "./edgeMapStore";
+import { winRateOf } from "./coreMetrics/kpi";
 
 export const MY_REVIEW_DEFAULT_DAYS = 30;
 export const MY_REVIEW_MIN_DAYS = 7;
@@ -43,7 +44,7 @@ export type ReviewBucket = {
   net: number;
   /** Σ R of the bucket's trades with an R (null when none has one). */
   r: number | null;
-  /** wins / (wins + losses), 0..1; null when nothing was decided. */
+  /** (winRateOf(wins, losses) ?? 0), 0..1; null when nothing was decided. */
   winRate: number | null;
 };
 
@@ -137,7 +138,7 @@ export function totalsOf(rows: readonly MatrixRow[]): MyReview["totals"] {
   for (const x of rows) {
     trades += num(x.n); net += num(x.net); r += num(x.sum_r); rN += num(x.r_n); wins += num(x.wins); losses += num(x.losses);
   }
-  return { trades, net: round2(net), r: rN > 0 ? round2(r) : null, winRate: wins + losses > 0 ? Math.round((wins / (wins + losses)) * 1000) / 1000 : null };
+  return { trades, net: round2(net), r: rN > 0 ? round2(r) : null, winRate: wins + losses > 0 ? Math.round(((winRateOf(wins, losses) ?? 0)) * 1000) / 1000 : null };
 }
 
 async function matrixRows(trader: string, rows: "setup" | "ticker" | "tod", from: string, to: string, noImx = false): Promise<MatrixRow[]> {

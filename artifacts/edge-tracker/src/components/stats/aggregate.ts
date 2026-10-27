@@ -169,6 +169,7 @@ export function dailyEquity(days: readonly DayStat[]): EquityPoint[] {
   for (const d of days) {
     if (d.value == null) continue;
     cum += d.value;
+    // core-metric-ok: the underwater series / candle of the chart, point by point
     peak = Math.max(peak, cum);
     out.push({ idx: out.length + 1, equity: cum, drawdown: cum - peak, label: fmtDayKey(d.key), id: 0 });
   }
@@ -195,7 +196,7 @@ export function groupStat(key: string, b: Bucket, metric: Metric): GroupStat {
   const wins = field(b, "wins"), losses = field(b, "losses");
   return {
     key, count: field(b, "n"), closed: field(b, "closed"), wins,
-    winRate: wins + losses ? wins / (wins + losses) : null,
+    winRate: winRateOf(wins, losses),
     value: m.n ? m.sum : null, avg: m.n ? m.sum / m.n : null, valued: m.n,
   };
 }

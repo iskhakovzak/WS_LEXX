@@ -1,4 +1,5 @@
 import { netPnl, normResult, num, signedR, type TradeRowLike } from "./tradeMath";
+import { drawdownOf, winRateOf } from "./coreMetrics/kpi";
 
 /** A trade row as needed for edge stats: raw columns, interpreted through the shared trade math. */
 export type EdgeTrade = TradeRowLike & {
@@ -60,7 +61,7 @@ export function computeEdge(trades: EdgeTrade[]): EdgeStats {
   let sumR = 0, posR = 0, negR = 0;
   const rs: number[] = [];
   let gross = 0, net = 0, fees = 0, pnlCount = 0;
-  let cum = 0, peak = 0, maxDD = 0;
+  const nets: number[] = [];
   for (const t of byCloseDate(trades)) {
     const res = normResult(t.result);
     if (res === "open") { open++; continue; }
@@ -76,9 +77,7 @@ export function computeEdge(trades: EdgeTrade[]): EdgeStats {
     if (g != null) {
       const n = netPnl(t)!;
       gross += g; net += n; fees += Math.abs(num(t.fees) ?? 0); pnlCount++;
-      cum += n;
-      if (cum > peak) peak = cum;
-      if (peak - cum > maxDD) maxDD = peak - cum;
+      nets.push(n);
     }
   }
   const decided = wins + losses;
@@ -88,11 +87,11 @@ export function computeEdge(trades: EdgeTrade[]): EdgeStats {
   const stdev = Math.sqrt(variance);
   return {
     count: trades.length, wins, losses, be, open,
-    winrate: decided ? Number((wins / decided).toFixed(4)) : null,
+    winrate: decided ? Number(((winRateOf(wins, losses) ?? 0)).toFixed(4)) : null,
     avgR: avgR == null ? null : r3(avgR),
     expectancy: avgR == null ? null : r3(avgR),
     profitFactor: negR < 0 ? r2(posR / Math.abs(negR)) : null,
-    maxDrawdown: pnlCount ? r2(maxDD) : null,
+    maxDrawdown: pnlCount ? r2(drawdownOf(nets)) : null,
     sharpe: avgR != null && stdev > 0 ? r2((avgR / stdev) * Math.sqrt(rCount)) : null,
     totalPnl: pnlCount ? r2(net) : null,
     totalPnlGross: pnlCount ? r2(gross) : null,
@@ -184,7 +183,7 @@ export function computeUsdStats(trades: TradeRowLike[]): UsdStats {
   const avgLoss = negN ? neg / negN : null;
   return {
     n, wins, losses,
-    winrate: wins + losses ? Number((wins / (wins + losses)).toFixed(4)) : null,
+    winrate: wins + losses ? Number(((winRateOf(wins, losses) ?? 0)).toFixed(4)) : null,
     net: n ? r2(net) : null,
     expectancy: n ? r2(net / n) : null,
     avgWin: avgWin == null ? null : r2(avgWin),

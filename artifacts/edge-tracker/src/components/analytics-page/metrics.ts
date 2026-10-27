@@ -2,8 +2,7 @@ import type { Trade } from "@workspace/api-client-react";
 import { TIME_BUCKETS, timeBucketFor, dayOfWeek, tagsOf } from "@/lib/analytics-pro";
 import {
   signedR, netPnl, grossPnl as grossOf, feesOf as feesOfTrade, isOpen, isClosed, resultOf, closeDate,
-  horizonOf as horizonOfTrade, maxDrawdown as maxDrawdownOf, type Horizon,
-} from "@/lib/trade-math";
+  horizonOf as horizonOfTrade, maxDrawdown as maxDrawdownOf, type Horizon, winRateOf } from "@/lib/trade-math";
 import { fmtNum, fmtWeekday } from "@/lib/format";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
@@ -245,7 +244,7 @@ export function computeStats(trades: Trade[]): Stats {
   const [lo, hi] = wilson(wins, decided);
   return {
     n, wins, losses, be, open, decided,
-    winRate: decided ? wins / decided : 0,
+    winRate: (winRateOf(wins, losses) ?? 0),
     wrLow: lo, wrHigh: hi,
     rN, totalR,
     avgR: rN ? totalR / rN : null,
@@ -311,6 +310,7 @@ export function equitySeries(trades: Trade[], unit: Unit): EquityPoint[] {
     if (v == null) continue;
     cum += v;
     cumGross += unit === "r" ? v : grossPnl(t) ?? 0;
+    // core-metric-ok: the underwater series / candle of the chart, point by point
     peak = Math.max(peak, cum);
     out.push({ i: out.length + 1, date: day(t), ticker: t.ticker, value: v, cum: round2(cum), dd: round2(cum - peak), cumGross: round2(cumGross) });
   }

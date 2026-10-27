@@ -19,6 +19,7 @@
  * cheat lines and the checklist are redacted (LOCKED_CHEAT, []). Staff are never locked.
  */
 import type { DayWindow, DayWindowKey, MyEdge, PlaybookToday, TextItem, TodaySetup } from "./types";
+import { roundShare, winRateOf } from "../coreMetrics/kpi";
 
 export const TIER_KEYS = ["trainee", "junior", "trader", "senior", "lead"] as const;
 export type TierKey = (typeof TIER_KEYS)[number];
@@ -137,7 +138,7 @@ export function edgesOf(rows: readonly EdgeRow[]): Map<number, MyEdge> {
     const avg = r.rTrades > 0 ? r.sumR / r.rTrades : null;
     const verdict: MyEdge["verdict"] = r.trades < EDGE_MIN_TRADES ? "new" : avg != null && avg < 0 ? "careful" : r.setupId === bestId ? "best" : "good";
     out.set(r.setupId, {
-      trades: r.trades, wins: r.wins, winRate: r.decided > 0 ? r2(r.wins / r.decided) : null,
+      trades: r.trades, wins: r.wins, winRate: roundShare(winRateOf(r.wins, r.decided - r.wins), 2),
       avgR: avg == null ? null : r2(avg), totalR: r.rTrades > 0 ? r2(r.sumR) : null, verdict, lastTradedOn: r.lastOn,
     });
   }

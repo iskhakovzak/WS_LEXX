@@ -25,6 +25,7 @@ import { ratingsI18n } from "@/i18n/ns/ratings";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { rich, slots } from "@/i18n/rich";
+import { winRateOf } from "@/lib/trade-math";
 
 export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | null; ratings: Rating[]; ratingsLoading: boolean }) {
   const qc = useQueryClient();
@@ -58,7 +59,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
     // Team win rate = W / (W + L): break-even trades are excluded, same as the leaderboard rows.
     const decided = month.ranked.reduce((s, l) => s + l.wins + l.losses, 0);
     const wins = month.ranked.reduce((s, l) => s + l.wins, 0);
-    return { winrate: decided ? (wins / decided) * 100 : null };
+    const wr = winRateOf(wins, decided - wins);
+    return { winrate: wr == null ? null : wr * 100 };
   }, [month.ranked]);
 
   // Feedback loop: the trader confirms they have read the curator's focus → curator sees it on the scorecard.

@@ -1,5 +1,5 @@
 import { normalizeResult } from "@/lib/trade-result";
-import { signedR, netPnl } from "@/lib/trade-math";
+import { signedR, netPnl, winRateOf } from "@/lib/trade-math";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { ideasI18n } from "@/i18n/ns/ideas";
 
@@ -108,11 +108,10 @@ export function bucketOf(list: EnrichedIdea[]): Bucket {
     if (i.r != null) { sumR += i.r; rCount++; }
   }
   const closed = wins + losses + be;
-  const decided = wins + losses;
   return {
     ideas: list.length, published, converted, wins, losses, be, open, closed,
     // Hit rate = W / (W + L): break-even is neither a hit nor a miss (same rule as the trades win rate).
-    hitRate: decided > 0 ? wins / decided : null,
+    hitRate: winRateOf(wins, losses),
     avgR: rCount > 0 ? sumR / rCount : null,
     sumR, rCount,
     conversion: published > 0 ? converted / published : null,

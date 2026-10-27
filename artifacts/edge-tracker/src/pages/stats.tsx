@@ -375,7 +375,7 @@ export default function Stats() {
                 ids={STATS_TILES}
                 trades={trades}
                 prev={prevTrades}
-                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, periodLong: periodOpt.long }}
+                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, periodLong: periodOpt.long, periodShort: periodOpt.short }}
               />
             )}
           />

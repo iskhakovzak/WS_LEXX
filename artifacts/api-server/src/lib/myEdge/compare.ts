@@ -8,6 +8,7 @@
  * «changed» = the 80 % interval of the difference excludes 0 and both periods have ME_MIN_DAYS days.
  */
 import { ME_ITERS, ME_LEVEL, ME_MIN_DAYS, meHashSeed, meInterval, meResampleDays, type MeInterval } from "../stats/myEdgeStats";
+import { winRateOf } from "../coreMetrics/kpi";
 
 export const COMPARE_METRICS = ["expectancy", "winRate", "payoff", "feesShare", "tradesPerDay", "holdMin"] as const;
 export type CompareMetric = (typeof COMPARE_METRICS)[number];
@@ -52,7 +53,7 @@ function total(units: readonly DayUnit[], pick?: readonly number[]): Tot {
 export function metricOf(m: CompareMetric, t: Tot): number | null {
   switch (m) {
     case "expectancy": return t.n ? t.sum / t.n : null;
-    case "winRate": return t.wins + t.losses ? t.wins / (t.wins + t.losses) : null;
+    case "winRate": return winRateOf(t.wins, t.losses);
     case "payoff": return t.wins && t.losses && t.lossSum < 0 ? (t.winSum / t.wins) / (Math.abs(t.lossSum) / t.losses) : null;
     case "feesShare": return t.grossWins > 0 ? t.fees / t.grossWins : null;
     case "tradesPerDay": return t.days ? t.n / t.days : null;

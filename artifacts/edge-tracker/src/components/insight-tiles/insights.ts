@@ -6,7 +6,7 @@
  * Counting rules are the model's: streaks follow the colours the trader sees (break-even range), every analytic tile
  * counts win / loss by the net sign («Разрезы» result), so a drill shows exactly the trades a tile counted.
  */
-import { netPnl, horizonOf, feesOf, grossPnl } from "@/lib/trade-math";
+import { breakevenWinRate, netPnl, horizonOf, feesOf, grossPnl, winRateOf } from "@/lib/trade-math";
 import { resultKeyOf, seqKeyOf } from "@/lib/trade-facets";
 import { confidenceOf, dayBootstrap, median, trendOf, type Confidence, type Interval, type Trend } from "@/lib/stats-lite";
 import type { Rule } from "@/components/shared/what-if-rules";
@@ -296,18 +296,15 @@ function feeRows(trades: readonly InsightTrade[]): FeeRow[] {
   });
 }
 
-/** Break-even win rate from the average win and loss: |L| / (W + |L|). */
-export function breakEvenRate(avgWin: number | null, avgLoss: number | null): number | null {
-  if (avgWin == null || avgLoss == null || avgWin <= 0 || avgLoss >= 0) return null;
-  return -avgLoss / (avgWin - avgLoss);
-}
+/** Break-even win rate from the average win and loss (the shared definition, lib/trade-math breakevenWinRate). */
+export const breakEvenRate = breakevenWinRate;
 
 /** Actual win rate − break-even win rate (share), by the net. */
 export function edgeMargin(rows: readonly { net: number }[]): number | null {
   const wl = winLoss(rows.map((r) => r.net));
   const be = breakEvenRate(wl.avgWin, wl.avgLoss);
   if (be == null || wl.wins + wl.losses === 0) return null;
-  return wl.wins / (wl.wins + wl.losses) - be;
+  return (winRateOf(wl.wins, wl.losses) ?? 0) - be;
 }
 
 export type FeesInsight = {
@@ -347,7 +344,7 @@ export function feesInsight(trades: readonly InsightTrade[], prev?: readonly Ins
     feeShare: gross > 0 ? fees / gross : null,
     feePerShare: shares > 0 ? sized.reduce((a, r) => a + r.fees, 0) / shares : null,
     grossPerShare: shares > 0 ? sized.reduce((a, r) => a + r.gross, 0) / shares : null,
-    winRate: wl.wins + wl.losses ? wl.wins / (wl.wins + wl.losses) : null,
+    winRate: winRateOf(wl.wins, wl.losses),
     beRate: breakEvenRate(wl.avgWin, wl.avgLoss),
     margin,
     marginGross: edgeMargin(rows.map((r) => ({ net: r.gross }))),
@@ -417,7 +414,7 @@ export function summaryOf(trades: readonly InsightTrade[]): BucketSummary {
   const wl = winLoss(nets);
   return {
     trades: closed.length,
-    winRate: wl.wins + wl.losses ? wl.wins / (wl.wins + wl.losses) : null,
+    winRate: winRateOf(wl.wins, wl.losses),
     net: round2(nets.reduce((a, b) => a + b, 0)),
     avgWin: wl.avgWin,
     avgLoss: wl.avgLoss,

@@ -10,7 +10,7 @@ import { feeCost } from "../feeRule";
 import { detectDay, feeWeeks, HitBook, windowDays, type DetectInput } from "../daily/detectors";
 import { feesReason, weekToDate } from "../daily/costQueue";
 import { buildFeeModel, worstBand, type FeeModelTrade } from "../feeModel";
-import { edgeMargin, edgeMarginOf } from "../breakeven";
+import { edgeMargin, edgeMarginOf } from "../coreMetrics/kpi";
 import { dayClusterQuantile } from "../stats/dayBootstrap";
 import { __loadSettingsCache } from "../settings/registry";
 import type { BehaviorTrade } from "../behaviorEngine";

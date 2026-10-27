@@ -21,6 +21,7 @@ import { redactLockedSetup } from "../lib/playbookToday/build";
 import marksRouter from "./playbook-marks";
 import { setupLockGuard } from "../lib/playbookLock";
 import { langOf } from "../i18n";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * Playbook (setups) + per-setup edge.
@@ -540,7 +541,7 @@ router.get("/playbook/summary", asyncHandler(async (req, res): Promise<void> => 
   const r2 = (v: number | null) => (v == null ? null : Number(v.toFixed(2)));
   const shapeHz = (h: any) => {
     const n = Number(h?.n ?? 0), wins = Number(h?.wins ?? 0), losses = Number(h?.losses ?? 0);
-    return { n, wins, losses, winrate: wins + losses ? Number((wins / (wins + losses)).toFixed(4)) : null, avgR: r3(numOrNull(h?.avgR)), netPnl: r2(numOrNull(h?.netPnl)) };
+    return { n, wins, losses, winrate: wins + losses ? Number(((winRateOf(wins, losses) ?? 0)).toFixed(4)) : null, avgR: r3(numOrNull(h?.avgR)), netPnl: r2(numOrNull(h?.netPnl)) };
   };
   res.json(rows.map((r) => {
     const row = shapeSummaryRow(r);
@@ -551,7 +552,7 @@ router.get("/playbook/summary", asyncHandler(async (req, res): Promise<void> => 
     const n = Number(r.tradeCount);
     const wins = Number(r.wins), losses = Number(r.losses);
     const rCount = Number(r.rCount);
-    const winrate = wins + losses ? wins / (wins + losses) : null;
+    const winrate = winRateOf(wins, losses);
     const avgR = numOrNull(r.avgR);
     const posR = numOrNull(r.pos_r) ?? 0, negR = numOrNull(r.neg_r) ?? 0;
     const recentAvgR = numOrNull(r.recentAvgR);

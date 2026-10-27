@@ -22,6 +22,7 @@ import { PersonLink } from "@/components/shared/person-link";
 import { gamificationTitlesQuery } from "@/lib/api/queries";
 import { TitleTag } from "@/components/shared/season-bar";
 import { titleLabel } from "@/components/shared/gamification-labels";
+import { winRateOf } from "@/lib/trade-math";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -68,7 +69,7 @@ type MetricSource = {
 /** Row win rate in %, W/(W+L) — null (→ «—») when there are no decided trades. */
 export function winPctOf(e: { winrate: number; wins?: number; losses?: number; winRate?: number | null }): number | null {
   if (e.winRate !== undefined) return e.winRate == null ? null : e.winRate * 100;
-  if (e.wins != null && e.losses != null) return e.wins + e.losses > 0 ? (e.wins / (e.wins + e.losses)) * 100 : null;
+  if (e.wins != null && e.losses != null) return e.wins + e.losses > 0 ? ((winRateOf(e.wins, e.losses) ?? 0)) * 100 : null;
   return e.winrate;
 }
 function metricOf(m: Metric, e: MetricSource): number | null {
@@ -202,7 +203,8 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
     const pnl = pnlRows.length > 0 ? pnlRows.reduce((s, l) => s + l.totalPnl, 0) : null;
     const streak = [...ranked].sort((a, b) => b.bestStreak - a.bestStreak)[0];
     const hot = [...ranked].filter((l) => l.currentStreak > 0).sort((a, b) => b.currentStreak - a.currentStreak)[0];
-    return { trades, winrate: decided > 0 ? (wins / decided) * 100 : null, r, pnl, streak, hot };
+    const wr = winRateOf(wins, decided - wins);
+    return { trades, winrate: wr == null ? null : wr * 100, r, pnl, streak, hot };
   }, [ranked]);
 
   const periodFor = period === "custom" ? t("leaderboard.periodFor.custom", { range: custom ? fmtDayRange(custom) : "" }) : t(`leaderboard.periodFor.${period}`);

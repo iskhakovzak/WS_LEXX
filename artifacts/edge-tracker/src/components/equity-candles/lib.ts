@@ -10,7 +10,7 @@
  * ET wall time "2026-10-15T15:59:16"); without times — by trade id (the order they were booked).
  * Money is net by default (net = gross − |fees|, @/lib/trade-math); the day is the close date (NY trading date).
  */
-import { closeDate, feesOf, grossPnl, isOpen, netPnl, resultOf, signedR, type TradeLike } from "@/lib/trade-math";
+import { closeDate, feesOf, grossPnl, isOpen, netPnl, resultOf, signedR, type TradeLike, winRateOf } from "@/lib/trade-math";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { dayHref } from "@/lib/period-links";
 import { fmtDate, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
@@ -142,6 +142,7 @@ export function buildDayCandles(trades: EquityTradeInput[], unit: EquityUnit = "
       cum = round(cum + r.v);
       if (cum > hi) hi = cum;
       if (cum < lo) lo = cum;
+      // core-metric-ok: the underwater series / candle of the chart, point by point
       if (cum > peak) peak = cum;
       if (cum - peak < dd) dd = cum - peak;
       const res = resultOf(r.t);
@@ -155,12 +156,11 @@ export function buildDayCandles(trades: EquityTradeInput[], unit: EquityUnit = "
       if (!best || r.v > best.value) best = brief;
       if (!worst || r.v < worst.value) worst = brief;
     }
-    const decided = wins + losses;
     out.push({
       key: day, from: day, to: day, days: 1,
       open, high: hi, low: lo, close: cum, value: round(cum - open),
       net: hasUsd ? round(net) : null, gross: hasUsd ? round(gross) : null, fees: round(fees),
-      trades: list.length, wins, losses, be, winRate: decided ? wins / decided : null,
+      trades: list.length, wins, losses, be, winRate: winRateOf(wins, losses),
       peakIn: round(hi - open), troughIn: round(lo - open),
       best, worst,
       drawdown: round(dd),
@@ -188,7 +188,7 @@ export function toWeekCandles(days: EquityCandle[]): EquityCandle[] {
       w.gross = w.gross == null && d.gross == null ? null : round((w.gross ?? 0) + (d.gross ?? 0));
       w.fees = round(w.fees + d.fees);
       w.trades += d.trades; w.wins += d.wins; w.losses += d.losses; w.be += d.be;
-      w.winRate = w.wins + w.losses ? w.wins / (w.wins + w.losses) : null;
+      w.winRate = winRateOf(w.wins, w.losses);
       w.peakIn = round(w.high - w.open);
       w.troughIn = round(w.low - w.open);
       if (d.best && (!w.best || d.best.value > w.best.value)) w.best = d.best;

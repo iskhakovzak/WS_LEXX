@@ -5,6 +5,7 @@
 import { addDays, isWeekend, nyDate } from "./tradingDate";
 import { rulesT, violationMessage } from "./rulesI18n";
 import type { Lang } from "../i18n";
+import { winRateOf } from "./coreMetrics/kpi";
 
 export const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const n = (v: unknown): number => {
@@ -44,7 +45,6 @@ export function tradingDate(raw: unknown): string {
 export type Agg = Record<string, unknown>;
 export function aggOut(a: Agg | undefined) {
   const wins = n(a?.wins), losses = n(a?.losses), be = n(a?.be);
-  const decided = wins + losses;
   const rCount = n(a?.r_count), rNeg = n(a?.r_neg), rPos = n(a?.r_pos);
   const hasPnl = n(a?.pnl_count) > 0;
   return {
@@ -59,7 +59,7 @@ export function aggOut(a: Agg | undefined) {
     pnlCount: n(a?.pnl_count),
     r: r2(n(a?.r)),
     rCount,
-    winRate: decided > 0 ? wins / decided : null,
+    winRate: winRateOf(wins, losses),
     expectancyR: rCount > 0 ? r2(n(a?.r) / rCount) : null,
     profitFactorR: rNeg < 0 ? r2(rPos / Math.abs(rNeg)) : null,
   };

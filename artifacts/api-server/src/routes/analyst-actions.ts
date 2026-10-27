@@ -23,6 +23,7 @@ import {
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { guardAnalystRefresh } from "../lib/analystRefreshCooldown";
 import { CAP_JOINS_SQL, CAP_USD_SQL, canonicalFirm, capFilterSql, firmFilterSql, readScanStatus, rowCap } from "../lib/analystFeed";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -890,7 +891,7 @@ router.get("/analyst-actions/my-days", asyncHandler(async (req, res): Promise<vo
   for (const a of Object.values(buckets)) {
     a.days = daySets.get(a)?.size ?? 0;
     a.net = +a.net.toFixed(2);
-    a.winRate = a.wins + a.losses ? +(a.wins / (a.wins + a.losses)).toFixed(3) : null;
+    a.winRate = a.wins + a.losses ? +((winRateOf(a.wins, a.losses) ?? 0)).toFixed(3) : null;
     a.avgNet = a.trades ? +(a.net / a.trades).toFixed(2) : null;
   }
   res.json({

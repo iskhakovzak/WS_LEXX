@@ -15,6 +15,7 @@ import { ActionChip, Actions, Caption, ConfidenceBadge, DetailGrid, Huge, LowDat
 import { EDGE_MIN, ruleForSlice, sliceNet, useEdgeMap, type EdgeSlice } from "./edge-map";
 import { ruleText, sliceLabel, useDrill, whatIfHref, type InsightScope } from "./nav";
 import type { InsightTrade } from "./model";
+import { winRateOf } from "@/lib/trade-math";
 
 const lc = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
@@ -118,9 +119,9 @@ export function LeaksTile({ trades, prev, scope, variant }: { trades: readonly I
               items={[
                 { label: t("detail.trades"), value: leak.trades },
                 { label: t("detail.days"), value: leak.days },
-                { label: t("detail.winRate"), value: fmtRate(leak.wins + leak.losses ? leak.wins / (leak.wins + leak.losses) : null) },
+                { label: t("detail.winRate"), value: fmtRate(winRateOf(leak.wins, leak.losses)) },
                 { label: t("detail.avg"), value: <span className={toneText(tone(leak.avg))}>{usd(leak.avg)}</span> },
-                { label: t("detail.baseline"), value: <span className={toneText(tone(map.total.avg))}>{usd(map.total.avg)}</span> },
+                { label: t("detail.baseline", { window: scope.periodShort ?? scope.periodLong }), value: <span className={toneText(tone(map.total.avg))}>{usd(map.total.avg)}</span> },
                 { label: t("detail.worst"), value: leak.worst ? <>{leak.worst.ticker} <Num tone="down">{usd(leak.worst.net)}</Num></> : "—" },
               ]}
             />

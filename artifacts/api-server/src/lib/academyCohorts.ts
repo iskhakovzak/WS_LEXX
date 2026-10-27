@@ -17,6 +17,7 @@ import { addDays, isWeekend } from "./tradingDate";
 import { academyCohortsT, academyPathT, ruCohorts, ruPath } from "./academyI18n";
 import { DEFAULT_LANG, type Lang } from "../i18n";
 import { fmtDateFor } from "../i18n/format";
+import { winRateOf } from "./coreMetrics/kpi";
 
 /* ─── Справочники ──────────────────────────────────────────────────────────── */
 
@@ -530,7 +531,8 @@ export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext, lang: Lang = D
     const n = window ?? 100;
     const decided = sortTrades(ctx.trades, ctx.today).filter((t) => { const o = outcomeOf(t); return o === "win" || o === "loss"; }).slice(-n);
     const wins = decided.filter((t) => outcomeOf(t) === "win").length;
-    const value = decided.length ? r1((wins / decided.length) * 100) : null;
+    const wr = winRateOf(wins, decided.length - wins);
+    const value = wr == null ? null : r1(wr * 100);
     const coverage = clamp01(decided.length / n);
     const met = value != null && compare(value, cmp, target);
     return {

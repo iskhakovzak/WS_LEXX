@@ -5,6 +5,7 @@
  * end-of-day curve (the engine's definition), the worst day and the number of red days.
  */
 import type { ChangedTrade, ExcludedTrade, SimTrade } from "./api";
+import { maxDrawdown } from "@/lib/trade-math";
 
 export const ALL_MONTHS = "all";
 
@@ -42,13 +43,7 @@ export function monthsOf(trades: SimTrade[]): string[] {
 
 /** Peak-to-trough (≤ 0) of the cumulative day nets, peak starting at 0 (engine lib/whatIf maxDrawdownOf). */
 export function maxDrawdownOf(dayNets: number[]): number {
-  let cum = 0, peak = 0, dd = 0;
-  for (const v of dayNets) {
-    cum += v;
-    if (cum > peak) peak = cum;
-    if (cum - peak < dd) dd = cum - peak;
-  }
-  return r2(dd);
+  return r2(maxDrawdown(dayNets));
 }
 
 function stats(byDay: Map<string, number>, trades: number): SideStats {

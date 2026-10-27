@@ -13,7 +13,7 @@
  *   pace              «need $X/day (target ÷ window); now $Y/day (80 %: lo–hi)» — no ETA date, no pass probability (it is
  *                     shown only once a desk-wide backtest beats the base rate, R13)
  */
-import { edgeMargin } from "../breakeven";
+import { edgeMargin } from "../coreMetrics/kpi";
 import { COACH_SEED, dayClusterQuantile } from "../stats/dayBootstrap";
 import { mulberry32 } from "../behaviorStats";
 import { quantileSorted } from "../whatIfTypes";

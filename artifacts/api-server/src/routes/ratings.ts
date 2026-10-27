@@ -13,6 +13,7 @@ import { preview as textPreview } from "../lib/notifyEventsCore";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { reviewT } from "../i18n/ns";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /** Strict rubric score: integer 1..10, or null when the value is invalid/absent (never silently coerced). */
 function parseScore(v: unknown): number | null {
@@ -196,7 +197,7 @@ router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => 
     const rNeg = n(r.r_neg), rPos = n(r.r_pos);
     return {
       trades: Number(r.trades ?? 0), wins, losses, be: Number(r.be ?? 0), open: Number(r.open ?? 0),
-      winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+      winRate: winRateOf(wins, losses),
       totalR: n(r.r_sum), avgR: closed > 0 && r.r_sum != null ? Number(r.r_sum) / closed : null,
       profitFactor: rNeg != null && rNeg < 0 ? (rPos ?? 0) / Math.abs(rNeg) : null,
       maxLossR: n(r.min_r), net: n(r.net), gross: n(r.gross), avgRiskUsd: n(r.avg_risk),

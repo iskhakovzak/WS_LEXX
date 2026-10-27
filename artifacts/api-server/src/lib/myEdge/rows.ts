@@ -14,6 +14,7 @@ import {
   ME_LEVEL, meBhQ, meDayBootstrap, meHashSeed, mePersistence, meStatus,
   type MeBlock, type MeDay, type MeInterval, type MeStatus,
 } from "../stats/myEdgeStats";
+import { roundShare, winRateOf } from "../coreMetrics/kpi";
 
 /** At most this many trade ids per row (the «Показать сделки» link; /trades takes 500). */
 export const ME_IDS_CAP = 500;
@@ -89,7 +90,7 @@ export function buildRows<D extends string>(inp: MeRowsInput<D>): { rows: MeRow[
       const sorted = [...list].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : b.id - a.id));
       draft.push({
         dim, key, trades: list.length, days: byDay.size, net: r2(net),
-        winRate: decided ? Math.round((wins / decided) * 1000) / 1000 : null,
+        winRate: roundShare(winRateOf(wins, decided - wins), 3),
         perDay: boot.perDay, perTrade: boot.perTrade, p: boot.p,
         blocks, persist: sign === 0 ? 0 : blocks.filter((b) => b.sign === sign).length,
         outcome: inp.outcomeDims?.has(dim) ?? false,
