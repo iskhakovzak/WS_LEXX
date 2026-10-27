@@ -19,6 +19,7 @@ export function CheckinStrip({ state, onSaved }: { state: MentorState; onSaved: 
   const save = useSaveCheckin(state.today);
   const [editing, setEditing] = React.useState(!state.checkin);
   const [draft, setDraft] = React.useState<Checkin>(state.checkin ?? EMPTY);
+  const [noteEdited, setNoteEdited] = React.useState(false);
   if (!state.self) return null;
 
   if (!editing && state.checkin) {
@@ -35,7 +36,7 @@ export function CheckinStrip({ state, onSaved }: { state: MentorState; onSaved: 
   const toggle = (f: Flag) => setDraft((d) => ({ ...d, [f]: !d[f] }));
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    save.mutate({ ...draft, note: draft.note?.trim() || null }, { onSuccess: () => { setEditing(false); onSaved(); } });
+    save.mutate({ ...draft, note: draft.note?.trim() || null, noteEdited }, { onSuccess: () => { setEditing(false); onSaved(); } });
   };
   return (
     <form onSubmit={submit} className="tile flex flex-col gap-2 px-3 py-2.5" aria-label={t("checkin.title")}>
@@ -60,8 +61,8 @@ export function CheckinStrip({ state, onSaved }: { state: MentorState; onSaved: 
         <Input
           className="min-w-0 flex-1"
           value={draft.note ?? ""}
-          maxLength={200}
-          onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+          maxLength={2000}
+          onChange={(e) => { setNoteEdited(true); setDraft((d) => ({ ...d, note: e.target.value })); }}
           placeholder={t("checkin.note")}
           aria-label={t("checkin.note")}
         />

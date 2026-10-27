@@ -459,7 +459,13 @@ router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res):
     [id, v.name, comment],
   );
   if (!upd.rows[0]) throw conflict("PROMOTION_REQUEST_DECIDED");
-  await setStage(String(r.user_name), r.from_stage, r.to_stage, v.name, "promote", comment, id, report);
+  try {
+    await setStage(String(r.user_name), r.from_stage, r.to_stage, v.name, "promote", comment, id, report);
+  } catch (e) {
+    // The stage did not move: the request goes back to pending so the approval can be retried (not «approved» forever).
+    await pool.query(`UPDATE academy_promotion_requests SET status = 'pending', decided_by = NULL, decided_at = NULL, decision_comment = NULL WHERE id = $1`, [id]);
+    throw e;
+  }
   const stages = await loadStages();
   const toName = stages.find((s) => s.key === r.to_stage)?.name ?? r.to_stage;
   await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", params: { variant: "approved", actor: v.name, toKey: r.to_stage, to: toName, comment }, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy" });

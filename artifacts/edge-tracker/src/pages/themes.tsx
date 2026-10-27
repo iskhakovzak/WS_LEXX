@@ -6,6 +6,7 @@
  * вотчлист», «В план дня», «Скопировать»). Shared themes are desk settings: admin only («Настроить темы»).
  */
 import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Loader2, Plus, RefreshCw, Shapes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, Page, Panel, PanelSkeleton } from "@/components/ds";
@@ -42,7 +43,8 @@ export default function ThemesPage() {
   const admin = can("settings.manage");
   const w = useWorkspace();
   const { data, board, bd } = w;
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openParam, setOpenKey] = useSearchParam("theme", ""); // ?theme= — the open theme sheet survives a reload
+  const openKey = openParam || null;
   const [editingTheme, setEditingTheme] = useState<BoardTheme | null | undefined>(undefined);
   const [editingBoard, setEditingBoard] = useState<BoardMeta | null | undefined>(undefined);
   const [prefill, setPrefill] = useState<BoardPrefill | null>(null);

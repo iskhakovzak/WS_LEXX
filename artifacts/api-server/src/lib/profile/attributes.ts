@@ -19,6 +19,7 @@
  * «мало данных», no number); with fewer than 3 units the score is null.
  */
 import { blockDiffProb, clusterBootstrapMean, median, quantile, rngFor, shrink, STATS_SEED } from "../stats";
+import { drawdownOf } from "../coreMetrics/kpi";
 import { ATTR_KEYS, type Archetype, type AttrInput, type AttrKey, type Attribute, type DayAgg, type ProfileSummary, type ProfileTrade } from "./types";
 
 /** Calendar days of the scoring window. */
@@ -57,6 +58,7 @@ export function daysOf(trades: readonly ProfileTrade[]): DayAgg[] {
     cur.n += 1;
     if (t.result === "win") cur.wins += 1;
     if (t.result === "loss") cur.losses += 1;
+    // core-metric-ok: the session's running high (its giveback), not a drawdown
     cur.peak = Math.max(cur.peak, cum);
   }
   for (const d of out) {
@@ -75,15 +77,7 @@ const meanOf = (xs: readonly number[]) => (xs.length ? xs.reduce((s, x) => s + x
 
 /** Largest peak-to-trough fall of the cumulative daily net ($, ≥ 0). */
 export function maxDrawdownOf(nets: readonly number[]): number {
-  let cum = 0;
-  let peak = 0;
-  let dd = 0;
-  for (const v of nets) {
-    cum += v;
-    peak = Math.max(peak, cum);
-    dd = Math.max(dd, peak - cum);
-  }
-  return r2(dd);
+  return r2(drawdownOf(nets));
 }
 
 type Partial = Omit<Attribute, "key" | "deskMedian" | "minSample" | "low"> & { lowExtra?: boolean };

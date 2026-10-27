@@ -7,7 +7,7 @@ import { pool } from "@workspace/db";
 import { closeDateSql, closedSql, netPnlSql } from "./tradeMath";
 import { setting } from "./settings/registry";
 import { buildFeeModel, type FeeModel, type FeeModelTrade } from "./feeModel";
-import { edgeMargin, type EdgeMargin } from "./breakeven";
+import { edgeMargin, type EdgeMargin } from "./coreMetrics/kpi";
 
 export type FeeWindow = { from: string | null; to: string; days: number; trades: (FeeModelTrade & { net: number | null })[] };
 

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc } from "drizzle-orm";
-import { db, voiceNotesTable } from "@workspace/db";
+import { db, pool, voiceNotesTable } from "@workspace/db";
+import { logger } from "../lib/logger";
 import { asyncHandler } from "../lib/asyncHandler";
 import { config } from "../config";
 import { audioExtension, transcribeAudio } from "../lib/transcribe";
@@ -88,7 +89,15 @@ const router: IRouter = Router();
 const bucketId = (): string => config.storage.bucketId;
 const privateDir = (): string => config.storage.privateDir || "objects";
 
+/** Audio kept in Postgres (migration 0274 voice_note_audio) when no object storage bucket is configured. */
+const DB_AUDIO_PREFIX = "/db/";
+
 async function uploadAudioToStorage(buffer: Buffer, mimeType: string): Promise<string> {
+  if (!bucketId()) {
+    const key = randomUUID();
+    await pool.query(`INSERT INTO voice_note_audio (key, mime, data) VALUES ($1, $2, $3)`, [key, mimeType.split(";")[0]!.trim().slice(0, 80) || "audio/webm", buffer]);
+    return `${DB_AUDIO_PREFIX}${key}`;
+  }
   const ext = audioExtension(mimeType);
   const objectName = `${privateDir()}/voice-notes/${randomUUID()}.${ext}`;
   const bucket = objectStorageClient.bucket(bucketId());
@@ -126,8 +135,8 @@ router.post("/voice-notes", voiceNoteLimiter, upload.single("audio"), asyncHandl
   let audioUrl: string;
   try {
     audioUrl = await uploadAudioToStorage(buffer, mimeType);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
+  } catch (err: unknown) {
+    logger.warn({ err }, "voice-notes: audio not stored");
     throw new AppError("STORAGE_FAILED", 500);
   }
 
@@ -179,6 +188,7 @@ router.delete("/voice-notes/:id", asyncHandler(async (req, res): Promise<void> =
   if (existing.userId !== userId || !canActAs(req, existing.userId)) throw new AppError("AUTHOR_OR_STAFF_ONLY");
 
   await db.delete(voiceNotesTable).where(eq(voiceNotesTable.id, id));
+  if (existing.audioUrl?.startsWith(DB_AUDIO_PREFIX)) await pool.query(`DELETE FROM voice_note_audio WHERE key = $1`, [existing.audioUrl.slice(DB_AUDIO_PREFIX.length)]);
   res.sendStatus(204);
 }));
 
@@ -225,6 +235,13 @@ router.get("/voice-notes/:id/audio", asyncHandler(async (req, res): Promise<void
   }
 
   res.setHeader("Cache-Control", "private, no-store");
+  if (note.audioUrl.startsWith(DB_AUDIO_PREFIX)) {
+    const { rows } = await pool.query<{ mime: string; data: Buffer }>(`SELECT mime, data FROM voice_note_audio WHERE key = $1`, [note.audioUrl.slice(DB_AUDIO_PREFIX.length)]);
+    if (!rows[0]) throw new AppError("VOICE_NOTE_NOT_FOUND");
+    res.setHeader("Content-Type", rows[0].mime);
+    res.send(rows[0].data);
+    return;
+  }
   try {
     const file = await objectStorageService.getObjectEntityFile(note.audioUrl);
     const signedUrl = await objectStorageService.signDownloadUrl(file, 900);

@@ -4,6 +4,7 @@
  */
 import { median } from "../stats";
 import type { DayAgg, ProfileTrade } from "./types";
+import { drawdownOf, roundShare, winRateOf } from "../coreMetrics/kpi";
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const r4 = (x: number) => Math.round(x * 10000) / 10000;
@@ -20,20 +21,13 @@ export function keyStatsOf(trades: readonly ProfileTrade[], days: readonly DayAg
   const grossWin = wins.reduce((s, t) => s + Math.max(0, t.net), 0);
   const grossLoss = Math.abs(losses.reduce((s, t) => s + Math.min(0, t.net), 0));
   const net = trades.reduce((s, t) => s + t.net, 0);
-  let cum = 0;
-  let peak = 0;
-  let dd = 0;
-  for (const d of [...days].sort((a, b) => (a.day < b.day ? -1 : 1))) {
-    cum += d.net;
-    peak = Math.max(peak, cum);
-    dd = Math.max(dd, peak - cum);
-  }
+  const dd = drawdownOf([...days].sort((a, b) => (a.day < b.day ? -1 : 1)).map((d) => d.net));
   return {
     net: r2(net),
     trades: trades.length,
     wins: wins.length,
     losses: losses.length,
-    winRate: wins.length + losses.length ? r4(wins.length / (wins.length + losses.length)) : null,
+    winRate: roundShare(winRateOf(wins.length, losses.length), 4),
     profitFactor: grossLoss > 0 ? r2(grossWin / grossLoss) : null,
     expectancy: trades.length ? r2(net / trades.length) : null,
     avgWin: wins.length ? r2(grossWin / wins.length) : null,

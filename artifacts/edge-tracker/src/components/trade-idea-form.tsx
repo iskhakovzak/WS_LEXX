@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useId, useMemo, useRef } from "react";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,11 +82,23 @@ type Props = {
   /** Optional: when provided, the primary button becomes "Опубликовать" and `onSubmit` is the secondary "save draft". */
   onSubmitAndPublish?: (data: TradeIdeaFormData) => void;
   publishLabel?: string;
+  /** Keep the thesis as a local draft under this key until the form is submitted and closed (e.g. `idea:new`). */
+  draftKey?: string;
 };
 
 type PlaybookName = { id: number; name: string | null };
 
-export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitLabel, onSubmitAndPublish, publishLabel }: Props) {
+/** The thesis draft: kept until the form unmounts after a submit (the dialog closes on success). */
+function useIdeaThesisDraft(key: string | undefined, value: string, restore: (v: string) => void, base: string) {
+  const draft = useTextDraft(key ?? null, value, restore, { base });
+  const sent = useRef(false);
+  const clearRef = useRef(draft.clear);
+  clearRef.current = draft.clear;
+  useEffect(() => () => { if (sent.current) clearRef.current(); }, []);
+  return { submitted: () => { sent.current = true; } };
+}
+
+export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitLabel, onSubmitAndPublish, publishLabel, draftKey }: Props) {
   const { user } = useAuth();
   const { t } = ideasI18n.useT();
   const { t: tc } = commonI18n.useT();
@@ -101,6 +114,7 @@ export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitL
   const uid = useId();
   const fid = (name: string) => `${uid}-${name}`;
   const thesisRef = useRef<HTMLTextAreaElement>(null);
+  const thesisDraft = useIdeaThesisDraft(draftKey, form.thesis, (v) => setForm((f) => ({ ...f, thesis: v })), initial?.thesis ?? "");
 
   // Callers often pass a fresh `initial` object every render; only reset when its content actually changes.
   const initialKey = useMemo(() => JSON.stringify(initial ?? null), [initial]);
@@ -138,6 +152,7 @@ export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitL
   function submitWith(handler: ((d: TradeIdeaFormData) => void) | undefined) {
     setTouched(true);
     if (!handler || hasErrors || submitting) return;
+    thesisDraft.submitted();
     handler({ ...form, ticker: form.ticker.trim(), horizon });
   }
   const primary = onSubmitAndPublish ?? onSubmit;

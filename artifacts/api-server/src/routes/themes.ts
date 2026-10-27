@@ -25,10 +25,10 @@ import { isGuestUser } from "../lib/auth";
 import { logAudit } from "../lib/audit";
 import { MAX_THEME_TICKERS, THEME_METRICS, THEME_TICKER_RE } from "../lib/themes/logic";
 import { getBoard, refreshScreener } from "../lib/themes/board";
-import { MAX_HIDDEN, MAX_PERSONAL_THEMES, normalizeView, parseScreenerInput, type ScreenerSpec } from "../lib/themes/personal";
+import { MAX_HIDDEN, MAX_PERSONAL_THEMES, parseScreenerInput, type ScreenerSpec } from "../lib/themes/personal";
 import { boardById } from "../lib/themes/boardsStore";
 import { screenerWriteLimiter } from "../lib/rateLimits";
-import { countPersonal, insertPersonal, personalById, readView, updatePersonal, writeView, type PersonalRecord } from "../lib/themes/personalStore";
+import { countPersonal, insertPersonal, mergeView, personalById, updatePersonal, type PersonalRecord } from "../lib/themes/personalStore";
 import { insertTheme, listThemes, themeById, updateTheme, type ThemePatch } from "../lib/themes/store";
 
 const router: IRouter = Router();
@@ -82,9 +82,8 @@ const ViewBody = z.object({
 
 router.put("/themes/view", route({ body: ViewBody }, async ({ req, body }) => {
   const me = member(req);
-  const current = await readView(me.id);
   const next = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
-  return writeView(me.id, normalizeView({ ...current, ...next }));
+  return mergeView(me.id, next);
 }));
 
 // ─── «Мои темы» ───────────────────────────────────────────────────────────────

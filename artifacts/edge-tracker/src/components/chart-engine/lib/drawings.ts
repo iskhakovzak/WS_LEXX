@@ -111,15 +111,30 @@ export function loadDrawings(ticker: string, day: string): Drawing[] {
   }
 }
 
-export function saveDrawings(ticker: string, day: string, items: readonly Drawing[]): boolean {
+/**
+ * The browser copy. `pending`: kept because a server save failed — it is newer than the server set and wins over it on
+ * the next load (then written up); an empty pending list is kept too (everything was deleted).
+ */
+export function saveDrawings(ticker: string, day: string, items: readonly Drawing[], opts: { pending?: boolean } = {}): boolean {
   try {
     if (typeof localStorage === "undefined") return false;
     const key = drawingsStorageKey(ticker, day);
-    if (!items.length) localStorage.removeItem(key);
-    else localStorage.setItem(key, JSON.stringify({ drawings: items.slice(0, MAX_DRAWINGS).map(toApiDrawing) }));
+    if (!items.length && !opts.pending) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify({ drawings: items.slice(0, MAX_DRAWINGS).map(toApiDrawing), ...(opts.pending ? { pending: true, savedAt: new Date().toISOString() } : {}) }));
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The copy left by a failed server save (see saveDrawings `pending`), or null. */
+export function loadUnsavedDrawings(ticker: string, day: string): Drawing[] | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = JSON.parse(localStorage.getItem(drawingsStorageKey(ticker, day)) ?? "null") as { pending?: unknown } | null;
+    return raw && raw.pending === true ? parseDrawingsResponse(raw) : null;
+  } catch {
+    return null;
   }
 }
 

@@ -32,7 +32,7 @@ import { can, type Actor } from "../lib/permissions";
 import { assistantLimiter } from "../lib/rateLimits";
 import { setting } from "../lib/settings/registry";
 import { addDays, nyDate, nyMinutes } from "../lib/tradingDate";
-import { langOf } from "../i18n";
+import { langOf, type Lang } from "../i18n";
 import { assistantClient } from "../lib/assistant/client";
 import { budgetOf, usageToday } from "../lib/assistant/store";
 import { loadRoster } from "../lib/curatorRoster";
@@ -44,6 +44,8 @@ import { MentorInvalid, MentorRefused } from "../lib/mentor/run";
 import { ProposalSchema, type RhythmKind } from "../lib/mentor/schema";
 import { addCommitment, chat, contextHash, guidanceOf, periodOf, RHYTHM_KINDS, rhythm } from "../lib/mentor/service";
 import { escalateFromFacts } from "../lib/mentor/escalate";
+import { guardStopped, stopTexts, type StopInput } from "../lib/mentor/stopGuard";
+import { riskStateOf, riskSummary, UNKNOWN_RISK } from "../lib/coreMetrics/risk";
 import {
   acknowledgeEscalation, addNote, clearThread, closeCommitment, commitmentById, deleteNote, digestsFor, escalationById, escalationsOf,
   listCommitments, loadThread, mentorCost, noteById, setHiddenFacts, updateNote, type Digest,
@@ -60,9 +62,11 @@ export function phaseOf(minutes: number): "pre" | "session" | "post" {
   return minutes < 9 * 60 + 30 ? "pre" : minutes < 16 * 60 ? "session" : "post";
 }
 
-function digestView(d: Digest | undefined, hash: string | null) {
+/** A stored digest as shown — with the stop forced in when the trader is stopped NOW (a brief written before the stop). */
+function digestView(d: Digest | undefined, hash: string | null, risk: StopInput, lang: Lang) {
   if (!d || d.status !== "ready") return null;
-  return { id: d.id, content: d.content, createdAt: d.createdAt, deep: d.deep, source: d.source, stale: hash != null && d.inputHash !== hash };
+  const content = d.content && typeof d.content === "object" ? guardStopped(d.kind, d.content as Record<string, unknown>, risk, lang) : d.content;
+  return { id: d.id, content, createdAt: d.createdAt, deep: d.deep, source: d.source, stale: hash != null && d.inputHash !== hash };
 }
 
 function mentorOn(): boolean {
@@ -99,7 +103,11 @@ async function stateFor(req: Request, actor: Actor, trader: string) {
     notes: f.notes,
     commitments: f.commitments,
     checkin: self ? f.checkin : null,
-    digests: { brief: digestView(by("brief"), hashes.brief), debrief: digestView(by("debrief"), hashes.debrief), weekly: digestView(by("weekly"), hashes.weekly) },
+    digests: {
+      brief: digestView(by("brief"), hashes.brief, f.risk, lang),
+      debrief: digestView(by("debrief"), hashes.debrief, f.risk, lang),
+      weekly: digestView(by("weekly"), hashes.weekly, f.risk, lang),
+    },
     thread: self ? await loadThread(trader, 40) : [],
     escalations: viewerStaff && !self ? await escalationsOf([trader], addDays(today, -30)) : [],
     canGuide: !self && viewerStaff,
@@ -117,7 +125,11 @@ router.get("/mentor", route({ query: z.object({ trader: traderName.optional() })
 router.get("/mentor/line", route({ cap: "assistant.use" }, async ({ req, actor }) => {
   const today = nyDate();
   const lang = langOf(req);
-  const [{ active }, digests] = await Promise.all([listCommitments(actor.name, 0), digestsFor(actor.name, [{ kind: "brief", period: today }, { kind: "debrief", period: today }], lang)]);
+  const [{ active }, digests, risk] = await Promise.all([
+    listCommitments(actor.name, 0),
+    digestsFor(actor.name, [{ kind: "brief", period: today }, { kind: "debrief", period: today }], lang),
+    riskStateOf(actor.name, today, lang).then(riskSummary).catch(() => UNKNOWN_RISK),
+  ]);
   const oldest = active.map((c) => c.startedOn).sort()[0];
   const trades = oldest ? await behaviorTradesOf(actor.name)(oldest, today) : [];
   const items = active.map((c) => {
@@ -127,7 +139,8 @@ router.get("/mentor/line", route({ cap: "assistant.use" }, async ({ req, actor }
   const order = { failing: 0, at_risk: 1, new: 2, on_track: 3, achieved: 4, untracked: 5 } as const;
   const brief = digests.find((d) => d.kind === "brief" && d.status === "ready")?.content as { ruleToday?: string } | undefined;
   return {
-    enabled: mentorOn(), phase: phaseOf(nyMinutes()), ruleToday: brief?.ruleToday ?? null,
+    // A stopped trader's rule is the stop's, whatever a brief written earlier said (lib/mentor/stopGuard).
+    enabled: mentorOn(), phase: phaseOf(nyMinutes()), ruleToday: stopTexts(risk, lang)?.rule ?? brief?.ruleToday ?? null,
     hasBrief: !!brief, hasDebrief: digests.some((d) => d.kind === "debrief" && d.status === "ready"),
     commitment: [...items].sort((a, b) => order[a.verdict] - order[b.verdict])[0] ?? null, active: items.length,
   };
@@ -155,12 +168,16 @@ router.post("/mentor/rhythm", assistantLimiter, route({
 }, async ({ req, res, actor, body }) => {
   const c = await caller(req, actor);
   const [existing] = await digestsFor(c.trader, [{ kind: body.kind, period: periodOf(body.kind, c.today) }], c.lang);
-  if (existing?.status === "ready" && !body.force) { res.status(200).json({ digest: digestView(existing, null), cached: true }); return; }
+  if (existing?.status === "ready" && !body.force) {
+    const risk = await riskStateOf(c.trader, c.today, c.lang).then(riskSummary).catch(() => UNKNOWN_RISK);
+    res.status(200).json({ digest: digestView(existing, null, risk, c.lang), cached: true });
+    return;
+  }
   const facts = await gatherFacts(c.trader, c.today);
   try {
     const out = await rhythm(c, body.kind, { force: !!body.force, existing: existing ?? null, facts });
     await escalateFromFacts(facts, c.staff);
-    res.status(201).json({ digest: digestView(out.digest, null), cached: out.cached });
+    res.status(201).json({ digest: digestView(out.digest, null, facts.risk, c.lang), cached: out.cached });
   } catch (err) {
     throw aiError(req, err);
   }

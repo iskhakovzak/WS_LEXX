@@ -68,6 +68,7 @@ export function shapeStats(d: any): unknown {
     total: zipBucket(fields, d?.total), best: d?.best, worst: d?.worst, streaks: d?.streaks,
     tradingDays: days.length, lastDays: top(days.slice(-10), 10),
     groups, rHistogram: d?.rHist ? { median: d.rHist.median, big: d.rHist.big } : undefined,
+    // core-metric-ok: the definitions spelled out for the model, not computed here
     note: "bucket fields: n = trades, wins / losses, net / gross / fees in $ (net = gross − fees), r = sum of R over rN trades with R, avgR, winRate = wins / (wins + losses), profitFactor = netPos / |netNeg|",
   };
 }

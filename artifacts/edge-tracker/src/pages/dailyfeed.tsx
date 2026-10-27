@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListDailyFeed, useCreateDailyFeed, useUpdateDailyFeed, useDeleteDailyFeed, getListDailyFeedQueryKey,
@@ -26,6 +27,7 @@ import { UndoToast } from "@/components/undo-toast";
 import type { PlaybookPayload } from "@/components/add-to-playbook";
 import { useToast } from "@/hooks/use-toast";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { addDays, nyDate, stepSessionDay } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { http, ApiError } from "@/lib/api/http";
@@ -143,6 +145,7 @@ export default function DailyFeedPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<DailyFeed | null>(null);
   const [form, setForm] = useState<FeedForm>(blankForm());
+  const formDraft = useTextDraft(editorOpen ? `feed:${editing?.id ?? "new"}` : null, form, setForm, { base: editing ? feedToForm(editing) : blankForm(form.date) });
   const [regenLoading, setRegenLoading] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [eodLoading, setEodLoading] = useState(false);
@@ -191,6 +194,8 @@ export default function DailyFeedPage() {
     if (!f) return;
     setCat("all");
     setSelectedDay(dayOf(f));
+    // Handled once: a reload must not re-focus the post and wipe the remembered category again.
+    try { replaceSearchParams({ highlight: null }); } catch { /* ignore */ }
     const t = setTimeout(() => setFocusId(null), 4000);
     return () => clearTimeout(t);
   }, [focusId, posts, setCat]);
@@ -349,6 +354,7 @@ export default function DailyFeedPage() {
         toast({ title: t("toast.published") });
       }
       invalidate();
+      formDraft.clear();
       setEditorOpen(false);
       setEditing(null);
     } catch { /* toast in onError */ }

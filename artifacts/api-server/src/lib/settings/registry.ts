@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -406,6 +406,16 @@ export const SETTINGS = {
   "mentor.briefTime": { group: "mentor", type: "time", default: "08:45" },
   "mentor.debriefTime": { group: "mentor", type: "time", default: "16:30" },
   "mentor.pushDailyUnits": { group: "mentor", type: "number", default: 1_000_000, min: 0, max: 50_000_000, step: 50_000, unit: "tokens" },
+  // The trader's day state (lib/dayState): what the dashboard leads with — stopped > newcomer / paused > the time of day —
+  // and the silence signal (job traders.silence, 18:45 NY Mon–Fri): curators get one in-app notice per silence episode
+  // and a weekly one for unclosed day reviews. Telegram is off by default (the template exists; nothing is sent).
+  "dayState.pausedDays": { group: "dayState", type: "number", default: 3, min: 1, max: 30, step: 1, unit: "days" },
+  "dayState.newcomerTrades": { group: "dayState", type: "number", default: 20, min: 0, max: 500, step: 1, unit: "trades" },
+  "dayState.newcomerMaxDays": { group: "dayState", type: "number", default: 45, min: 0, max: 365, step: 1, unit: "days" },
+  "dayState.staleStepDays": { group: "dayState", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "days" },
+  "dayState.silenceEnabled": { group: "dayState", type: "boolean", default: true },
+  "dayState.missedReviewDays": { group: "dayState", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "days" },
+  "dayState.silenceTelegram": { group: "dayState", type: "boolean", default: false },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

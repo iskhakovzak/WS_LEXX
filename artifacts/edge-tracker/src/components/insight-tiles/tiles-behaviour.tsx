@@ -93,7 +93,7 @@ export function SeqTile({ trades, prev, scope, variant }: Props) {
           }))}
         />
       }
-      detail={worstSummary && <SummaryGrid s={worstSummary} extra={[{ label: t("detail.baseline"), value: usd(s.baseline) }]} />}
+      detail={worstSummary && <SummaryGrid s={worstSummary} extra={[{ label: t("detail.baseline", { window: scope.periodShort ?? scope.periodLong }), value: usd(s.baseline) }]} />}
       meta={<TrendChip trend={s.trend} fmt={usd} />}
       actions={
         <Actions>

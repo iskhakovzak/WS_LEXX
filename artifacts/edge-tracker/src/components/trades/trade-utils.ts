@@ -10,7 +10,7 @@ import {
 import { nyDate } from "@/lib/trading-date";
 import { presetRange, type PeriodValue } from "@/lib/period-range";
 import { normalizeResult } from "@/lib/trade-result";
-import { signedR, priceR, netPnl as sharedNetPnl, isOpen as sharedIsOpen } from "@/lib/trade-math";
+import { signedR, priceR, netPnl as sharedNetPnl, isOpen as sharedIsOpen, winRateOf } from "@/lib/trade-math";
 import type { Tone } from "@/components/ds";
 import type { PlaybookPayload } from "@/components/add-to-playbook";
 import { tradesI18n } from "@/i18n/ns/trades";
@@ -317,8 +317,7 @@ export function computeStats(list: Trade[]): TradeStats {
   }
   const closed = wins + losses + be;
   // Shared rule (lib/trade-math): win rate = W / (W + L), break-even excluded.
-  const decided = wins + losses;
-  const winRate = decided ? wins / decided : null;
+  const winRate = winRateOf(wins, losses);
   const avgWinR = winRN ? winRSum / winRN : null;
   const avgLossR = lossRN ? lossRSum / lossRN : null;
   let expectancyR: number | null = null;
@@ -577,16 +576,6 @@ export function readLS<T>(key: string, fallback: T): T {
     return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
   } catch {
     return fallback;
-  }
-}
-
-export function readLSArray<T>(key: string): T[] {
-  try {
-    const raw = window.localStorage.getItem(key);
-    const v = raw ? JSON.parse(raw) : [];
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
   }
 }
 

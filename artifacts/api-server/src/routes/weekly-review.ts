@@ -15,6 +15,7 @@ import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import { violationMessage } from "../lib/rulesI18n";
 import { feeCoachingFor } from "../lib/feeModelStore";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * «Отчёт недели 1:1» — the weekly trader ↔ curator review document.
@@ -168,7 +169,7 @@ export function kpiOf(w: WeekRow, days: DayRow[], scale = 1): Kpi {
   const sc = (x: number) => (scale === 1 ? x : r2(x / scale));
   return {
     trades: sc(w.trades), closed: sc(w.wins + w.losses + w.be), wins: sc(w.wins), losses: sc(w.losses), be: sc(w.be), open: sc(w.open),
-    winRate: decided ? r3(w.wins / decided) : null,
+    winRate: decided ? r3((winRateOf(w.wins, w.losses) ?? 0)) : null,
     totalR: sc(r2(n(w.r_sum))), rCount: sc(w.r_count),
     expectancyR: w.r_count ? r3(n(w.r_sum) / w.r_count) : null,
     profitFactorR: negR < 0 ? r2(posR / Math.abs(negR)) : null,

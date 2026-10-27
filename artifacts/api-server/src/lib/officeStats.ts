@@ -27,6 +27,7 @@ import {
   deriveTradeStrategy, isOptionSymbol, nyParts, type StrategyInput, type TradeStrategy,
 } from "./tradeStrategy";
 import { currentImxWindow } from "./imx";
+import { winRateOf } from "./coreMetrics/kpi";
 
 // ─── Strategies ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -377,7 +378,7 @@ function totalsOf(trades: Valued[], days: DayValue[], withVolume = true): Totals
     net: round(net),
     trades: trades.length,
     wins, losses,
-    winRate: wins + losses ? round(wins / (wins + losses), 4) : null,
+    winRate: wins + losses ? round((winRateOf(wins, losses) ?? 0), 4) : null,
     profitFactor: profitFactor(gw, gl),
     avgR: rN ? round(rSum / rN, 3) : null,
     rTrades: rN,
@@ -592,7 +593,7 @@ export function buildPeriod(valued: Valued[], from: string, to: string, opts: { 
     b.v += t.v; b.trades++;
     if (t.result === "win") b.wins++; else if (t.result === "loss") b.losses++;
   }
-  for (const b of timeOfDay) { b.v = round(b.v); b.winRate = b.wins + b.losses ? round(b.wins / (b.wins + b.losses), 4) : null; }
+  for (const b of timeOfDay) { b.v = round(b.v); b.winRate = b.wins + b.losses ? round((winRateOf(b.wins, b.losses) ?? 0), 4) : null; }
   const weekday: WeekdayRow[] = weekdayLabels(lang).slice(0, 5).map((label, i) => ({ weekday: i, label, v: 0, days: 0, green: 0, avg: null }));
   for (const d of dv) {
     const w = weekday[weekdayOf(d.date)];

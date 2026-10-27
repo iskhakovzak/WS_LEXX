@@ -424,6 +424,7 @@ export default {
     prevNote: "Compared with the same span right before it: {range}",
     aria: "Period",
     presets: { today: "Today", week: "Week", month: "Month", quarter: "Quarter", year: "Year", all: "All" },
+    short: { today: "today", week: "7d", month: "30d", quarter: "90d", year: "365d", all: "all time" },
     hints: { today: "Today only", week: "Last 7 days", month: "Last 30 days", quarter: "Last 90 days", year: "Last 365 days", all: "Whole history" },
   },
   /** One filter pattern (components/shared/filters): «Filters (n)» → popover / bottom sheet, the active chips row. */

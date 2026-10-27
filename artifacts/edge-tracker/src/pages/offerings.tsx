@@ -40,6 +40,7 @@ import { rich } from "@/components/events/rich-text";
 
 type Tab = "today" | "week" | "ipo" | "insiders" | "mine";
 type When = "today" | "next" | "prev" | "all";
+const WHENS: readonly When[] = ["today", "next", "prev", "all"];
 const TABS: Tab[] = ["today", "week", "ipo", "insiders", "mine"];
 
 /** Which day's plan «В план дня» writes to: today until the close, then the next session. */
@@ -118,7 +119,8 @@ export default function OfferingsPage() {
   const initialUrl = useMemo(readUrl, []);
   const [day, setDay] = useState<string>(() => initialUrl.day ?? marketDay());
   const [tab, setTab] = useState<Tab>(() => initialUrl.tab ?? "today");
-  const [when, setWhen] = useState<When>("today");
+  const urlWhen = useMemo(() => new URLSearchParams(window.location.search).get("when") as When | null, []);
+  const [when, setWhen] = useState<When>(() => (urlWhen && WHENS.includes(urlWhen) ? urlWhen : "today"));
   const [rawFilters, setFilters] = usePersistentState<OfferingFilters>("offerings.filters.v1", EMPTY_FILTERS);
   const filters = useMemo(() => normalizeFilters(rawFilters), [rawFilters]);
   const [presets, setPresets] = usePersistentState<FilterPreset[]>("offerings.presets.v1", []);
@@ -151,10 +153,12 @@ export default function OfferingsPage() {
       const u = new URL(window.location.href);
       if (day === marketDay()) u.searchParams.delete("day"); else u.searchParams.set("day", day);
       if (tab === "today") u.searchParams.delete("tab"); else u.searchParams.set("tab", tab);
-      u.searchParams.delete("ticker");
+      if (when === "today") u.searchParams.delete("when"); else u.searchParams.set("when", when);
+      // The open sheet rides in ?ticker= (kept on reload; closing clears it). Until a linked one opens, it stays.
+      if (selected) u.searchParams.set("ticker", selected.ticker); else if (!pendingTicker.current) u.searchParams.delete("ticker");
       window.history.replaceState(window.history.state, "", u.pathname + u.search + u.hash);
     } catch { /* ignore */ }
-  }, [day, tab]);
+  }, [day, tab, when, selected]);
 
   const offerings = useMemo(() => data?.offerings ?? [], [data]);
 
@@ -190,13 +194,14 @@ export default function OfferingsPage() {
     return c;
   }, [offerings, day]);
   // Default to «today»; when nothing trades today but something does tomorrow / did yesterday, switch once.
-  const autoWhen = useRef(false);
+  const autoWhen = useRef(!!urlWhen); // a ?when= from the URL (a reload, a link) is kept, not auto-switched
   useEffect(() => {
     if (!data || autoWhen.current) return;
     autoWhen.current = true;
     if (whenCounts.today === 0) setWhen(whenCounts.next ? "next" : "all");
   }, [data, whenCounts]);
-  useEffect(() => { autoWhen.current = false; }, [day]);
+  const autoDay = useRef(day);
+  useEffect(() => { if (autoDay.current !== day) { autoDay.current = day; autoWhen.current = false; } }, [day]); // a new day re-arms it (not the mount)
 
   const q = query.trim().toLowerCase();
   const passes = useCallback((o: Offering) => {

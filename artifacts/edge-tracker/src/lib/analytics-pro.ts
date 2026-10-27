@@ -1,5 +1,5 @@
 import type { Trade } from "@workspace/api-client-react";
-import { signedR, priceR, netPnl, isOpen, closeDate, resultOf, entryMinutes, type TradeLike } from "@/lib/trade-math";
+import { signedR, priceR, netPnl, isOpen, closeDate, resultOf, entryMinutes, type TradeLike, maxDrawdown, winRateOf } from "@/lib/trade-math";
 import { fmtDate, fmtMonth, fmtWeekday } from "@/lib/format";
 import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
 
@@ -416,7 +416,7 @@ export function computeOhlc(trades: Trade[], days: DaySummary[], val: ValueFn = 
     avgDayProfit: profit.length ? profit.reduce((s, d) => s + d.net, 0) / profit.length : null,
     maxDayProfit,
     totalDays,
-    winPct: wins + losses ? wins / (wins + losses) : null,
+    winPct: winRateOf(wins, losses),
     lossPct: wins + losses ? losses / (wins + losses) : null,
     maxLossDaysRow: maxStreak(dayNets, false),
     maxProfitDaysRow: maxStreak(dayNets, true),
@@ -582,12 +582,8 @@ export function computeEdgeStats(trades: Trade[], days: DaySummary[], val: Value
   const lossArr = vals.filter((v) => v < 0);
   const sumW = winsArr.reduce((s, v) => s + v, 0);
   const sumL = lossArr.reduce((s, v) => s + v, 0);
-  let cum = 0, peak = 0, mdd = 0;
-  for (const v of vals) {
-    cum += v;
-    if (cum > peak) peak = cum;
-    if (cum - peak < mdd) mdd = cum - peak;
-  }
+  const cum = vals.reduce((s, v) => s + v, 0);
+  const mdd = maxDrawdown(vals);
   let streak: EdgeStats["dayStreak"] = { kind: "flat", length: 0 };
   const valuedDays = days.filter((d) => (d.valued ?? d.trades) > 0);
   for (let i = valuedDays.length - 1; i >= 0; i--) {
@@ -602,7 +598,7 @@ export function computeEdgeStats(trades: Trade[], days: DaySummary[], val: Value
     wins: resWins,
     losses: resLosses,
     // Result-based: W / (W + L), break-even excluded — the shared desk definition.
-    winRate: resWins + resLosses ? resWins / (resWins + resLosses) : null,
+    winRate: winRateOf(resWins, resLosses),
     avgWin: winsArr.length ? sumW / winsArr.length : null,
     avgLoss: lossArr.length ? sumL / lossArr.length : null,
     expectancy: vals.length ? cum / vals.length : null,

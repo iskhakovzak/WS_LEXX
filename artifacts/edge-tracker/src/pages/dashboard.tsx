@@ -14,6 +14,7 @@
 // so there are no entry CTAs here.
 import { lazy, Suspense, useCallback, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Page } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +33,11 @@ import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { DashBoard, type BoardSectionDef, type BoardTileDef } from "@/components/dashboard/board";
 import { TilePlaceholder } from "@/components/dashboard/board-section";
 import { DashCard } from "@/components/dashboard/dash-card";
+import { stateLayout } from "@/components/dashboard/state-layout";
+import { StateLead, StopMentorLine } from "@/components/dashboard/state-lead";
+import { backlogItem } from "@/components/dashboard/attention-model";
+import { freshDay, teamStatesQuery, traderStateQuery, type TraderState } from "@/lib/day-state";
+import { dayStateI18n } from "@/i18n/ns/dayState";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { useDashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { addItem, TILE_SPECS, type BoardSection, type TileVariant } from "@/components/dashboard/layout-model";
@@ -138,13 +144,19 @@ function useDashboardModel(editing: boolean) {
     { enabled: insightsOn && insightQ.isSuccess && !!insightRanges.prev },
   );
   const insightScope = useMemo<InsightScope>(
-    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "quarter", periodLong: periodTexts("quarter", null).long }),
+    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "quarter", periodLong: periodTexts("quarter", null).long, periodShort: periodTexts("quarter", null).short }),
     [insightWindow, insightTrader],
   );
   const eodQ = useEodStatus(authed && scope === "team");
   const eventsQ = useEventsToday(on("attention"));
   const holidaysQ = useTodayHolidays();
   const unreadQ = useUnreadCount();
+  // The trader's day state (server lib/dayState): what the page leads with and folds; «Команда» keeps the default board.
+  const stateQ = useQuery({ ...traderStateQuery(), enabled: authed });
+  const dayState = scope === "me" ? (stateQ.data ?? null) : null;
+  // «Команда»: the state column of «Деск сегодня» (stopped / quiet N days / newcomer).
+  const teamStatesQ = useQuery({ ...teamStatesQuery(), enabled: authed && staff && scope === "team" && on("desk") });
+  const teamStates = useMemo(() => (teamStatesQ.data ? new Map<string, TraderState>(teamStatesQ.data.states.map((s) => [s.trader, s])) : undefined), [teamStatesQ.data]);
 
   const today = todayQ.data;
   const tradingDate = today?.date ?? nyDate();
@@ -157,17 +169,19 @@ function useDashboardModel(editing: boolean) {
           .map((t) => t.closeDate.slice(0, 10))
           .find((d) => d < tradingDate || (d === tradingDate && afterClose)) ?? null)
       : null;
-  const lastDayEodQ = useEodDay(lastDay, userName, authed && scope === "me" && on("attention"));
+  // A day older than the desk's staleStepDays trading days is backlog (one line), never «Следующий шаг» 12 days back.
+  const lastFresh = lastDay && freshDay(lastDay, stateQ.data) ? lastDay : null;
+  const lastDayEodQ = useEodDay(lastFresh, userName, authed && scope === "me" && on("attention"));
   // The day frame owns the last finished day's review; the journal stays the next step while still open.
   const dailyOn = authed && scope === "me";
   const dailyQ = useDailyMe(dailyOn);
   const dayCardDate = dayView(dailyQ.data)?.evening?.date ?? null;
   const lastDayRow = lastDayEodQ.data?.traders.find((x) => x.trader === userName);
-  const journalOpenDate = lastDay && lastDayRow?.status === "open" && lastDayRow.trades > 0 ? lastDay : null;
+  const journalOpenDate = lastFresh && lastDayRow?.status === "open" && lastDayRow.trades > 0 ? lastFresh : null;
   const daily = useDailyNextStep(dailyOn, journalOpenDate);
   // «План на день» counts tasks from all of these: render it once they have answered (no 2 → 3 jump).
   const attentionLoading = todayQ.isLoading || recentQ.isLoading || riskQ.isLoading || deskQ.isLoading || eodQ.isLoading
-    || eventsQ.isLoading || holidaysQ.isLoading || unreadQ.isLoading || lastDayEodQ.isLoading || daily.isLoading;
+    || eventsQ.isLoading || holidaysQ.isLoading || unreadQ.isLoading || lastDayEodQ.isLoading || daily.isLoading || stateQ.isLoading;
   // The morning check-in leads before the open on a trading day and is gone on weekends / market holidays (ILYA-20).
   const tradingDay = today ? !today.market.weekend && !today.market.holidayToday : true;
   const morning = !!today && tradingDay && today.market.nyMinutes < OPEN_MIN;
@@ -175,17 +189,22 @@ function useDashboardModel(editing: boolean) {
   return {
     isGuest, authed, staff, userName, scope, prefs, update, board, allowed, inScope, on, todayQ, equityQ, widenedQ, weekEmpty,
     widened, onPeriodChange, recentQ, riskQ, deskQ, insightQ, insightPrevQ, insightScope, eodQ, eventsQ, holidaysQ, unreadQ,
-    lastDay, lastDayEodQ, dailyOn, dayCardDate, journalOpenDate, daily, attentionLoading, tradingDay, morning,
+    lastDay, lastFresh, lastDayEodQ, dailyOn, dayCardDate, journalOpenDate, daily, attentionLoading, tradingDay, morning, dayState, teamStates,
   };
 }
 
 export default function Dashboard() {
   const { t } = dashboardI18n.useT();
+  const { t: ts } = dayStateI18n.useT();
   const [editing, setEditing] = useState(false);
   const m = useDashboardModel(editing);
   const { scope, prefs, board, todayQ, equityQ, widenedQ, riskQ, deskQ, recentQ } = m;
   const today = todayQ.data;
-  const checkinNow = m.morning && m.on("checkin");
+  const sl = stateLayout(m.dayState?.state);
+  // Before the open the check-in sits under the plan — unless the day state folds it (a stop, a return after a pause).
+  const checkinNow = m.morning && m.on("checkin") && !sl.fold.has("checkin");
+  const quietDay = !!today && (today.market.weekend || !!today.market.holidayToday);
+  const backlog = backlogItem(m.dayState?.backlog);
 
   const goToCheckin = useCallback(() => {
     board.setLayout((cur) => addItem(cur, "checkin"));
@@ -223,7 +242,7 @@ export default function Dashboard() {
       risk={riskQ.data}
       desk={deskQ.data}
       eod={m.eodQ.data}
-      lastDay={m.lastDay}
+      lastDay={m.lastFresh}
       lastDayEod={m.lastDayEodQ.data}
       recent={scope === "me" ? recentQ.data : undefined}
       events={m.eventsQ.data}
@@ -237,6 +256,7 @@ export default function Dashboard() {
       dailyToday={m.daily.today}
       frame={m.dailyOn ? <DayLine enabled={m.dailyOn} journalOpenDate={m.journalOpenDate} embedded /> : null}
       progress={m.dailyOn ? <DayProgress enabled={m.dailyOn} quests={<QuestStrip enabled={m.dailyOn} />} /> : null}
+      extraItems={backlog ? [backlog] : undefined}
     />
   );
   const shownEquity = m.widened ? widenedQ.data : equityQ.data;
@@ -278,7 +298,7 @@ export default function Dashboard() {
         };
       // The AI mentor's line (own day only; staff see their own mentor): opens /coach.
       case "mentor":
-        return { ready: m.authed && scope === "me", render: () => <DashCard fill aria-label={t("sections.mentor.label")}>{lazyExtra(<MentorLine />)}</DashCard> };
+        return { ready: m.authed && scope === "me", render: () => <DashCard fill aria-label={t("sections.mentor.label")}>{sl.mentorStop ? <StopMentorLine /> : lazyExtra(<MentorLine />)}</DashCard> };
       case "attention": return { ready: true, render: () => plan };
       case "equity": return { ready: true, render: equity };
       case "positions": return { ready: !!today?.positions?.length, render: () => (today ? lazyExtra(<PositionsPanel data={today} />) : null) };
@@ -291,7 +311,7 @@ export default function Dashboard() {
       case "desk":
         return {
           ready: m.staff && deskQ.data !== null,
-          render: () => <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} isError={deskQ.isError} onRetry={() => void deskQ.refetch()} />,
+          render: () => <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} isError={deskQ.isError} onRetry={() => void deskQ.refetch()} states={m.teamStates} />,
         };
       // Before the open it sits under the plan (outside the edit mode); off on weekends / market holidays.
       case "checkin": return { ready: m.tradingDay && (!checkinNow || editing), render: () => extraNode("checkin") };
@@ -308,6 +328,10 @@ export default function Dashboard() {
     edge: {
       title: t("layout.edge"),
       hint: t("layout.edgeHint"),
+      // A newcomer: «появится после N сделок» instead of empty insight tiles (they are folded, see state-layout).
+      after: sl.edgeNote && m.dayState?.newcomer ? (
+        <DashCard><p className="text-sm text-muted-foreground">{ts("newcomer.edgeNote", { target: m.dayState.newcomer.target, count: m.dayState.newcomer.trades })}</p></DashCard>
+      ) : null,
       action: (
         <Link href="/stats" className="inline-flex min-h-8 items-center gap-0.5 rounded-lg px-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {t("layout.edgeAll")}
@@ -333,10 +357,12 @@ export default function Dashboard() {
         onScopeChange={(s) => m.update({ scope: s, scopePicked: true })}
         canChooseScope={m.staff}
         userName={m.userName}
+        stopLead={sl.state === "stopped"}
       />
+      <StateLead state={m.dayState} risk={riskQ.data} quietDay={quietDay} />
       {m.authed && <FirstSteps />}
-      {m.dailyOn && <WrappedDashLine />}
-      {m.authed && <Suspense fallback={null}><TodayEdgeLine /></Suspense>}
+      {m.dailyOn && !sl.quietHero && <WrappedDashLine />}
+      {m.authed && !sl.quietHero && <Suspense fallback={null}><TodayEdgeLine /></Suspense>}
     </>
   );
 
@@ -354,6 +380,7 @@ export default function Dashboard() {
         sections={sections}
         hero={{ title: t("layout.today"), node: hero }}
         onEditingChange={setEditing}
+        state={sl.state ? { order: sl.order, folded: (id) => sl.fold.has(id), first: sl.first, hint: ts(`fold.hint.${sl.state}`) } : undefined}
       />
     </Page>
   );

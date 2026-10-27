@@ -19,6 +19,7 @@ import { dayHref } from "@/lib/period-links";
 import { rich as withNodes } from "@/i18n/rich";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
+import { winRateOf } from "@/lib/trade-math";
 
 /** «Разбор дня» page (/day-report) for this trader + date. */
 export function dayReportHref(date: string, trader?: string | null): string {
@@ -114,7 +115,7 @@ export function DaySummary({
               {/* 4 columns only when the column is wide enough (was 4 × ~50px at 1440: «+$2…», «5 green…») */}
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 @md:grid-cols-4">
                 <Mini label={tc("trading.trades")} value={stats.trades} hint={stats.open ? t("summary.winsLossesOpen", { wins: stats.wins, losses: stats.losses, open: stats.open }) : t("summary.winsLosses", { wins: stats.wins, losses: stats.losses })} />
-                <Mini label={tc("trading.winRate")} value={decided ? fmtRate(stats.wins / decided) : "—"} hint={decided ? t("summary.winsOf", { wins: stats.wins, decided }) : undefined} />
+                <Mini label={tc("trading.winRate")} value={decided ? fmtRate((winRateOf(stats.wins, stats.losses) ?? 0)) : "—"} hint={decided ? t("summary.winsOf", { wins: stats.wins, decided }) : undefined} />
                 <Mini
                   label={t("summary.best")}
                   value={best != null ? fmtUsd(best, { signed: true, decimals: "auto" }) : "—"}

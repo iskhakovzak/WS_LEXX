@@ -8,7 +8,7 @@ import {
 /** Horizontal bars: faint vertical guides along the value axis only. */
 const GRID_V = { horizontal: false, vertical: true, stroke: "hsl(var(--border))", strokeOpacity: 0.45 } as const;
 import { ArrowDown, ArrowUp, ChevronsUpDown, Download, Filter, Layers, Sparkles } from "lucide-react";
-import { Panel, Segmented, FilterChip, EmptyState, Pill, TableScroll, toneOf } from "@/components/ds";
+import { Panel, Segmented, FilterChip, EmptyState, Pill, TableScroll, toneOf, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -56,7 +56,7 @@ export function EdgeTab({
   const [metric, setMetric] = useState<MetricKey>(hasR ? "avgR" : "winRate");
   const effMetric: MetricKey = (metric === "totalPnl" && !hasPnl) || ((metric === "avgR" || metric === "totalR") && !hasR) ? "winRate" : metric;
   const [hideSmall, setHideSmall] = useState(false);
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "natural", dir: "desc" });
+  const [sort, setSort] = usePersistentState<{ key: SortKey; dir: "asc" | "desc" }>("analytics.edge.sort", { key: "natural", dir: "desc" });
 
   const dim = dimensionOf(dimension);
   const allRows = useMemo(() => breakdown(trades, dimension), [trades, dimension]);

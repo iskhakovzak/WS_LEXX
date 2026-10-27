@@ -437,6 +437,8 @@ export default {
     prevNote: "Сравнение — с таким же отрезком до него: {range}",
     aria: "Период",
     presets: { today: "Сегодня", week: "Неделя", month: "Месяц", quarter: "Квартал", year: "Год", all: "Всё" },
+    /** The window of a number, compact (labels such as «Винрейт · 90 дн.»). */
+    short: { today: "сегодня", week: "7 дн.", month: "30 дн.", quarter: "90 дн.", year: "365 дн.", all: "с начала" },
     hints: { today: "Только сегодня", week: "Последние 7 дней", month: "Последние 30 дней", quarter: "Последние 90 дней", year: "Последние 365 дней", all: "Вся история" },
   },
   /** One filter pattern (components/shared/filters): «Фильтры (n)» → popover / bottom sheet, the active chips row. */

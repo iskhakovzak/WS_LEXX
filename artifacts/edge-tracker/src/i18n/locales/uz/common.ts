@@ -426,6 +426,7 @@ export default {
     prevNote: "Undan oldingi xuddi shunday oraliq bilan solishtiriladi: {range}",
     aria: "Davr",
     presets: { today: "Bugun", week: "Hafta", month: "Oy", quarter: "Chorak", year: "Yil", all: "Hammasi" },
+    short: { today: "bugun", week: "7 kun", month: "30 kun", quarter: "90 kun", year: "365 kun", all: "boshidan" },
     hints: { today: "Faqat bugun", week: "Oxirgi 7 kun", month: "Oxirgi 30 kun", quarter: "Oxirgi 90 kun", year: "Oxirgi 365 kun", all: "Butun tarix" },
   },
   /** One filter pattern (components/shared/filters): «Filtrlar (n)» → popover / bottom sheet, the active chips row. */

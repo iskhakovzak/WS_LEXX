@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { BarChart3, FileDown, Printer, RefreshCw, SearchX } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -162,7 +163,10 @@ export default function Stats() {
     }
   }, [prefs]);
 
-  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs((p) => ({ ...p, [k]: v }));
+  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => {
+    setPrefs((p) => ({ ...p, [k]: v }));
+    if (k === "horizon") replaceSearchParams({ horizon: v as string }, { horizon: "all" }); // a stale ?horizon= never wins
+  };
 
   const traders = useMemo(
     () => [...new Set([
@@ -375,7 +379,7 @@ export default function Stats() {
                 ids={STATS_TILES}
                 trades={trades}
                 prev={prevTrades}
-                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, periodLong: periodOpt.long }}
+                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, periodLong: periodOpt.long, periodShort: periodOpt.short }}
               />
             )}
           />

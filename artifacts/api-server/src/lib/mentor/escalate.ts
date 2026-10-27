@@ -16,7 +16,7 @@ import { staffOrFallback } from "../notifyEvents";
 import { fmtUsd } from "../notifyEventsCore";
 import { behaviorTradesOf } from "../daily/load";
 import { mistakesByTrade } from "../daily/service";
-import { loadLimits } from "../riskData";
+import { riskStateOf, riskSummary } from "../coreMetrics/risk";
 import { breaksByDay, trackCommitment } from "./commitments";
 import { detectEscalations, freshEscalations, type EscalationCfg } from "./escalation";
 import { dayStats, tradedDays, type MentorFacts } from "./facts";
@@ -38,14 +38,14 @@ async function lastCheckinDay(trader: string): Promise<string | null> {
   return rows[0]?.d ?? null;
 }
 
-type EscFacts = Pick<MentorFacts, "trader" | "today" | "days" | "tiltDays" | "maxDrawdown"> & { breaks: Map<string, number> };
+type EscFacts = Pick<MentorFacts, "trader" | "today" | "days" | "tiltDays" | "risk"> & { breaks: Map<string, number> };
 
 const TILT = new Set(["behavior:tilt", "behavior:revenge", "behavior:martingale"]);
 
 /** The escalation inputs without the heavy sources (the nightly desk run). */
-async function lightFacts(trader: string, today: string, limits: Map<string, { maxDrawdown: number | null }>): Promise<EscFacts> {
+async function lightFacts(trader: string, today: string): Promise<EscFacts> {
   const from = addDays(today, -35);
-  const [commitments, trades] = await Promise.all([listCommitments(trader, 0), behaviorTradesOf(trader)(from, today)]);
+  const [commitments, trades, risk] = await Promise.all([listCommitments(trader, 0), behaviorTradesOf(trader)(from, today), riskStateOf(trader, today)]);
   const oldest = commitments.active.map((c) => c.startedOn).sort()[0];
   const track = oldest && oldest < from ? await behaviorTradesOf(trader)(oldest, today) : trades;
   const progress = commitments.active.map((c) => trackCommitment(c, track));
@@ -54,8 +54,7 @@ async function lightFacts(trader: string, today: string, limits: Map<string, { m
     const dayOf = new Map(trades.map((t) => [t.id, t.date]));
     for (const [id, ms] of await mistakesByTrade(trader, from, today)) if (ms.some((m) => TILT.has(m))) { const d = dayOf.get(id); if (d) tiltDays.add(d); }
   }
-  const dd = limits.get(trader)?.maxDrawdown;
-  return { trader, today, days: dayStats(trades), tiltDays, maxDrawdown: dd != null ? Math.abs(dd) : null, breaks: breaksByDay(progress) };
+  return { trader, today, days: dayStats(trades, risk.days), tiltDays, risk: riskSummary(risk), breaks: breaksByDay(progress) };
 }
 
 const money = (v: number | undefined) => (v == null ? "" : fmtUsd(v));
@@ -63,7 +62,7 @@ const money = (v: number | undefined) => (v == null ? "" : fmtUsd(v));
 async function escalate(f: EscFacts): Promise<Escalation[]> {
   const lastActivity = [await lastUserMessageDay(f.trader), await lastCheckinDay(f.trader)].filter((d): d is string => !!d).sort().at(-1) ?? null;
   const cfg = escalationCfg();
-  const detected = detectEscalations({ today: f.today, days: tradedDays(f), breaks: f.breaks, maxDrawdown: f.maxDrawdown, lastActivity }, cfg);
+  const detected = detectEscalations({ today: f.today, days: tradedDays(f), breaks: f.breaks, maxDrawdown: f.risk.maxDrawdownUsd, drawdownFromPeak: f.risk.drawdownFromPeakUsd, lastActivity }, cfg);
   if (!detected.length) return [];
   const existing = await escalationsOf([f.trader], addDays(f.today, -21));
   const fresh = freshEscalations(detected, existing, f.today, cfg);
@@ -101,12 +100,11 @@ export async function runEscalations(opts: { signal?: AbortSignal; today: string
   const { rows } = await pool.query<{ name: string }>(
     `SELECT name FROM users WHERE active = true AND role = 'trader' AND COALESCE(banned, false) = false ORDER BY name`,
   );
-  const limits = (await loadLimits(null)) as Map<string, { maxDrawdown: number | null }>;
   let n = 0;
   for (const { name } of rows) {
     if (opts.signal?.aborted) break;
     try {
-      n += (await escalate(await lightFacts(name, opts.today, limits))).length;
+      n += (await escalate(await lightFacts(name, opts.today))).length;
     } catch (err) {
       logger.warn({ err }, "mentor: nightly escalation failed for one trader");
     }

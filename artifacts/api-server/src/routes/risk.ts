@@ -63,6 +63,7 @@ import { recordStopAlerts } from "../lib/riskAlertQueue";
 import { buyingPowerProblem } from "../lib/people/stageLimits";
 import { normalizeStageKey, stageOf } from "../lib/people/stage";
 import { logInterventionSafe } from "../lib/interventions/log";
+import { riskStateOf } from "../lib/coreMetrics/risk";
 
 export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
 export type { Alert, DayRow, Horizon, Limits, LiveRisk, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
@@ -131,12 +132,8 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) throw unauthorized();
   const today = clientDate(req.query.date);
-  const [limitsMap, days, positions, resets, snaps] = await Promise.all([
-    loadEffectiveLimits(me, today), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
-  ]);
-  const limits = limitsMap.get(me) ?? null;
-  const live = liveOf(snaps, me, today);
-  const m = computeMetrics(me, days, positions, limits, today, langOf(req), drawdownSince(resets.get(me), today), live);
+  // One loader with the mentor (lib/coreMetrics/risk): the hero and the mentor read the same stop and drawdown.
+  const { limits, live, metrics: m } = await riskStateOf(me, today, langOf(req));
   void recordStopAlerts(m, limits, today);
   const book = live && live.openPositions > 0 ? await loadLivePositions(me, today) : null;
   res.json({

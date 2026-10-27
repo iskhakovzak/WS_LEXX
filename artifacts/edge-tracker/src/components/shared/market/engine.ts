@@ -10,7 +10,7 @@
  *   - "pre" dimensions classify session D by the state at the close of D−1 (plus D's opening gap);
  *   - "day" dimensions classify D by how D itself traded (known only after the fact).
  */
-import { netPnl, resultOf, type TradeLike } from "@/lib/trade-math";
+import { netPnl, resultOf, type TradeLike, winRateOf } from "@/lib/trade-math";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
 import { commonI18n } from "@/i18n/ns/common";
@@ -372,7 +372,7 @@ function stats(def: BucketDef, items: { i: number; day: TraderDay }[], rest: { i
     trades,
     net,
     netPerDay: mean,
-    winRate: wins + losses ? wins / (wins + losses) : null,
+    winRate: winRateOf(wins, losses),
     perTrade: trades ? net / trades : null,
     greenDays: items.filter((x) => x.day.net > 0).length,
     t,

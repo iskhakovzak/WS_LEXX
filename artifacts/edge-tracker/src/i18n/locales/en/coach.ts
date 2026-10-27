@@ -15,7 +15,7 @@ export default {
   },
   breakeven: {
     title: "Win rate vs breakeven",
-    line: "Win rate {wr} · breakeven {be} · margin {margin} pp",
+    line: "Net win rate {wr} · breakeven {be} · margin {margin} pp · {days} trading days",
     hint: "With your average win {avgWin} and loss {avgLoss} you break even at a {be} win rate. Over {days} trading days, net of fees.",
     few: "Not enough trades: at least 5 winners and 5 losers over {days} trading days are needed.",
   },

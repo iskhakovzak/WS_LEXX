@@ -45,6 +45,7 @@ import { can } from "../lib/permissions";
 import { lockedSetupIds } from "../lib/playbookLock";
 import { AppError, badRequest, conflict, notFound, unauthorized } from "../lib/http";
 import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -249,7 +250,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
       setup: g.setup,
       setupLabel: setupLabelOf(g.setup, lang),
       n: g.n, wins: g.wins, losses: g.losses, be: g.be,
-      winRate: decided ? g.wins / decided : null,
+      winRate: winRateOf(g.wins, g.losses),
       winRateCI: ci ? { low: Math.round(ci.low * 10000) / 10000, high: Math.round(ci.high * 10000) / 10000 } : null,
       net: round2(g.net),
       expectancy: g.nets.length ? round2(g.net / g.nets.length) : null,
@@ -268,7 +269,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     return {
       setup, setupLabel: setupLabelOf(setup, lang), bucket, n: c.n, net: round2(c.net),
       avg: c.n ? round2(c.net / c.n) : null,
-      winRate: c.wins + c.losses ? c.wins / (c.wins + c.losses) : null,
+      winRate: winRateOf(c.wins, c.losses),
     };
   });
 

@@ -1,15 +1,13 @@
 /**
  * Fee-aware coaching UI (roadmap R2): the weekly «Комиссии» card (task-framed: what costs money + one rule to test)
  * and the «Винрейт и безубыточный» line (win rate vs the breakeven win rate of the trader's own payoff), shown in the
- * weekly review and on the dashboard. Data: weekly-review `feeCoaching`, GET /api/edge/breakeven.
+ * weekly review (the dashboard links there: one breakeven per screen — its «Комиссии» tile shows the 90-day one).
+ * Data: weekly-review `feeCoaching`.
  */
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { FlaskConical, Receipt, Scale } from "lucide-react";
 import { Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { http } from "@/lib/api/http";
-import { STALE } from "@/lib/api/keys";
 import { fmtNum, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { coachI18n } from "@/i18n/ns/coach";
@@ -59,21 +57,9 @@ export function BreakevenLine({ breakeven, days, className }: { breakeven: EdgeM
       <Scale className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span className="sr-only">{t("breakeven.title")}: </span>
       <span>
-        {t("breakeven.line", { wr: pct(b.winRate), be: pct(b.breakevenWr), margin: `${b.marginPp > 0 ? "+" : b.marginPp < 0 ? "−" : ""}${fmtNum(Math.abs(b.marginPp), { decimals: 1 })}` })}
+        {t("breakeven.line", { days, wr: pct(b.winRate), be: pct(b.breakevenWr), margin: `${b.marginPp > 0 ? "+" : b.marginPp < 0 ? "−" : ""}${fmtNum(Math.abs(b.marginPp), { decimals: 1 })}` })}
       </span>
     </p>
   );
 }
 
-type BreakevenResponse = { scope: string | null; window: { from: string | null; to: string; days: number } | null; breakeven: EdgeMargin | null };
-
-/** The viewer's own breakeven line (dashboard). */
-export function OwnBreakevenLine({ className }: { className?: string }) {
-  const q = useQuery({
-    queryKey: ["/api/edge/breakeven"],
-    queryFn: ({ signal }) => http.get<BreakevenResponse>("/api/edge/breakeven", { signal }),
-    staleTime: STALE.default,
-  });
-  if (!q.data?.window) return null;
-  return <BreakevenLine breakeven={q.data.breakeven} days={q.data.window.days} className={className} />;
-}

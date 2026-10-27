@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParam } from "@/hooks/use-search-param";
 import { Award, Download, ListFilter, Loader2, MoreHorizontal, RefreshCw, SearchX, Sunrise, UserRound, Zap } from "lucide-react";
 import {
   EmptyState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
+import { useServerPref } from "@/hooks/use-server-pref";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { fmtDeskTime, fmtRate } from "@/lib/format";
@@ -27,7 +29,7 @@ import { TickerSheet } from "@/components/analyst/TickerSheet";
 import { enrich, sortRows, weightMap, type Row, type SortState } from "@/components/analyst/rows";
 import {
   DEFAULT_FILTERS, analystPeriod, gapOf, periodFetchDays, isTopFirm, matchesFilters, matchesType, normalizeFilters, nyKey, nyParts, previousSessionDay,
-  ptChangePct, sessionWindow, shortDay, watchlistCatalyst,
+  parseSavedViews, ptChangePct, sessionWindow, shortDay, watchlistCatalyst,
   type FeedAction, type Filters, type OpenPosition, type Period, type SavedView, type SortKey,
 } from "@/components/analyst/lib";
 import { useUrlPeriod } from "@/components/analyst/use-url-period";
@@ -57,14 +59,19 @@ export default function AnalystActionsPage() {
   // ?period (+ from/to) wins on load and mirrors every change; the stored filters stay the fallback.
   const linked = useUrlPeriod<Period>({ normalize: analystPeriod, period: stored.period, custom: stored.custom, fallback: DEFAULT_FILTERS.period, apply: setFilters });
   const filters = useMemo(() => (linked ? normalizeFilters({ ...stored, ...linked }) : stored), [stored, linked]);
-  const [views, setViews] = usePersistentState<SavedView[]>("analyst.views", []);
+  const [views, setViews] = useServerPref<SavedView[]>("analyst.views", [], { legacyKey: "ws_lexx.analyst.views", parse: parseSavedViews }); // on the account
   const [rawSort, setSort] = usePersistentState<SortState>("analyst.sort", DEFAULT_SORT);
   const sort: SortState = SORT_KEYS.includes(rawSort?.key) && (rawSort.dir === "asc" || rawSort.dir === "desc") ? rawSort : DEFAULT_SORT;
 
   const [search, setSearch] = useState("");
-  const [firmFilter, setFirmFilter] = useState<string | null>(null);
-  const [tickerFilter, setTickerFilter] = useState<string | null>(null);
-  const [sheetTicker, setSheetTicker] = useState<string | null>(null);
+  // Firm / ticker filters and the open ticker sheet ride in the URL (?firm= ?ticker= ?sheet=): kept on reload.
+  const [firmP, setFirmP] = useSearchParam("firm", "");
+  const firmFilter = firmP || null;
+  const setFirmFilter = useCallback((u: string | null | ((cur: string | null) => string | null)) => setFirmP(typeof u === "function" ? u(firmP || null) : u), [firmP, setFirmP]);
+  const [tickerP, setTickerFilter] = useSearchParam("ticker", "");
+  const tickerFilter = tickerP || null;
+  const [sheetP, setSheetTicker] = useSearchParam("sheet", "");
+  const sheetTicker = sheetP || null;
   const [firmsOpen, setFirmsOpen] = useState(false);
   const [added, setAdded] = useState<Set<string>>(() => new Set());
   const [planned, setPlanned] = useState<Set<string>>(() => new Set());
@@ -258,11 +265,11 @@ export default function AnalystActionsPage() {
     );
   }, [addPlanMut, canEdit, toast, win.sessionDay]);
 
-  const openRow = useCallback((r: Row) => setSheetTicker(r.a.ticker), []);
+  const openRow = useCallback((r: Row) => setSheetTicker(r.a.ticker), [setSheetTicker]);
   const watchRow = useCallback((r: Row) => addToWatch(r.a), [addToWatch]);
   const planRow = useCallback((r: Row) => addToPlan(r.a), [addToPlan]);
-  const filterFirm = useCallback((f: string) => setFirmFilter(f), []);
-  const filterTicker = useCallback((t: string) => setTickerFilter(t), []);
+  const filterFirm = useCallback((f: string) => setFirmFilter(f), [setFirmFilter]);
+  const filterTicker = useCallback((t: string) => setTickerFilter(t), [setTickerFilter]);
 
   const onSort = useCallback((k: SortKey) => {
     setSort((s) => {
@@ -320,7 +327,7 @@ export default function AnalystActionsPage() {
     setSearch(""); setFirmFilter(null); setTickerFilter(null);
     setFilters({ type: "all", tier: "all", ptMin: 0, sector: null, mineOnly: false, todayOnly: false, minCapB: 0 });
     setSort((s) => (s?.key === "score" ? DEFAULT_SORT : s));
-  }, [setFilters, setSort]);
+  }, [setFilters, setSort, setFirmFilter, setTickerFilter]);
   const hasFilters = !!(search || firmFilter || tickerFilter) || filters.type !== "all" || filters.tier !== "all" || !!filters.ptMin
     || !!filters.sector || filters.mineOnly || filters.todayOnly || filters.minCapB > 0 || sort.key === "score";
 
@@ -365,7 +372,7 @@ export default function AnalystActionsPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sheetTicker, firmsOpen, filters.todayOnly, filters.mineOnly, setFilters, hasFilters, resetFilters, tableRows, focusedIndex, addToWatch, addToPlan, inPlan]);
+  }, [sheetTicker, firmsOpen, filters.todayOnly, filters.mineOnly, setFilters, hasFilters, resetFilters, tableRows, focusedIndex, addToWatch, addToPlan, inPlan, setSheetTicker]);
 
   const periodLabel = periodName(filters.period, filters.custom);
   const scopeLabel = traderName ? personName(traderName) : tf("page.wholeTeam");

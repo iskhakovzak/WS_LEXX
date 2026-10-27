@@ -25,6 +25,7 @@ import { round2, round4 } from "./csv";
 import { feeKeyFor } from "./fees";
 import { propreportsT } from "../../i18n/ns";
 import type { Lang } from "../../i18n";
+import { winRateOf } from "../coreMetrics/kpi";
 
 export interface PerfSideStats {
   count: number;
@@ -311,7 +312,7 @@ function finalize(report: PerformanceReport, lang: Lang): PerformanceReport {
         label: "Win/Loss Trades (derived)",
         wins: { count: wins, gross: sum((r) => r.wins.gross), avgGross: 0, fees: sum((r) => r.wins.fees), net: sum((r) => r.wins.net), avgNet: 0, avgHoldSeconds: null, avgHold: null },
         losses: { count: losses, gross: sum((r) => r.losses.gross), avgGross: 0, fees: sum((r) => r.losses.fees), net: sum((r) => r.losses.net), avgNet: 0, avgHoldSeconds: null, avgHold: null },
-        totals: { gross: sum((r) => r.totals.gross), fees: sum((r) => r.totals.fees), net: sum((r) => r.totals.net), winRate: wins + losses ? round2((wins / (wins + losses)) * 100) : null, wlRatio: null, avgHoldSeconds: null, avgHold: null },
+        totals: { gross: sum((r) => r.totals.gross), fees: sum((r) => r.totals.fees), net: sum((r) => r.totals.net), winRate: wins + losses ? round2(((winRateOf(wins, losses) ?? 0)) * 100) : null, wlRatio: null, avgHoldSeconds: null, avgHold: null },
         trades: wins + losses,
       };
       report.issues.push(tr("perf.noTotal"));

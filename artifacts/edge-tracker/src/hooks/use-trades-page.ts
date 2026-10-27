@@ -6,6 +6,7 @@ import { keepPreviousData, useQuery, useQueryClient, type QueryClient } from "@t
 import { getListTradesQueryKey, type Trade } from "@workspace/api-client-react";
 import { ApiError, http } from "@/lib/api/http";
 import { applyPreset, isUnreviewed, presetCounts, type Preset } from "@/components/trades/review-presets";
+import { winRateOf } from "@/lib/trade-math";
 import {
   applyBaseFilters,
   applyOutcome,
@@ -478,7 +479,7 @@ export function groupTradeDays(list: Trade[]): { days: TradeDay[]; byDay: Map<st
     }
     days.push({
       date, count: arr.length, wins, losses, be, open,
-      winRate: wins + losses ? wins / (wins + losses) : null,
+      winRate: winRateOf(wins, losses),
       gross: pnlCount ? gross : null, fees: pnlCount ? fees : null, net: pnlCount ? net : null,
       maxNet, minNet, rCount, totalR, untagged,
       firstAt: wallHm(first), lastAt: wallHm(last), seq,

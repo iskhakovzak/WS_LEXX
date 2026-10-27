@@ -1,3 +1,4 @@
+import { maxDrawdown, winRateOf } from "@/lib/trade-math";
 /**
  * Edge-finder maths: seeded RNG, bootstrap confidence intervals, Monte Carlo on a trade distribution,
  * "what if" rule simulation and desk percentiles. Pure functions, no DOM, no imports — runs in a Web Worker
@@ -52,13 +53,7 @@ export function quantile(xs: number[], q: number): number {
 
 /** Peak-to-trough drawdown (≤ 0) of a cumulative series built from per-trade values (Monte Carlo paths). */
 export function maxDrawdownOf(values: number[]): number {
-  let cum = 0, peak = 0, dd = 0;
-  for (const v of values) {
-    cum += v;
-    if (cum > peak) peak = cum;
-    if (cum - peak < dd) dd = cum - peak;
-  }
-  return dd;
+  return maxDrawdown(values);
 }
 
 /**
@@ -103,7 +98,7 @@ export function kpisOf(values: number[], days?: readonly string[] | null): Value
   const n = values.length;
   return {
     n, total, wins, losses,
-    winRate: wins + losses ? wins / (wins + losses) : null,
+    winRate: winRateOf(wins, losses),
     expectancy: n ? total / n : null,
     avgWin: wins ? sumW / wins : null,
     avgLoss: losses ? sumL / losses : null,
@@ -215,6 +210,7 @@ export function monteCarlo(inp: MonteCarloInput): MonteCarloResult | null {
       cum += v;
       daySum += v;
       weekSum += v;
+      // core-metric-ok: one Monte Carlo path, its drawdown tracked step by step with the other path stats
       if (cum > peak) peak = cum;
       if (cum - peak < dd) dd = cum - peak;
       if (v < 0) { streak++; if (streak > maxStreak) maxStreak = streak; } else streak = 0;
@@ -257,7 +253,7 @@ export function monteCarlo(inp: MonteCarloInput): MonteCarloResult | null {
     limitDaysPerRun: daily != null ? limitDays / runs : null,
     maxDrawdown: { p50: quantileSorted(ds, 0.5), p95: quantileSorted(ds, 0.05), worst: ds[0] },
     maxLossStreak: { p50: quantileSorted(ss, 0.5), p95: quantileSorted(ss, 0.95), worst: ss[ss.length - 1] },
-    input: { n, mean: mean(values)!, winRate: wins + losses ? wins / (wins + losses) : null },
+    input: { n, mean: mean(values)!, winRate: winRateOf(wins, losses) },
   };
 }
 

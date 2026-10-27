@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Grid3x3, RefreshCw } from "lucide-react";
-import { Panel, Segmented, EmptyState, Pill, TableScroll, toneOf } from "@/components/ds";
+import { Panel, Segmented, EmptyState, Pill, TableScroll, toneOf, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,6 +13,7 @@ import {
   type EdgeCell, type EdgeDimension, EDGE_DIMENSIONS, edgeDimLabel, useEdgeMatrix, edgeKeyLabel, sortEdgeKeys,
 } from "./edge-api";
 import { bootstrapMeanCI, hashSeed, type BootstrapCI } from "./edge-stats";
+import { winRateOf } from "@/lib/trade-math";
 
 type Metric = "expectancy" | "total" | "winRate" | "pf";
 const METRICS: Metric[] = ["expectancy", "total", "winRate", "pf"];
@@ -40,7 +41,7 @@ function statsOf(cell: EdgeCell, unit: Unit, seed: number): CellStats {
   const neg = unit === "r" ? cell.negR : cell.negNet;
   return {
     cell, n,
-    winRate: decided ? cell.wins / decided : null, wrLo, wrHi,
+    winRate: winRateOf(cell.wins, cell.losses), wrLo, wrHi,
     expectancy: n ? total / n : null, total,
     pf: neg < 0 ? pos / Math.abs(neg) : null,
     ci: values.length >= 5 ? bootstrapMeanCI(values, { iters: 600, seed }) : null,
@@ -82,7 +83,7 @@ export function EdgeMatrixTab({
   const [rows, setRows] = useState<EdgeDimension>("setup");
   const [cols, setCols] = useState<EdgeDimension>("horizon");
   const [tod, setTod] = useState<15 | 30>(30);
-  const [metric, setMetric] = useState<Metric>("expectancy");
+  const [metric, setMetric] = usePersistentState<Metric>("analytics.matrix.metric", "expectancy");
   const [minN, setMinN] = useState<(typeof MIN_N_OPTIONS)[number]>(5);
   const [selected, setSelected] = useState<{ row: string; col: string } | null>(null);
   const u: Unit = unit ?? "r";

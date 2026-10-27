@@ -4,7 +4,8 @@
  *
  *   tilt_streak          the last `tiltDays` traded days in a row each had a tilt / revenge / martingale trade
  *   rule_breaks          ≥ `breakCount` breaks of active commitments within the last `breakWindow` weekdays
- *   drawdown_near_limit  the drawdown from the equity peak reached `ddShare` of the trader's max drawdown limit
+ *   drawdown_near_limit  the drawdown from the equity peak reached `ddShare` of the trader's max drawdown limit (both from
+ *                        the risk desk's state, lib/coreMetrics/risk — the numbers the dashboard hero shows)
  *   silence              a trader active in the last 30 days has not traded, checked in or talked to the mentor for
  *                        `silenceDays` weekdays
  * The same rule does not fire again for a trader within `cooldownDays` weekdays of the previous one (open or
@@ -28,6 +29,8 @@ export type EscalationInput = {
   breaks: ReadonlyMap<string, number>;
   /** The trader's max drawdown limit in $ (positive), null = none set. */
   maxDrawdown: number | null;
+  /** The drawdown from the equity peak now, $ ≥ 0 (lib/coreMetrics/risk riskSummary.drawdownFromPeakUsd). */
+  drawdownFromPeak: number;
   /** Latest day with any sign of life: a trade, a check-in, a message to the mentor. */
   lastActivity: string | null;
 };
@@ -48,17 +51,6 @@ export function lastWeekdays(today: string, n: number): string[] {
   return out;
 }
 
-/** Peak-to-now drawdown in $ of the cumulative day nets (oldest first), ≥ 0. */
-export function currentDrawdown(nets: readonly number[]): number {
-  let cum = 0;
-  let peak = 0;
-  for (const n of nets) {
-    cum += n;
-    if (cum > peak) peak = cum;
-  }
-  return Math.round((peak - cum) * 100) / 100;
-}
-
 export function detectEscalations(i: EscalationInput, cfg: EscalationCfg = DEFAULT_ESCALATION_CFG): Detected[] {
   const out: Detected[] = [];
   const traded = [...i.days].filter((d) => d.day <= i.today && d.trades > 0).sort((a, b) => a.day.localeCompare(b.day));
@@ -73,7 +65,7 @@ export function detectEscalations(i: EscalationInput, cfg: EscalationCfg = DEFAU
   if (breaks >= cfg.breakCount) out.push({ rule: "rule_breaks", params: { count: breaks, days: cfg.breakWindow } });
 
   if (i.maxDrawdown != null && i.maxDrawdown > 0) {
-    const dd = currentDrawdown(traded.map((d) => d.net));
+    const dd = i.drawdownFromPeak;
     if (dd >= cfg.ddShare * i.maxDrawdown) out.push({ rule: "drawdown_near_limit", params: { drawdown: dd, limit: i.maxDrawdown, pct: Math.round((dd / i.maxDrawdown) * 100) } });
   }
 

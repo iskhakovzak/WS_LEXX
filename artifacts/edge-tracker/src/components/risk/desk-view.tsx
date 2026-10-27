@@ -1,3 +1,4 @@
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import * as React from "react";
 import { Briefcase, Moon, ShieldAlert, Users, Wallet, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -107,9 +108,12 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
     setSelected(focusTrader);
   }, [focusTrader, focusTab, allRows]);
 
+  // The open card lives in the URL (?trader=&tab=limits): a reload keeps it, closing it clears it.
   const open = (trader: string, tab: "overview" | "limits" = "overview") => {
     setSheetTab(tab);
     setSelected(trader);
+    focusedOnce.current = trader;
+    replaceSearchParams({ trader, tab: tab === "limits" ? tab : null });
   };
 
   const attention = (t: DeskTableRow) => t.level === "stop" || t.level === "near";
@@ -290,7 +294,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
         row={selectedRow}
         positions={positions}
         open={!!selectedRow}
-        onOpenChange={(o) => { if (!o) setSelected(null); }}
+        onOpenChange={(o) => { if (!o) { setSelected(null); focusedOnce.current = null; replaceSearchParams({ trader: null, tab: null }); } }}
         initialTab={sheetTab}
       />
     </div>

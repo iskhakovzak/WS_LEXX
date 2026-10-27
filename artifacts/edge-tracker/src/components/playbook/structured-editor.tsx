@@ -18,7 +18,7 @@ import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { invalidatePlaybook, notLiveMessage } from "./api";
-import { http } from "@/lib/api/http";
+import { ApiError, http } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage, usePlaybookMediaUrl } from "./media";
 import { DocSection } from "./setup-bits";
 import { InlineTextSection, ThesisView, structureConditions } from "./setup-document";
@@ -57,9 +57,17 @@ function useAutosave(entryId: number) {
     } catch (e) {
       setState("error");
       toast({ title: commonI18n.t("states.saveFailed"), description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
-      invalidatePlaybook(qc, entryId);
+      // Keep the typed text: put the patch back (newer edits win) and try again shortly, instead of refetching the
+      // server copy over it. A refusal of the content itself (4xx) shows the server copy as before.
+      if (e instanceof ApiError && (e.status === 0 || e.status >= 500)) {
+        pending.current = { ...body, ...pending.current };
+        if (!timer.current) timer.current = window.setTimeout(() => void flushRef.current(), 10_000);
+      } else invalidatePlaybook(qc, entryId);
     }
   }, [entryId, qc, toast]);
+
+  const flushRef = React.useRef(flush);
+  flushRef.current = flush;
 
   const queue = React.useCallback((patch: Patch, immediate = false) => {
     pending.current = { ...pending.current, ...patch };

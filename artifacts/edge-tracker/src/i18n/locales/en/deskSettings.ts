@@ -30,6 +30,7 @@ export default {
     regime: { title: "Market regime and limits", description: "The daily loss limit multiplier of each desk market regime. By default it is a suggestion: the risk screen and the trader’s day show «base × multiplier». «Apply automatically» makes the stops use it; stored limits never change, so switching it off restores the base at once." },
     capital: { title: "Capital allocation", description: "Weekly (Friday 19:30 NY) and with «Recalculate» on the scaling plan: whose daily loss limit and BP to raise, keep or cut. Uses the edge shrunk toward zero (a small sample is no proof), the edge in the current market regime and discipline. Decisions go to the scaling plan queue; without «Auto-apply» nothing changes by itself." },
     mentor: { title: "AI mentor", description: "The trader’s personal AI mentor (the “Mentor” page): a brief before the session, a debrief after it, commitments scored from the trades, memory. Runs on the assistant’s models and spends the personal daily AI budget. Signals to the curator need no AI and cost nothing. The brief and debrief prepared ahead go in one batch at half price, off by default." },
+    dayState: { title: "Day state and silence", description: "What the dashboard shows first: a stop, the return after a pause, the newcomer path or the time of day (premarket, session, after the close). The rest folds away but stays behind «Show all». In the evening (18:45 NY, weekdays) the curator gets one notice about a trader gone quiet, and once a week about unclosed reviews. Telegram is off by default." },
     access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
     other: { title: "Other", description: "Settings without a group." },
   },
@@ -182,6 +183,15 @@ export default {
       capPctOfTier: { label: "Limit cap", help: "The daily limit never goes above this share of the tier template (nor the next tier's template) — beyond that only a tier promotion." },
       maxDeskGrowthPct: { label: "Desk risk growth per run", help: "The desk's total daily limit grows by at most this much (plus what cuts free up). Raises are scaled down proportionally." },
       autoApply: { label: "Auto-apply", help: "Off — decisions wait for a curator or an admin in the queue. On — the weekly run applies them itself (logged and reversible). «Recalculate» never applies by itself." },
+    },
+    dayState: {
+      pausedDays: { label: "Pause: trading days without trades", help: "After this many trading days without trades (NYSE holidays skipped) the dashboard greets with «Welcome back» and the curator gets «quiet for N days»." },
+      newcomerTrades: { label: "Newcomer: up to how many trades", help: "While closed trades are fewer, the dashboard leads through the first steps and hides empty analytics. 0 — no newcomer mode." },
+      newcomerMaxDays: { label: "Newcomer: at most, days", help: "Newcomer mode only in the account's first this many calendar days. 0 — no time bound." },
+      staleStepDays: { label: "Next step: freshness, trading days", help: "A task older than this (e.g. reviewing a long-past day) never becomes the main step — old leftovers fold into one line." },
+      silenceEnabled: { label: "Silence signal to the curator", help: "In the evening (18:45 NY, weekdays) — one in-app notice per silence episode and once a week about unclosed reviews. No repeat if the AI mentor already reported the silence." },
+      missedReviewDays: { label: "Unclosed reviews for the signal", help: "This many trading days without a closed review (in the last 30 days) — a reason to tell the curator." },
+      silenceTelegram: { label: "Also in Telegram", help: "Off by default. On — the curator also gets the signal in Telegram, and the trader a short «Welcome back» (production server with a bot only)." },
     },
     mentor: {
       enabled: { label: "AI mentor", help: "Off — the “Mentor” page shows commitments and notes, but the mentor does not write." },

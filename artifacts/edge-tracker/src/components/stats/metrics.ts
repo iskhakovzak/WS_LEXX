@@ -96,10 +96,13 @@ export function statsRanges(period: StatsPeriod, custom: DayRange | null, now = 
 }
 
 /** Label / phrase of the period («Квартал» / «последние 90 дней»; «Свой период» / «3–21 окт. 2026 г.»). */
-export function periodTexts(period: StatsPeriod, custom: DayRange | null): { label: string; long: string } {
-  if (period === "custom" && custom) return { label: commonI18n.t("periodPicker.title"), long: fmtDateRange(custom.from, custom.to, "short") };
+export function periodTexts(period: StatsPeriod, custom: DayRange | null): { label: string; long: string; short: string } {
+  if (period === "custom" && custom) {
+    const range = fmtDateRange(custom.from, custom.to, "short");
+    return { label: commonI18n.t("periodPicker.title"), long: range, short: range };
+  }
   const p = period === "custom" ? DEFAULT_ANALYTICS_PERIOD : period;
-  return { label: commonI18n.t(`periodPicker.presets.${p}`), long: statsI18n.t(`period.${p}`) };
+  return { label: commonI18n.t(`periodPicker.presets.${p}`), long: statsI18n.t(`period.${p}`), short: commonI18n.t(`periodPicker.short.${p}`) };
 }
 
 /**
@@ -304,6 +307,7 @@ export function equitySeries(trades: Trade[], metric: Metric): EquityPoint[] {
     const v = valueOf(t, metric);
     if (v == null) continue;
     cum += v;
+    // core-metric-ok: the underwater series / candle of the chart, point by point
     peak = Math.max(peak, cum);
     out.push({ idx: out.length + 1, equity: cum, drawdown: cum - peak, label: `${t.ticker} · ${fmtDayKey(dayKey(t))}`, id: t.id });
   }
@@ -361,7 +365,7 @@ export function groupBy(trades: Trade[], keyFn: (t: Trade) => string | null | un
     count: e.count,
     closed: e.closed,
     wins: e.wins,
-    winRate: e.wins + e.losses ? e.wins / (e.wins + e.losses) : null,
+    winRate: winRateOf(e.wins, e.losses),
     value: e.valued ? e.sum : null,
     avg: e.valued ? e.sum / e.valued : null,
     valued: e.valued,

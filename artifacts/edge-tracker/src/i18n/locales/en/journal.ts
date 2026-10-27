@@ -21,6 +21,7 @@ export default {
     saved: "Journal saved",
     conflictTitle: "The entry was changed in another tab",
     conflictDesc: "The latest version is loaded — check it and add what you need.",
+    keepMine: "Restore my text",
     saveFailed: "Couldn’t save the journal",
     dayClosed: "Day {date} closed",
     sentToCurator: "The review was sent to the curator.",

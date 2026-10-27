@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { motion } from "framer-motion";
 import { useReducedMotion } from "@/lib/motion";
 import { Lightbulb, PieChart, Plus, Scale, Search, Target, Timer, TrendingUp } from "lucide-react";
@@ -33,6 +34,15 @@ type View = IdeasView;
 type Scope = IdeasScope;
 type Sort = IdeasSort;
 type StageFilter = IdeasStageFilter;
+
+function urlPick<T extends string>(name: string, allowed: readonly string[], fallback: T): T {
+  try {
+    const v = new URLSearchParams(window.location.search).get(name);
+    return v && (!allowed.length || allowed.includes(v)) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const PREF = { view: "ideas.view", scope: "ideas.scope", sort: "ideas.sort", author: "ideas.author" };
 
@@ -90,10 +100,16 @@ export default function TradeIdeas() {
   const [scope, setScopeState] = useState<Scope>(() => readPref<Scope>(PREF.scope, ["all", "mine"], "all"));
   const [sort, setSortState] = useState<Sort>(() => readPref<Sort>(PREF.sort, ["new", "score", "rr"], "new"));
   const [author, setAuthorState] = useState<string>(() => { try { return localStorage.getItem(PREF.author) || "all"; } catch { return "all"; } });
-  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  // Stage / horizon / ticker filters ride in the URL (?stage= ?hz= ?ticker=): a reload or a shared link keeps them.
+  const [stageFilter, setStageFilter] = useState<StageFilter>(() => urlPick<StageFilter>("stage", ["draft", "review", "active", "won", "lost", "rejected"], "all"));
   const [query, setQuery] = useState("");
-  const [tickerFilter, setTickerFilter] = useState<string | null>(null);
-  const [horizon, setHorizon] = useState<"all" | Horizon>("all");
+  const [tickerFilter, setTickerFilter] = useState<string | null>(() => urlPick("ticker", [], "").toUpperCase() || null);
+  const [horizon, setHorizon] = useState<"all" | Horizon>(() => urlPick<"all" | Horizon>("hz", ["intraday", "overnight", "swing"], "all"));
+  const tickerRef = useRef<string | null>(null);
+  useEffect(() => {
+    tickerRef.current = tickerFilter;
+    replaceSearchParams({ ticker: tickerFilter, stage: stageFilter, hz: horizon }, { stage: "all", hz: "all" });
+  }, [tickerFilter, stageFilter, horizon]);
   const setView = (v: View) => { setViewState(v); writePref(PREF.view, v); };
   const setScope = (v: Scope) => { setScopeState(v); writePref(PREF.scope, v); };
   const setSort = (v: Sort) => { setSortState(v); writePref(PREF.sort, v); };
@@ -204,10 +220,10 @@ export default function TradeIdeas() {
       if (canEdit) { setEditing(null); setPrefillTicker(t); setFormOpen(true); }
       params.delete("new"); strip = true;
     }
-    if (t) {
+    if (t && t !== tickerRef.current) {
+      tickerRef.current = t;
       setTickerFilter(t);
-      setStageFilter("all");
-      params.delete("ticker"); strip = true;
+      if (!params.get("stage")) setStageFilter("all");
     }
     const raw = params.get("idea") ?? params.get("highlight");
     if (raw && !isLoading && raw !== handledIdeaParam.current) {
@@ -499,6 +515,7 @@ export default function TradeIdeas() {
             submitLabel={editing && editing.status !== "draft" ? tc("actions.save") : t("form.saveDraft")}
             onCancel={closeForm}
             submitting={submitting}
+            draftKey={`idea:${editing?.id ?? "new"}`}
           />
         </DialogContent>
       </Dialog>

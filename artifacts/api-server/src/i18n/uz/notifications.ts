@@ -80,6 +80,29 @@ export default {
     drawdown_near_limit: { title: "AI-mentor: {trader} — drawdown limitga yaqin", body: "Drawdown {drawdown} — {limit} limitning {pct}%. Keyingi sessiyagacha hajm va rejani muhokama qilish kerak." },
     silence: { title: "AI-mentor: {trader} {days} kundan beri jim", body: "{days} savdo kuni savdosiz, chek-insiz va mentor bilan suhbatsiz. Balki birinchi boʻlib yozish kerakdir." },
   },
+  trader_silence: {
+    title: "{trader}: sizning nazaringiz kerak",
+    body: "Kurator kabinetini oching.",
+    silence: {
+      title: { one: "{trader} {count} savdo kuni jim", other: "{trader} {count} savdo kuni jim" },
+      body: "Oxirgi savdo — {last}. Birinchi boʻlib yozing: qisqa va bosimsiz — ishlar qandayligini va qanday yordam berish mumkinligini soʻrang.",
+      tg: "<b>{trader} {count} savdo kuni jim</b>\nOxirgi savdo — {last}. Birinchi boʻlib yozing — qisqa va bosimsiz.",
+    },
+    reviews: {
+      title: { one: "{trader}: {count} kun tahlilsiz", other: "{trader}: {count} kun tahlilsiz" },
+      body: "Tahlillar {oldest} dan beri yopilmagan. Ularni birdaniga yopishga yordam bering yoki qaysilarini oʻtkazib yuborishni kelishib oling.",
+      tg: "<b>{trader}: {count} kun tahlilsiz</b>\nTahlillar {oldest} dan beri yopilmagan. Birdaniga yopishga yordam bering yoki qaysilarini oʻtkazishni kelishing.",
+    },
+    back: {
+      title: "Xush kelibsiz",
+      body: "Bozor joyida. Bitta kichik qadamdan boshlang — bugungi reja besh daqiqa oladi.",
+      tg: "<b>Xush kelibsiz!</b>\nBozor joyida. Bitta kichik qadamdan boshlang: bugungi reja — besh daqiqa. Eski tahlillar kutib turadi.",
+    },
+  },
+  curator_message: {
+    title: "Kuratoringiz {curator} yozmoqda",
+    body: "{text}",
+  },
   mentor_ready: {
     title: "Mentor: tayyor",
     body: "Mentorni oching.",
@@ -110,6 +133,8 @@ export default {
     },
   },
   types: {
+    trader_silence: { label: "Treyder jim", description: "Treyder bir necha savdo kuni savdosiz yoki yopilmagan tahlillar toʻplanmoqda — kuratorga bitta xabar, «Yozish» tugmasi bilan" },
+    curator_message: { label: "Kurator xabari", description: "Kuratoringizdan qisqa shaxsiy xabar" },
     mentor_escalation: { label: "Mentor: kurator kerak", description: "AI-mentor inson bilan hal qilgan maʼqul boʻlgan holatni koʻrmoqda: bir necha kun tilt, majburiyat buzilishi, limitga yaqin drawdown, jimlik" },
     mentor_ready: { label: "Mentor: brif yoki tahlil tayyor", description: "Sessiyadan oldingi brif yoki keyingi tahlil oldindan tayyorlandi (administrator rejali yuborishni yoqqan boʻlsa)" },
     ai_review_ready: { label: "AI-tahlil tayyor", description: "Kuningizning tungi AI-tahlili (yoqilgan boʻlsa — hafta yoki oyniki ham) tayyor — ertalab keladi" },

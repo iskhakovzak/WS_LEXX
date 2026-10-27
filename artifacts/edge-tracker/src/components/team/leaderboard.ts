@@ -3,7 +3,7 @@
 // trade math (net = gross − |fees|, signed R, W/(W+L), PF = ΣR⁺/|ΣR⁻|); nothing is recomputed here.
 import type { Trade } from "@workspace/api-client-react";
 import { addDays, nyDate } from "@/lib/trading-date";
-import { closeDate, isClosed, netPnl, signedR } from "@/lib/trade-math";
+import { closeDate, isClosed, netPnl, signedR, winRateOf } from "@/lib/trade-math";
 import { fmtDate, fmtDateRange } from "@/lib/format";
 import { teamI18n } from "@/i18n/ns/team";
 import { commonI18n } from "@/i18n/ns/common";
@@ -193,7 +193,7 @@ export function teamKpis(rows: TraderRow[]) {
     closed,
     wins,
     losses,
-    winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+    winRate: winRateOf(wins, losses),
     totalR: rCount > 0 ? r : null,
     expectancyR: rCount > 0 ? r / rCount : null,
     net: hasNet ? net : null,
@@ -241,7 +241,7 @@ export function rollupSetups(trades: Trade[]): SetupRow[] {
     else if (res === "loss") row.losses++;
   }
   return [...map.values()]
-    .map(({ hasNet, ...row }) => ({ ...row, net: hasNet ? row.net : null, winRate: row.wins + row.losses ? row.wins / (row.wins + row.losses) : null }))
+    .map(({ hasNet, ...row }) => ({ ...row, net: hasNet ? row.net : null, winRate: winRateOf(row.wins, row.losses) }))
     .sort((a, b) => b.r - a.r || b.count - a.count);
 }
 

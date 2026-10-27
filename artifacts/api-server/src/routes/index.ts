@@ -10,6 +10,7 @@ import watchlistRouter from "./watchlist";
 import playbookRouter from "./playbook";
 import playbookTodayRouter from "./playbook-today";
 import playbookSpacesRouter from "./playbook-spaces";
+import { forgetOfficeSetups } from "../lib/tradesSetupLink";
 import activityRouter from "./activity";
 import errorsRouter from "./errors";
 import big7levelsRouter from "./big7levels";
@@ -102,6 +103,7 @@ import officeStatsRouter from "./officeStats";
 import officeRecsRouter from "./officeRecs";
 import askRouter from "./ask";
 import dailyRouter from "./daily";
+import dayStateRouter from "./day-state";
 import deskDayRouter from "./deskDay";
 import topRouter from "./top";
 import questsRouter from "./quests";
@@ -129,6 +131,12 @@ router.use(dailyfeedRouter);
 router.use(discussionsRouter);
 router.use(dashboardRouter);
 router.use(watchlistRouter);
+// Any successful playbook write (create, rename, move to the office space, delete) drops the 60 s office-setups memo, so
+// a trade tagged with a setup made a moment ago links to it (lib/tradesSetupLink).
+router.use("/playbook", (req, res, next) => {
+  if (req.method !== "GET") res.on("finish", () => { if (res.statusCode < 400) forgetOfficeSetups(); });
+  next();
+});
 router.use(playbookTodayRouter); // before playbookRouter: /playbook/today is not a setup id
 router.use(playbookRouter);
 router.use(playbookSpacesRouter);
@@ -220,6 +228,7 @@ router.use(officeStatsRouter);
 router.use(officeRecsRouter);
 router.use(askRouter);
 router.use(dailyRouter);
+router.use(dayStateRouter); // the trader's day state: /me/state, /state/team, /state/message (lib/dayState)
 router.use(deskDayRouter);
 router.use(topRouter);
 router.use(questsRouter);

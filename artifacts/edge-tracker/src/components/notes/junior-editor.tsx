@@ -20,11 +20,13 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   BUILTIN_TEMPLATES, MOODS, SECTION_META, applyTemplate, composeSections, isUnread,
-  loadMyTemplate, localToday, nextTradingDay, prevTradingDay, qk, relTime, saveMyTemplate, sectionsOf,
+  localToday, nextTradingDay, prevTradingDay, qk, relTime, sectionsOf,
   wordCount, type JuniorNote, type SectionKey, type Sections, type Template,
 } from "./junior-lib";
 import { fmtDate } from "@/lib/format";
 import { http } from "@/lib/api/http";
+import { useServerPref } from "@/hooks/use-server-pref";
+import { dropLocalNote, keepLocalNote, localDiffers, myTemplateOf, parseSections, readLocalNote, retryableSave } from "./junior-persist";
 import { FeedbackCard, LoadError, MarkdownText } from "./junior-ui";
 import { JuniorDayContext } from "./junior-day-context";
 import { SPEECH_FALLBACK, getSR, speechLang, type SpeechRecognitionLike } from "./author-dictation";
@@ -73,7 +75,8 @@ export function JuniorEditor({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [freshFeedbackId, setFreshFeedbackId] = React.useState<number | null>(null);
-  const [myTemplate, setMyTemplate] = React.useState<Template | null>(() => loadMyTemplate());
+  const [mySections, setMySections] = useServerPref<Sections | null>("junior.template", null, { legacyKey: "ws_lexx_junior_template", parse: parseSections });
+  const myTemplate = myTemplateOf(mySections), failed = React.useRef(false);
 
   const initFor = React.useRef<string | null>(null);
   const dateRef = React.useRef(date);
@@ -98,7 +101,9 @@ export function JuniorEditor({
     setSaveState(dayQ.data ? "saved" : "idle");
     setSavedAt(dayQ.data ? Date.parse(dayQ.data.updated_at) : null);
     setReady(true);
-  }, [dayQ.isSuccess, dayQ.data, date]);
+    const local = readLocalNote(trader, date); // a copy the server never confirmed comes back and is saved again
+    if (local && localDiffers(local, s, dayQ.data?.mood ?? "")) { setSections(local.sections); setMood(local.mood); schedule(local); }
+  }, [dayQ.isSuccess, dayQ.data, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Persist (serialised so out-of-order responses can't clobber newer text) ── */
   const persist = React.useCallback(
@@ -112,20 +117,25 @@ export function JuniorEditor({
         }
         if (p.date === dateRef.current) setSaveState("saving");
         try {
-          const saved = await http.put<JuniorNote>("/api/junior-notes", { note_date: p.date, sections: p.sections, mood: p.mood || null });
+          const body = { note_date: p.date, sections: p.sections, mood: p.mood || null }; // keepalive: survives a tab close (≈64 KB cap)
+          const saved = await http.put<JuniorNote>("/api/junior-notes", body, { keepalive: JSON.stringify(body).length < 30_000 });
           qc.setQueryData(qk.day(trader, p.date), saved);
           qc.setQueryData<JuniorNote[]>(qk.history(trader), (prev) => {
             if (!prev) return prev;
             const rest = prev.filter((n) => n.id !== saved.id);
             return [saved, ...rest].sort((a, b) => b.note_date.localeCompare(a.note_date));
           });
+          dropLocalNote(trader, p); failed.current = false;
           if (p.date === dateRef.current && !pending.current) {
             setSaveState("saved");
             setSavedAt(Date.now());
           }
           return saved;
-        } catch {
+        } catch (err) {
           if (p.date === dateRef.current) setSaveState("error");
+          if (!failed.current) toast({ title: tc("states.saveFailed"), description: (err as Error)?.message, variant: "destructive" });
+          failed.current = true;
+          if (retryableSave(err) && !pending.current) retryRef.current(p, 10_000);
           return null;
         }
       };
@@ -133,7 +143,7 @@ export function JuniorEditor({
       chain.current = next;
       return next;
     },
-    [qc, trader],
+    [qc, trader, toast, tc],
   );
 
   const flush = React.useCallback(() => {
@@ -144,14 +154,16 @@ export function JuniorEditor({
   }, [persist]);
 
   const schedule = React.useCallback(
-    (p: Payload) => {
+    (p: Payload, delay = 1500) => {
       pending.current = p;
+      keepLocalNote(trader, p);
       setSaveState("dirty");
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => { void flush(); }, 1500);
+      timer.current = setTimeout(() => { void flush(); }, delay);
     },
-    [flush],
+    [flush, trader],
   );
+  const retryRef = React.useRef(schedule); retryRef.current = schedule; // persist → retry later (declared before schedule)
 
   // Flush when switching day or leaving the page.
   React.useEffect(() => () => { void flush(); }, [date, flush]);
@@ -413,10 +425,8 @@ export function JuniorEditor({
                 <DropdownMenuItem
                   disabled={!words}
                   onSelect={() => {
-                    if (saveMyTemplate(sections)) {
-                      setMyTemplate(loadMyTemplate());
-                      toast({ title: t("junior.editor.savedAsMine") });
-                    }
+                    setMySections(sections);
+                    toast({ title: t("junior.editor.savedAsMine") });
                   }}
                 >
                   {t("junior.editor.saveAsMine")}
@@ -616,7 +626,7 @@ function SectionField({
       <Textarea
         id={id}
         ref={(el) => { fieldRefs.current[k] = el; }}
-        rows={rows}
+        rows={rows} maxLength={6000}
         value={value ?? ""}
         placeholder={meta.placeholder}
         onFocus={() => { focusedKey.current = k; }}

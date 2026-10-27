@@ -4,10 +4,9 @@ import { eq, and, gte, lte, isNull, desc } from "drizzle-orm";
 import { logger } from "./logger";
 import { psychologyT } from "./behaviorI18n";
 import { DEFAULT_LANG, type Lang } from "../i18n";
+import { netPnl, normResult, roundShare, winRateOf } from "./coreMetrics/kpi";
 
-function isWin(result: string) {
-  return result === "win" || result === "прибыль"; // i18n-ignore (legacy stored result value)
-}
+type Res = ReturnType<typeof normResult>;
 
 // Local calendar date (YYYY-MM-DD). toISOString() converts to UTC first, which on
 // servers east of UTC turned local Monday 00:00 into Sunday — the week started on Sunday.
@@ -50,6 +49,7 @@ export function getCurrentWeekBounds() {
 
 interface DayStats {
   wins: number;
+  losses: number;
   total: number;
   pnl: number;
   rSum: number;
@@ -57,12 +57,14 @@ interface DayStats {
 }
 
 function emptyDayStats(): DayStats {
-  return { wins: 0, total: 0, pnl: 0, rSum: 0, rCount: 0 };
+  return { wins: 0, losses: 0, total: 0, pnl: 0, rSum: 0, rCount: 0 };
 }
 
-function accum(stats: DayStats, pnl: number, win: boolean, r: number | null = null) {
+/** One trade: net P&L (pnl − |fees|) and the canonical result — the same definitions as every other screen. */
+function accum(stats: DayStats, pnl: number, res: Res, r: number | null = null) {
   stats.total++;
-  if (win) stats.wins++;
+  if (res === "win") stats.wins++;
+  else if (res === "loss") stats.losses++;
   stats.pnl += pnl;
   if (r != null && Number.isFinite(r)) {
     stats.rSum += r;
@@ -73,7 +75,7 @@ function accum(stats: DayStats, pnl: number, win: boolean, r: number | null = nu
 function statsSummary(stats: DayStats) {
   return {
     count: stats.total,
-    winRate: stats.total > 0 ? Math.round((stats.wins / stats.total) * 100) / 100 : 0,
+    winRate: roundShare(winRateOf(stats.wins, stats.losses), 2) ?? 0,
     avgPnl: stats.total > 0 ? Math.round((stats.pnl / stats.total) * 100) / 100 : 0,
     totalPnl: Math.round(stats.pnl * 100) / 100,
     avgR: stats.rCount > 0 ? Math.round((stats.rSum / stats.rCount) * 100) / 100 : null,
@@ -237,9 +239,9 @@ export async function generateWeeklyReport(userId: string, weekStart?: string, w
 
   for (const t of allTrades) {
     const tradeDate = t.date.substring(0, 10);
-    const pnl = t.pnl ? Number(t.pnl) : 0;
+    const pnl = netPnl(t) ?? 0;
     const r = t.rMultiple != null ? Number(t.rMultiple) : null;
-    const win = isWin(t.result);
+    const win = normResult(t.result);
     const day = dayMap.get(tradeDate);
     if (day) accum(day, pnl, win, r);
     const state = stateByDate.get(tradeDate);
@@ -271,9 +273,10 @@ export async function generateWeeklyReport(userId: string, weekStart?: string, w
     .map(([state, s]) => ({ state, ...s }))
     .sort((a, b) => b.winRate - a.winRate);
 
-  const totalPnl = allTrades.reduce((s, t) => s + (t.pnl ? Number(t.pnl) : 0), 0);
-  const wins = allTrades.filter((t) => isWin(t.result)).length;
-  const winRate = allTrades.length > 0 ? wins / allTrades.length : 0;
+  const totalPnl = allTrades.reduce((s, t) => s + (netPnl(t) ?? 0), 0);
+  const wins = allTrades.filter((t) => normResult(t.result) === "win").length;
+  const losses = allTrades.filter((t) => normResult(t.result) === "loss").length;
+  const winRate = winRateOf(wins, losses) ?? 0;
 
   // Same rule as the /psychology insights (routes/psychologyanalytics extremeStates): only marked states (never
   // «normal»), >= 3 trades, a win rate at least MIN_WR_PP away from the week's — otherwise null.

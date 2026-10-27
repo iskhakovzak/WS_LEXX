@@ -30,6 +30,7 @@ import { YMD_RE, aggOut, freshFeedFrom, mondayOf, n, nullable, r2, streaksOf, tr
 
 export { freshFeedFrom, mondayOf, violationLine };
 import { calendarName } from "../lib/calendarText";
+import { maxDrawdownOfSeries, winRateOf } from "../lib/coreMetrics/kpi";
 
 const router: IRouter = Router();
 
@@ -103,7 +104,7 @@ router.get("/dashboard/summary", asyncHandler(async (req, res): Promise<void> =>
     pool.query(`SELECT ${AGG} FROM trades t WHERE t.deleted_at IS NULL AND ${SCOPE} AND ${CLOSED} AND ${CLOSE} = $2`, [traderParam, today]),
     pool.query(`SELECT ${AGG} FROM trades t WHERE t.deleted_at IS NULL AND ${SCOPE} AND ${CLOSED} AND ${CLOSE} BETWEEN $2 AND $3`, [traderParam, weekStart, today]),
     pool.query(
-      `SELECT t.setup,
+      `SELECT t.setup, /* core-metric-ok: ranks setups by win rate inside SQL (ORDER BY), the number is not shown */
               COUNT(*) FILTER (WHERE ${RESULT} = 'win')::float / NULLIF(COUNT(*) FILTER (WHERE ${DECIDED}), 0) AS win_rate,
               COUNT(*) FILTER (WHERE ${DECIDED})::int AS decided
        FROM trades t
@@ -611,7 +612,8 @@ router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => 
     [traderParam, from, today],
   );
 
-  let cumNet = 0, cumGross = 0, cumR = 0, peakR = 0, maxDdR = 0, peakNet = 0, maxDdNet = 0;
+  let cumNet = 0, cumGross = 0, cumR = 0;
+  const netSeries: number[] = [], rSeries: number[] = [];
   let trades = 0, wins = 0, losses = 0, be = 0, rPos = 0, rNeg = 0, rCount = 0, net = 0, gross = 0, fees = 0, pnlCount = 0, greenDays = 0;
   let bestR: { date: string; r: number } | null = null, worstR: { date: string; r: number } | null = null;
   let bestNet: { date: string; pnl: number } | null = null, worstNet: { date: string; pnl: number } | null = null;
@@ -625,8 +627,7 @@ router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => 
     cumNet += rawNet;
     cumGross += hasPnl ? n(d.pnl_gross) : 0;
     cumR += a.r;
-    peakR = Math.max(peakR, cumR); maxDdR = Math.min(maxDdR, cumR - peakR);
-    peakNet = Math.max(peakNet, cumNet); maxDdNet = Math.min(maxDdNet, cumNet - peakNet);
+    rSeries.push(a.r); netSeries.push(rawNet);
     trades += a.closed; wins += a.wins; losses += a.losses; be += a.be;
     rPos += n(d.r_pos); rNeg += n(d.r_neg); rCount += a.rCount;
     if (hasPnl) { net += rawNet; gross += n(d.pnl_gross); fees += n(d.fees); pnlCount += a.pnlCount; }
@@ -647,7 +648,8 @@ router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => 
     };
   });
 
-  const decided = wins + losses;
+  // The window's max drawdown: the shared end-of-day curve (lib/coreMetrics), net and R.
+  const maxDdNet = maxDrawdownOfSeries(netSeries), maxDdR = maxDrawdownOfSeries(rSeries);
   res.json({
     period,
     scope,
@@ -657,7 +659,7 @@ router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => 
     days,
     totals: {
       trades, wins, losses, be,
-      winRate: decided > 0 ? wins / decided : null,
+      winRate: winRateOf(wins, losses),
       /** Net $ (labelled «нетто» in the UI). */
       pnl: pnlCount > 0 ? r2(net) : null,
       pnlGross: pnlCount > 0 ? r2(gross) : null,

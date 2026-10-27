@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, SplitSkeleton, Toolbar } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, SplitSkeleton, Toolbar, usePersistentState } from "@/components/ds";
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { api, invalidateAcademy, stageLabel, useAcademyMeta, useAdminTree, type ItemKind } from "@/components/academy/content/api";
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
@@ -16,6 +17,18 @@ import { academyLinks } from "@/components/academy/content/links";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+
+const ITEM_KINDS: readonly ItemKind[] = ["lesson", "quiz", "assignment"];
+function parseNode(raw: string | null): Selection {
+  const [k, n] = (raw ?? "").split(":");
+  const id = Number(n);
+  if (!Number.isInteger(id) || id <= 0) return { type: "program" };
+  if (k === "module") return { type: "module", id };
+  return ITEM_KINDS.includes(k as ItemKind) ? { type: "item", kind: k as ItemKind, id } : { type: "program" };
+}
+function nodeOf(sel: Selection): string | null {
+  return sel.type === "module" ? `module:${sel.id}` : sel.type === "item" ? `${sel.kind}:${sel.id}` : null;
+}
 
 /**
  * /academy/content-admin — «Редактор курсов» (наставники / staff).
@@ -36,12 +49,14 @@ export default function AcademyContentAdmin() {
   const qc = useQueryClient();
   const { t } = academyI18n.useT();
 
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = usePersistentState("academy.contentAdmin.archived", false);
   const programParam = params.get("program");
   const creatingProgram = programParam === NEW;
   const programId = Number(programParam) || null;
   const tree = useAdminTree(creatingProgram ? null : programId, showArchived, isCurator || meta.data?.staff === true);
-  const [selection, setSelection] = useState<Selection>({ type: "program" });
+  // The open module / item rides in ?node= (module:12, lesson:5…): a reload reopens it; «new» forms are per visit.
+  const [selection, setSelectionState] = useState<Selection>(() => parseNode(new URLSearchParams(window.location.search).get("node")));
+  const setSelection = (sel: Selection) => { setSelectionState(sel); replaceSearchParams({ node: nodeOf(sel) }); };
   const [seeding, setSeeding] = useState(false);
 
   const setProgram = (id: number | typeof NEW) => {

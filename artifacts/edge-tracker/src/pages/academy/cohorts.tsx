@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearch } from "wouter";
+import { Link } from "wouter";
+import { useSearchParam, useSearchParamId } from "@/hooks/use-search-param";
 import { Archive, CalendarDays, History as HistoryIcon, Pencil, Plus, RotateCcw, Sparkles, UserCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import {
-  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, Toolbar, useTableSort,
+  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, RowActions, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, Toolbar, usePersistentState, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -30,12 +31,12 @@ import { personName } from "@/i18n";
  */
 export default function AcademyCohortsPage() {
   const { t } = academyCohortsI18n.useT();
-  const search = useSearch();
-  const [archived, setArchived] = useState(false);
+  const [archived, setArchived] = usePersistentState("academy.cohorts.archived", false);
   const list = useCohorts(archived);
   const staff = !!list.data?.staff;
   const cohorts = list.data?.cohorts ?? [];
-  const [selectedId, setSelectedId] = useState<number | null>(() => Number(new URLSearchParams(search).get("id")) || null);
+  // ?id= is read and written: the open cohort survives a reload.
+  const [selectedId, setSelectedId] = useSearchParamId("id");
   useEffect(() => {
     if (!cohorts.length) return;
     // Default (prefill, design audit wave 2): my own cohort with people in it, else the cohort with the most people,
@@ -46,7 +47,7 @@ export default function AcademyCohortsPage() {
       const mine = cohorts.find((c) => c.mine && people(c) > 0);
       setSelectedId((mine ?? (people(fullest) > 0 ? fullest : cohorts.find((c) => c.mine) ?? cohorts[0])).id);
     }
-  }, [cohorts, selectedId]);
+  }, [cohorts, selectedId, setSelectedId]);
   const [createOpen, setCreateOpen] = useState(false);
   const seed = useSeedDemo();
   const { toast } = useToast();
@@ -129,12 +130,14 @@ function CohortCard({ c, active, onClick }: { c: CohortListItem; active: boolean
 }
 
 type Tab = "members" | "schedule" | "attendance" | "history";
+const TABS: readonly Tab[] = ["members", "schedule", "attendance", "history"];
 
 function Detail({ id, staff }: { id: number; staff: boolean }) {
   const { t } = academyCohortsI18n.useT();
   const { t: ct } = commonI18n.useT();
   const q = useCohort(id);
-  const [tab, setTab] = useState<Tab>("members");
+  const [tabRaw, setTab] = useSearchParam("tab", "members", { allowed: TABS });
+  const tab = tabRaw as Tab;
   const [editOpen, setEditOpen] = useState(false);
   const archive = useArchiveCohort();
   const { toast } = useToast();
@@ -288,7 +291,9 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
   const archive = useArchiveSession();
   const { toast } = useToast();
   const today = nyDate();
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekRaw, setWeekRaw] = useSearchParam("week", "0");
+  const weekOffset = Number.isInteger(Number(weekRaw)) ? Number(weekRaw) : 0;
+  const setWeekOffset = (u: number | ((w: number) => number)) => setWeekRaw(String(typeof u === "function" ? u(weekOffset) : u));
   const from = addDays(today, weekOffset * 7 - 7);
   const to = addDays(from, 20);
   const sched = useSchedule(d.cohort.id, from, to);

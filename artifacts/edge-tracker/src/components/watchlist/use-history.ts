@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { useTradesWindow } from "@/hooks/use-trades-window";
-import { netPnl, resultOf } from "@/lib/trade-math";
+import { netPnl, resultOf, winRateOf } from "@/lib/trade-math";
 
 /** The viewer's own record on one ticker (net $ = pnl − |fees|, win rate = W / (W + L)). */
 export type TickerHistory = {
@@ -32,7 +32,7 @@ export function summarizeTrades(trades: Trade[]): TickerHistory {
   const sorted = [...trades].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id));
   return {
     n: trades.length, wins, losses, net,
-    wr: wins + losses > 0 ? wins / (wins + losses) : null,
+    wr: winRateOf(wins, losses),
     avg: withNet ? net / withNet : null,
     lastDate, trades: sorted,
   };

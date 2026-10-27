@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ToastAction } from "@/components/ui/toast";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
-import { Panel, Pill, SortableTh, toneText, useTableSort } from "@/components/ds";
+import { Panel, Pill, SortableTh, toneText, usePersistentState, useTableSort } from "@/components/ds";
 import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
 import { periodDays, periodWindow, type DayRange, type PeriodPreset } from "@/lib/period-range";
 import { addDays, nyDate } from "@/lib/trading-date";
@@ -62,8 +62,9 @@ export function PlaybookInbox({ onNewSetup, day = null, tag = false }: {
   const { toast } = useToast();
   const [onlyDay, setOnlyDay] = React.useState<string | null>(day);
   const today = nyDate();
-  const [win, setWin] = React.useState<InboxPeriod>("month");
+  const [winStored, setWin] = usePersistentState<InboxPeriod>("playbook.inbox.win", "month");
   const [custom, setCustom] = React.useState<DayRange | null>(null);
+  const win: InboxPeriod = winStored === "custom" && !custom ? "month" : winStored; // a custom range is per visit
   const range = win === "custom" ? custom : periodWindow(win, today, null);
   const days = Math.min(90, periodDays(win, custom) ?? 30);
   const todayQ = useQuery({ ...playbookTodayQuery(), enabled: tag });

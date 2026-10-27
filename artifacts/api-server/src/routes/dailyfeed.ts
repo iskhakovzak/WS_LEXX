@@ -25,6 +25,7 @@ import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/
 import { langOf, localeTagFor } from "../i18n";
 import { feedT } from "../i18n/ns";
 import { loadMoneyViewer } from "../lib/playbookAccess";
+import { winRateOf } from "../lib/coreMetrics/kpi";
 
 /**
  * Daily feed ("Дейли-фид") — the desk's briefing per trading date.
@@ -395,7 +396,7 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
   lines.push(tr("eod.head", { date, trades: tr("eod.trades", { count: totalN }), result: totalNet != null ? tr("eod.net", { money: money(totalNet) }) : tr("eod.pnlMissing"), r: totalR != null ? `, ${rr(totalR)}` : "" }));
   for (const t of traders) {
     const decided = t.wins + t.losses;
-    const wr = decided ? `${Math.round((t.wins / decided) * 100)}% WR` : "WR —";
+    const wr = decided ? `${Math.round(((winRateOf(t.wins, t.losses) ?? 0)) * 100)}% WR` : "WR —";
     lines.push(tr("eod.traderLine", {
       trader: t.trader, n: t.n, wl: `${t.wins}W/${t.losses}L${t.be ? `/${t.be}BE` : ""}`, open: t.open ? tr("eod.open", { n: t.open }) : "",
       result: t.net != null ? tr("eod.netDetail", { net: money(t.net), gross: money(t.gross), fees: `$${(t.fees ?? 0).toFixed(0)}` }) : rr(t.sumR),

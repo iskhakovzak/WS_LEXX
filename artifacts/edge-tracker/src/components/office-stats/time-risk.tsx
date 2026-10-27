@@ -202,6 +202,7 @@ export function Underwater({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (d: string
   const dark = useDark();
   const series = React.useMemo(() => {
     let peak = 0;
+    // core-metric-ok: the underwater series / candle of the chart, point by point
     const pts = focus.days.map((d) => { peak = Math.max(peak, d.cum); return { x: d.doy, y: d.cum - peak, date: d.date }; });
     return pts.length ? [{ key: "dd", label: t("risk.ddSeries"), color: tokenColor("--down", dark ? "#f07a7a" : "#d03b3b"), points: pts, area: true, width: 1.75 }] : [];
   }, [focus, dark, t]);

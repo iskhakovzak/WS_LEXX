@@ -72,7 +72,10 @@ export default function Discussions() {
   useEffect(() => savePrefs(prefs), [prefs]);
   // ?q= deep link (e.g. «Обсуждения» from the curator group view: threads by / with a person).
   const [q, setQ] = useState(() => readParam("q") ?? "");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  // The search is written back (debounced), so clearing it and reloading does not bring the old ?q= back.
+  useEffect(() => { const id = setTimeout(() => writeParams({ q: q.trim() || null }), 400); return () => clearTimeout(id); }, [q]);
+  const [typeFilter, setTypeFilter] = useState<string>(() => readParam("kind") || "all");
+  useEffect(() => writeParams({ kind: typeFilter === "all" ? null : typeFilter }), [typeFilter]);
   const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>(() => readParam("for") || "all");
   const [tickerFilter, setTickerFilter] = useState<string | null>(() => readParam("ticker")?.toUpperCase() || null);
   const [selectedId, setSelectedId] = useState<number | null>(() => {

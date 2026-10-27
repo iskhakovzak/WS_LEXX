@@ -4,6 +4,7 @@
  * validated against the YouTube / Vimeo / Loom allow-list client-side and again on the server.
  */
 import { memo, useDeferredValue, useMemo, useState } from "react";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { Link } from "wouter";
 import { Archive, ArchiveRestore, ExternalLink, Eye, Loader2, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -256,6 +257,7 @@ export function LessonEditor({ lesson, moduleId, modules, onCreated }: { lesson:
     playbookIds: lesson?.playbookIds ?? [], setupNames: (lesson?.setupNames ?? []).join(", "), draft: lesson?.draft ?? true,
   };
   const [f, setF] = useState<LessonForm>(init);
+  const lessonDraft = useTextDraft(`academy-lesson:${lesson?.id ?? `new-${moduleId}`}`, f, setF, { base: init }); // a long lesson survives a reload
   const set = <K extends keyof LessonForm>(k: K, v: LessonForm[K]) => setF((p) => ({ ...p, [k]: v }));
   const dirty = JSON.stringify(f) !== JSON.stringify(init);
   const video = videoEmbed(f.videoUrl);
@@ -277,7 +279,7 @@ export function LessonEditor({ lesson, moduleId, modules, onCreated }: { lesson:
     if (!f.title.trim()) return s.fail(new Error(t("editor.lesson.titleRequired")));
     if (videoBad) return s.fail(new Error(t("editor.lesson.videoBad")));
     if (badAttachment) return s.fail(new Error(t("editor.lesson.attachBad")));
-    m.mutate(undefined, { onSuccess: (r) => { s.ok(lesson ? t("editor.lesson.saved") : t("editor.lesson.created")); if (!lesson) onCreated?.("lesson", r.lesson.id); }, onError: s.fail });
+    m.mutate(undefined, { onSuccess: (r) => { lessonDraft.clear(); s.ok(lesson ? t("editor.lesson.saved") : t("editor.lesson.created")); if (!lesson) onCreated?.("lesson", r.lesson.id); }, onError: s.fail });
   };
   const idp = `lesson-${lesson?.id ?? "new"}`;
 

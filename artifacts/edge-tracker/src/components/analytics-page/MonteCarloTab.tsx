@@ -5,7 +5,7 @@ import {
   ACTIVE_DOT, CHART, GRID, GlassTooltip, MARGIN, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps, useChartMotion,
 } from "@/components/shared/charts";
 import { Dices, RefreshCw } from "lucide-react";
-import { Panel, StatCard, StatGrid, Segmented, EmptyState, Pill, toneOf } from "@/components/ds";
+import { Panel, StatCard, StatGrid, Segmented, EmptyState, Pill, toneOf, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type Unit, type AnalyticsFilters } from "./metrics";
@@ -70,7 +70,7 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
   const { t } = analyticsI18n.useT();
   const motion = useChartMotion();
   const u: Unit = unit ?? "r";
-  const [horizon, setHorizon] = useState<(typeof HORIZONS)[number]>(100);
+  const [horizon, setHorizon] = usePersistentState<(typeof HORIZONS)[number]>("analytics.montecarlo.horizon", 100);
   const [runs, setRuns] = useState<1000 | 5000>(1000);
   const [tpdMode, setTpdMode] = useState<"auto" | "1" | "2" | "3" | "5">("auto");
   const [rDaily, setRDaily] = useState<(typeof R_DAILY)[number]>("3");

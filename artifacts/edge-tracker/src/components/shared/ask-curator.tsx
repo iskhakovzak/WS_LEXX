@@ -10,6 +10,7 @@ import { Check, MessageCircleQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { useTextDraft } from "@/hooks/use-text-draft";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { http, isApiError } from "@/lib/api/http";
@@ -65,9 +66,11 @@ export function AskCuratorButton({ kind, link = null, className, size = "sm", la
   const mine = useMyCuratorRequests(member);
   const [open, setOpen] = React.useState(false);
   const [message, setMessage] = React.useState("");
+  const draft = useTextDraft(open ? `ask-curator:${kind}:${link ?? ""}` : null, message, setMessage, { base: prefill ?? t(`prefill.${kind}`) });
   const send = useMutation({
     mutationFn: (body: { kind: RequestKind; message: string; link?: string }) => http.post<{ request: CuratorRequest }>("/api/curator-requests", body),
     onSuccess: () => {
+      draft.clear();
       toast({ title: t("sent") });
       setOpen(false);
       void qc.invalidateQueries({ queryKey: askCuratorKeys.all });

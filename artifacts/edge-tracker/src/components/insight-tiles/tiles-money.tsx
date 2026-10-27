@@ -134,7 +134,7 @@ export function FeesTile({ trades, prev, scope, variant }: Props) {
         <div className="flex flex-col gap-1">
           <p className={cn("ins-verdict", s.margin < 0 && "[&_.ins-accent]:text-down")}>
             <Phrase
-              text={t(s.margin >= 0 ? "fees.above" : "fees.below", { be: "{be}", wr: "{wr}", margin: pp(s.margin) })}
+              text={t(s.margin >= 0 ? "fees.above" : "fees.below", { be: "{be}", wr: "{wr}", margin: pp(s.margin), window: scope.periodShort ?? scope.periodLong })}
               nodes={{ be: <Num>{fmtRate(s.beRate)}</Num>, wr: <Num>{fmtRate(s.winRate)}</Num> }}
             />
           </p>

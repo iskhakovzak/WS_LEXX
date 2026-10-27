@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import { BarChart3, Trash2 } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, Segmented, useTableSort, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, Segmented, usePersistentState, useTableSort, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,7 +88,7 @@ const SYMBOL_ACCESSORS = {
 
 function SymbolTable({ rows }: { rows: PerfRow[] }) {
   const { t } = propreportsI18n.useT();
-  const [mode, setMode] = React.useState<"all" | "best" | "worst">("all");
+  const [mode, setMode] = usePersistentState<"all" | "best" | "worst">("integrations.perf.mode", "all");
   const sorted = useTableSort(rows, SYMBOL_ACCESSORS, "net");
   const visible = React.useMemo(() => {
     if (mode === "all") return sorted.rows;
@@ -230,7 +230,7 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
 export function PerformanceReportPanel({ trader, staff = false, compact = false, className }: { trader?: string | null; staff?: boolean; compact?: boolean; className?: string }) {
   const { toast } = useToast();
   const { t } = propreportsI18n.useT();
-  const [traderFilter, setTraderFilter] = React.useState<string>("");
+  const [traderFilter, setTraderFilter] = usePersistentState<string>("integrations.perf.trader", "");
   const [reportId, setReportId] = React.useState<number | null>(null);
   const effectiveTrader = trader ?? (traderFilter || null);
   const q = usePerformance(effectiveTrader, reportId);

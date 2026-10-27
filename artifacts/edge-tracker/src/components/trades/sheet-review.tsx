@@ -15,6 +15,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { daysHeld, eventLabel, horizonOf } from "./trade-utils";
 import { stopIsEstimate } from "./sheet-model";
 import { ConvictionDots } from "./trade-bits";
+import { useTextDraft } from "@/hooks/use-text-draft";
 
 export type TradePatch = Partial<Pick<Trade, "result" | "notes" | "whatWorked" | "whatFailed" | "conclusion" | "tags" | "screenshotNotes" | "setup">>
   & { confidenceGrade?: "A+" | "A" | "B" | "C" };
@@ -45,6 +46,8 @@ export function ReviewEditor({ trade, keys, canEdit, onPatch, emptyText }: {
   const [draft, setDraft] = React.useState(initial);
   const [saving, setSaving] = React.useState(false);
   React.useEffect(() => setDraft(initial), [initial]);
+  // Unsaved review text survives a closed sheet / reload (local draft until «Сохранить»).
+  const stored = useTextDraft(canEdit ? `trade-review:${trade.id}:${keys.join(",")}` : null, draft, setDraft, { base: initial });
   const dirtyKeys = keys.filter((k) => draft[k] !== initial[k]);
   const single = keys.length === 1;
 
@@ -68,7 +71,7 @@ export function ReviewEditor({ trade, keys, canEdit, onPatch, emptyText }: {
     setSaving(true);
     const patch: TradePatch = {};
     for (const k of dirtyKeys) patch[k] = draft[k].trim() ? draft[k] : null;
-    await onPatch(trade, patch);
+    if (await onPatch(trade, patch)) stored.clear();
     setSaving(false);
   }
 

@@ -59,7 +59,9 @@ function parseSections(v: unknown): Sections | null {
   const out: Sections = {};
   for (const k of SECTION_KEYS) {
     const raw = (v as Record<string, unknown>)[k];
-    if (typeof raw === "string" && raw.trim()) out[k] = raw.slice(0, MAX_SECTION_LEN);
+    // Refused, never cut: a silent slice showed the full text until the next reload.
+    if (typeof raw === "string" && raw.length > MAX_SECTION_LEN) throw new AppError("TEXT_TOO_LONG", 400, { field: k, max: MAX_SECTION_LEN });
+    if (typeof raw === "string" && raw.trim()) out[k] = raw;
   }
   return out;
 }

@@ -3,9 +3,8 @@
  * Lists differences over $1 (open by default); staff with propreports.sync can acknowledge one (it re-opens by itself
  * when the difference moves). Used by reconcile-broker.tsx (the one-line mount for /integrations and admin «Данные»).
  */
-import * as React from "react";
 import { Check, Loader2, Scale } from "lucide-react";
-import { DataTable, EmptyState, ErrorState, Panel, Pill, Segmented, TableSkeleton, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, Segmented, TableSkeleton, usePersistentState, type Tone } from "@/components/ds";
 import { VirtualRows } from "@/components/ds/virtual";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -56,7 +55,7 @@ function Row({ r, canAcknowledge }: { r: ReconcileDayRow; canAcknowledge: boolea
 
 export function BrokerReconcileDays({ canAcknowledge = false, trader = null }: { canAcknowledge?: boolean; trader?: string | null }) {
   const { t } = propreportsAccuracyI18n.useT();
-  const [view, setView] = React.useState<ReconcileView>("open");
+  const [view, setView] = usePersistentState<ReconcileView>("integrations.reconcile.view", "open");
   const q = useReconcileBroker(view, trader);
   const data = q.data;
   const run = data?.run;

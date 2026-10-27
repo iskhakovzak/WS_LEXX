@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { QueryError } from "@/components/query-error";
 import {
-  DataTable, EmptyState, FilterChip, Panel, Pill, Segmented, SortableTh, TableSkeleton, Toolbar, useTableSort, type Tone,
+  DataTable, EmptyState, FilterChip, Panel, Pill, Segmented, SortableTh, TableSkeleton, Toolbar, usePersistentState, useTableSort, type Tone,
 } from "@/components/ds";
 import { VirtualRows } from "@/components/ds/virtual";
 import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
@@ -135,8 +135,9 @@ export function PeoplePanel({
   const canTier = can("scaling.approve");
   const canMap = can("propreports.configure");
 
-  const [filter, setFilter] = useState<Filter>(initialFilter ?? DEFAULT_FILTER);
-  useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
+  const [storedFilter, setFilter] = usePersistentState<Filter>("admin.people.filter", initialFilter ?? DEFAULT_FILTER);
+  const filter: Filter = FILTERS.includes(storedFilter) ? storedFilter : DEFAULT_FILTER;
+  useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter, setFilter]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [dialog, setDialog] = useState<ReasonDialogState>(null);

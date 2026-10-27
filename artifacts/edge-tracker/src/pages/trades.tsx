@@ -3,6 +3,7 @@
 // keyboard, and jump to the day report, behaviour patterns or the trade card.
 // Trades come only from PropReports (ARCHITECTURE §0.1): nothing is created here. The form edits the trader's markup
 // (stop, setup, tags, review); old ?new / ?fromIdea links just open the list (filtered by ?ticker when given).
+import { replaceSearchParams } from "@/hooks/use-search-param";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scrollBehavior } from "@/lib/motion";
 import { Link, useLocation } from "wouter";
@@ -206,6 +207,8 @@ export default function Trades() {
   const lastToggledRef = useRef<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  const linkedTrade = useRef(Number(new URLSearchParams(window.location.search).get("trade")) || 0);
+  useEffect(() => { if (!P.isLoading) replaceSearchParams({ trade: openId ? String(openId) : null }); }, [openId, P.isLoading]);
   const [picker, setPicker] = useState<PickerTarget>(null);
   /** A trade opened from a deep link / global search that is not among the visible rows. */
   const [detached, setDetached] = useState<Trade | null>(null);
@@ -312,8 +315,10 @@ export default function Trades() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const hid = Number(params.get("highlight"));
-    if (!hid || P.isLoading) return;
+    if (P.isLoading) return;
+    const hid = Number(params.get("highlight")) || linkedTrade.current; // ?trade= = the open sheet (kept on reload)
+    linkedTrade.current = 0;
+    if (!hid) return;
     stripParam("highlight");
     void focusTrade(hid);
   }, [P.isLoading, location]); // eslint-disable-line react-hooks/exhaustive-deps

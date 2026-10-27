@@ -20,6 +20,7 @@ import { RiskProcessesView } from "@/components/curator/risk-processes-view";
 import { CuratorQuestsPanel } from "@/components/quests/curator-panel";
 import { MentorCuratorPanel } from "@/components/mentor/curator-panel";
 import { RewardQueueItems } from "@/components/gamification/reward-queue";
+import { SilentTraderItems } from "@/components/curator/silent-traders";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
@@ -52,8 +53,9 @@ function CuratorCabinet() {
   const profileTab: ProfileTab = tabParam && PROFILE_TABS.includes(tabParam) ? tabParam : "overview";
   const viewParam = params.get("view") as View | null;
   const [storedView, setStoredView] = usePersistentState<View>("curator.view", "today");
-  // ?rewards=1 (reward_requested notification) opens «Сегодня», where reward requests sit on top of the attention list.
-  const view: View = trader ? "traders" : params.has("rewards") ? "today" : viewParam && VIEWS.includes(viewParam) ? viewParam : VIEWS.includes(storedView) ? storedView : "today";
+  // ?rewards=1 (reward_requested notification) opens «Сегодня», where reward requests sit on top of the attention list;
+  // ?write=<trader> (trader_silence notification) opens it too, with «Написать» for that trader.
+  const view: View = trader ? "traders" : params.has("rewards") || params.has("write") ? "today" : viewParam && VIEWS.includes(viewParam) ? viewParam : VIEWS.includes(storedView) ? storedView : "today";
   const [scope, setScope] = usePersistentState<Scope | "auto">("curator.scope", "auto");
 
   const today = useCuratorToday(scope);
@@ -147,7 +149,7 @@ function CuratorCabinet() {
         />
       ) : view === "today" ? (
         <QueryState query={today} skeleton={<TodaySkeleton />} errorTitle={t("page.todayFailed")}>
-          {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} attentionExtra={<RewardQueueItems onOpenTrader={openTrader} focus={params.has("rewards")} />} />}
+          {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} attentionExtra={<><SilentTraderItems roster={data.traders} onOpenTrader={openTrader} writeTo={params.get("write")} /><RewardQueueItems onOpenTrader={openTrader} focus={params.has("rewards")} /></>} />}
         </QueryState>
       ) : view === "traders" ? (
         trader ? (

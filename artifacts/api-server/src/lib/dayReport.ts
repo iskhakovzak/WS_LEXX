@@ -16,7 +16,7 @@
 import { isOpeningDay } from "./dayReportRules";
 import { DEFAULTS as BEHAVIOR } from "./behaviorEngine";
 import { feeCost, feeMinUsd, feeShares } from "./feeRule";
-import { netPnl, num, normResult } from "./tradeMath";
+import { netPnl, num, normResult, winRateOf } from "./tradeMath";
 import { dayReportT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
 
@@ -345,7 +345,7 @@ function bucketize(trades: DayTrade[], keyOf: (t: DayTrade) => string | null, la
     const losses = ts.filter(isLoss).length;
     return {
       key, label: labelOf(key), trades: ts.length, wins, losses,
-      winRate: wins + losses ? wins / (wins + losses) : null,
+      winRate: winRateOf(wins, losses),
       net: r2(sum(ts.map((t) => t.net ?? 0))), gross: r2(sum(ts.map((t) => t.gross ?? 0))), fees: r2(sum(ts.map((t) => t.fees))),
     };
   });
@@ -371,7 +371,7 @@ export function computeSummary(trades: DayTrade[]): Summary {
     wins: wins.length,
     losses: losses.length,
     be,
-    winRate: wins.length + losses.length ? wins.length / (wins.length + losses.length) : null,
+    winRate: winRateOf(wins.length, losses.length),
     net: r2(net),
     gross: r2(gross),
     fees: r2(fees),

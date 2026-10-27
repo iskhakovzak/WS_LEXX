@@ -170,7 +170,7 @@ function MarketCell({ holidays }: { holidays: { date: string; name: string }[] }
  * The daily stop as a meter. A halt is red only on a trading day (trading is really stopped today); on a weekend /
  * market holiday the same status reads neutrally («рынок закрыт»), never as a Saturday alarm.
  */
-function RiskCell({ risk, desk, team, loading, quietDay }: { risk: RiskMe | null | undefined; desk: RiskDesk | null | undefined; team: boolean; loading: boolean; quietDay: boolean }) {
+function RiskCell({ risk, desk, team, loading, quietDay, stopLead }: { risk: RiskMe | null | undefined; desk: RiskDesk | null | undefined; team: boolean; loading: boolean; quietDay: boolean; stopLead: boolean }) {
   const { t } = dashboardI18n.useT();
   if (team) {
     if (desk === undefined && loading) return <Cell label={t("hero.deskLimits")} value="" loading />;
@@ -191,7 +191,7 @@ function RiskCell({ risk, desk, team, loading, quietDay }: { risk: RiskMe | null
   }
   if (risk === undefined && loading) return <Cell label={t("hero.dailyLimit")} value="" loading />;
   if (!risk) return <Cell label={t("hero.dailyLimit")} value="—" hint={t("hero.riskUnavailable")} />;
-  if (risk.halted) return <HaltCell risk={risk} quietDay={quietDay} />;
+  if (risk.halted) return <HaltCell risk={risk} quietDay={quietDay} lead={stopLead} />;
   const limit = risk.limits?.dailyLossLimit ?? null;
   if (!risk.limits || limit == null || limit <= 0) {
     // No dead end (Волна 1 п. 1.1): the trader asks the curator right here (a button cannot sit inside the cell link).
@@ -217,21 +217,27 @@ function RiskCell({ risk, desk, team, loading, quietDay }: { risk: RiskMe | null
   );
 }
 
+export type HaltState = "drawdown" | "weekly" | "stop";
+
+/** The rule that stopped trading and its numbers — one reading for the hero cell and the dashboard's stop card. */
+export function haltFacts(risk: RiskMe): { state: HaltState; used: number; limit: number | null } {
+  const L = risk.limits;
+  const state: HaltState = risk.stop.state === "drawdown" || risk.stop.state === "weekly" ? risk.stop.state : "stop";
+  if (state === "drawdown") return { state, used: risk.drawdown.currentUsd, limit: L?.maxDrawdown ?? null };
+  if (state === "weekly") return { state, used: Math.max(0, -(risk.week.pnlNet ?? 0)), limit: L?.weeklyLossLimit ?? null };
+  return { state, used: Math.max(0, -(risk.today.pnlNet ?? 0)), limit: L?.dailyLossLimit ?? null };
+}
+
 /**
  * A stopped trader: the cell names the rule that stopped trading («Просадка от пика $948 / лимит $800») and gives the
  * one next step, «Написать куратору» (design audit wave 2: this cell is the one place of the stop alarm; the sidebar,
  * the plan and the bell no longer repeat it). Red only on a trading day; on a weekend / holiday it reads neutrally.
- * No cell link: a button cannot sit inside it (the risk desk is one click away in the nav).
+ * No cell link: a button cannot sit inside it (the risk desk is one click away in the nav). With `lead` the dashboard's
+ * stop card (state «stopped») carries the alarm and the button: the cell stays a quiet fact.
  */
-function HaltCell({ risk, quietDay }: { risk: RiskMe; quietDay: boolean }) {
+function HaltCell({ risk, quietDay, lead = false }: { risk: RiskMe; quietDay: boolean; lead?: boolean }) {
   const { t } = dashboardI18n.useT();
-  const L = risk.limits;
-  const state = risk.stop.state === "drawdown" || risk.stop.state === "weekly" ? risk.stop.state : "stop";
-  const [used, limit] = state === "drawdown"
-    ? [risk.drawdown.currentUsd, L?.maxDrawdown ?? null]
-    : state === "weekly"
-      ? [Math.max(0, -(risk.week.pnlNet ?? 0)), L?.weeklyLossLimit ?? null]
-      : [Math.max(0, -(risk.today.pnlNet ?? 0)), L?.dailyLossLimit ?? null];
+  const { state, used, limit } = haltFacts(risk);
   const rule = t(`hero.haltRule.${state}`);
   const usedText = fmtUsd(used, { decimals: 0 });
   const limitText = limit != null ? fmtUsd(limit, { decimals: 0 }) : "—";
@@ -239,11 +245,11 @@ function HaltCell({ risk, quietDay }: { risk: RiskMe; quietDay: boolean }) {
     <Cell
       label={rule}
       value={limit != null ? t("hero.haltValue", { used: usedText, limit: limitText }) : risk.stop.label}
-      tone={quietDay ? "neutral" : "down"}
+      tone={quietDay || lead ? "neutral" : "down"}
       hint={quietDay ? t("hero.haltedClosed") : t(`hero.haltHint.${state}`)}
       title={risk.stop.message}
       wrap
-      extra={<>
+      extra={lead ? null : <>
         <AskCuratorButton
           kind="other" size="xs" className="mt-1 self-start"
           label={t("hero.writeCurator")}
@@ -273,6 +279,7 @@ export function DashboardHeader({
   onScopeChange,
   canChooseScope,
   userName,
+  stopLead = false,
 }: {
   data: DashboardToday | undefined;
   risk: RiskMe | null | undefined;
@@ -285,6 +292,8 @@ export function DashboardHeader({
   onScopeChange: (s: Scope) => void;
   canChooseScope: boolean;
   userName: string | null;
+  /** The dashboard's stop card leads (state «stopped»): the limit cell stays a quiet fact, the card has the alarm. */
+  stopLead?: boolean;
 }) {
   const { t: tr } = dashboardI18n.useT();
   const now = new Date();
@@ -394,7 +403,7 @@ export function DashboardHeader({
               tone={toneOf(w?.pnlNet ?? (w && w.rCount > 0 ? w.r : null))}
               hint={weekHint}
             />
-            <div data-tour="risk" className="min-w-0"><RiskCell risk={risk} desk={desk} team={team} loading={loading} quietDay={quietDay} /></div>
+            <div data-tour="risk" className="min-w-0"><RiskCell risk={risk} desk={desk} team={team} loading={loading} quietDay={quietDay} stopLead={stopLead && !team} /></div>
             <MarketCell holidays={data?.market.holidays ?? []} />
           </>
         )}
