@@ -1368,6 +1368,20 @@ CREATE TABLE public.emotional_state_log (
   CONSTRAINT emotional_state_log_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE public.emotional_state_log_dupes_0274 (
+  id integer,
+  user_id text,
+  "date" text,
+  sleep_well boolean,
+  stressed boolean,
+  tilted boolean,
+  focused boolean,
+  anxious boolean,
+  revenge boolean,
+  free_text text,
+  created_at timestamp with time zone
+);
+
 CREATE TABLE public.eod_days (
   id integer DEFAULT nextval('public.eod_days_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,

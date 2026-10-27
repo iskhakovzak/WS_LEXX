@@ -46,7 +46,7 @@ describe.skipIf(!available)("renameUser on a scratch database", () => {
   const targets: RenameTarget[] = [...RENAME_TARGETS, { table: "zz_people", column: "names", kind: "array" }];
   const snapshot = async () => ({
     users: await q(`SELECT id, name, name_latin, assigned_curator, token_version FROM users ORDER BY id`),
-    trades: await q(`SELECT trader, count(*)::int AS n FROM trades GROUP BY trader ORDER BY trader`),
+    trades: await q(`SELECT trader, count(*)::int AS n FROM trades GROUP BY trader ORDER BY trader COLLATE "C"`),
     notif: await q(`SELECT user_name, actor, params, link, entity_id, message FROM notifications ORDER BY id`),
     audit: await q(`SELECT actor, action FROM audit_log ORDER BY id`),
   });
@@ -121,8 +121,8 @@ describe.skipIf(!available)("renameUser on a scratch database", () => {
     expect(r.to).toBe(NEW);
     expect(await q(`SELECT name, name_latin, token_version FROM users WHERE id = $1`, [ownerId])).toEqual([{ name: NEW, name_latin: NEW, token_version: tv + 1 }]);
     expect(await q(`SELECT assigned_curator FROM users WHERE name = 'chert'`)).toEqual([{ assigned_curator: NEW }]);
-    expect(await q(`SELECT trader, count(*)::int AS n FROM trades GROUP BY trader ORDER BY trader`)).toEqual([{ trader: NEW, n: 2 }, { trader: "chert", n: 1 }]);
-    expect((await q(`SELECT trader FROM journal_days ORDER BY trader, day`)).map((x) => x.trader)).toEqual([NEW, NEW, "chert"]);
+    expect(await q(`SELECT trader, count(*)::int AS n FROM trades GROUP BY trader ORDER BY trader COLLATE "C"`)).toEqual([{ trader: NEW, n: 2 }, { trader: "chert", n: 1 }]);
+    expect((await q(`SELECT trader FROM journal_days ORDER BY trader COLLATE "C", day`)).map((x) => x.trader)).toEqual([NEW, NEW, "chert"]);
     expect(await q(`SELECT user_name FROM academy_trader_stage`)).toEqual([{ user_name: NEW }]);
     expect(await q(`SELECT trader, updated_by FROM trader_risk_limits`)).toEqual([{ trader: NEW, updated_by: NEW }]);
     expect(await q(`SELECT trader FROM gamification_season_points`)).toEqual([{ trader: NEW }]);
