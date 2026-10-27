@@ -80,6 +80,29 @@ export default {
     drawdown_near_limit: { title: "AI mentor: {trader} — drawdown near the limit", body: "Drawdown {drawdown} — {pct}% of the {limit} limit. Worth discussing size and the plan before the next session." },
     silence: { title: "AI mentor: {trader} silent for {days} days", body: "{days} trading days without trades, a check-in or a word to the mentor. Maybe reach out first." },
   },
+  trader_silence: {
+    title: "{trader}: needs your eye",
+    body: "Open the curator cabinet.",
+    silence: {
+      title: { one: "{trader} has been quiet for {count} trading day", other: "{trader} has been quiet for {count} trading days" },
+      body: "Last trade — {last}. Reach out first: short and without pressure — ask how it is going and how you can help.",
+      tg: "<b>{trader} quiet for {count} trading days</b>\nLast trade — {last}. Reach out first — short and without pressure.",
+    },
+    reviews: {
+      title: { one: "{trader}: {count} day without a review", other: "{trader}: {count} days without a review" },
+      body: "Reviews open since {oldest}. Help close them in one go or agree which ones to skip.",
+      tg: "<b>{trader}: {count} days without a review</b>\nReviews open since {oldest}. Help close them in one go or agree which to skip.",
+    },
+    back: {
+      title: "Welcome back",
+      body: "The market is still here. Start with one small step — today's plan takes five minutes.",
+      tg: "<b>Welcome back!</b>\nThe market is still here. Start with one small step: today's plan takes five minutes. Old reviews can wait.",
+    },
+  },
+  curator_message: {
+    title: "Message from your curator {curator}",
+    body: "{text}",
+  },
   mentor_ready: {
     title: "Mentor: ready",
     body: "Open the mentor.",
@@ -110,6 +133,8 @@ export default {
     },
   },
   types: {
+    trader_silence: { label: "Trader gone quiet", description: "A trader has had no trades for several trading days or keeps unclosed reviews — one notice to the curator, with «Write»" },
+    curator_message: { label: "Curator's message", description: "A short personal message from your curator" },
     mentor_escalation: { label: "Mentor: curator needed", description: "The AI mentor sees a pattern better handled by a person: tilt for several days, commitment breaks, drawdown near the limit, silence" },
     mentor_ready: { label: "Mentor: brief or debrief ready", description: "The pre-session brief or the post-session debrief was prepared ahead (when the admin turned scheduled pushes on)" },
     ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },

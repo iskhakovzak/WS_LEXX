@@ -179,6 +179,8 @@ export type AttentionPanelProps = {
    * under the next step, above the day frame. Nothing passes it yet.
    */
   recommended?: ReactNode;
+  /** Rows composed by the page and ranked with the rest (the day state's old review backlog as one line). */
+  extraItems?: readonly Item[];
 };
 
 /**
@@ -207,6 +209,7 @@ export function AttentionPanel({
   frame,
   progress,
   recommended,
+  extraItems,
 }: AttentionPanelProps) {
   const { t } = dashboardI18n.useT();
   const { t: tc } = commonI18n.useT();
@@ -360,6 +363,7 @@ export function AttentionPanel({
   // ── The daily loop: «Напиши план» / «Закрой день» / «Задача дня» ──────────
   const daily = team ? null : dailyStepItem(dailyStep, dailyToday, (key) => items.some((i) => i.key === key), t, tc);
   if (daily) items.push(daily);
+  if (extraItems) items.push(...extraItems);
 
   items.sort((x, y) => x.rank - y.rank);
   // Nothing urgent → the next step is still useful: look at the last day's breakdown.

@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   ClipboardPen,
   FileEdit,
+  History,
   Gamepad2,
   Lightbulb,
   NotebookPen,
@@ -18,6 +19,7 @@ import { fmtUsd, fmtWeekday } from "@/lib/format";
 import type { DashboardToday, EventsToday, MiniTrade, RecentTrade } from "./use-dashboard";
 import type { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { dayStateI18n } from "@/i18n/ns/dayState";
 import { personName } from "@/i18n";
 
 /** Pure pieces of «Что важно сейчас» (attention-panel.tsx): the item shape, date/ticker helpers, item builders. */
@@ -264,4 +266,23 @@ export function dailyStepItem(step: DailyStepLike | null | undefined, today: str
     return { key: "daily-task", rank: 5, icon: Gamepad2, tone: "purple", title: t("step.task.title"), detail: t("step.task.hint"), href: step.href, cta: t("step.task.cta") };
   }
   return null;
+}
+
+/**
+ * The old review backlog as ONE row (the day state, lib/day-state): days older than the desk's staleStepDays trading
+ * days are never «Следующий шаг» — «Ещё 4 дня без разбора · самый старый 15 окт» → the journal, ranked below today's work.
+ */
+export function backlogItem(b: { stale: number; oldest: string | null } | null | undefined): Item | null {
+  if (!b || b.stale <= 0 || !b.oldest) return null;
+  const t = dayStateI18n.t;
+  return {
+    key: "backlog",
+    rank: 8,
+    icon: History,
+    tone: "neutral",
+    title: t("backlogItem.title", { count: b.stale }),
+    detail: t("backlogItem.detail", { date: shortDate(b.oldest) }),
+    href: "/journal",
+    cta: t("backlogItem.cta"),
+  };
 }
