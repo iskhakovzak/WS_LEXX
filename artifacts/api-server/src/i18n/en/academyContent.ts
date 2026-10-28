@@ -32,4 +32,5 @@ export default {
     gradedBody: "Score {total} of {max} ({pct}%).",
     gradedBodyComment: "Score {total} of {max} ({pct}%). {mentor}: {comment}",
   },
+  briefings: { programTitle: "Briefings", moduleTitle: "Briefing recordings" },
 } satisfies Messages<typeof ru>;

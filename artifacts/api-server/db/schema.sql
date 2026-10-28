@@ -155,6 +155,7 @@ CREATE SEQUENCE public.academy_enrollment_history_id_seq AS integer START WITH 1
 CREATE SEQUENCE public.academy_enrollments_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_idp_goals_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_lessons_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.academy_media_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_modules_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_one_on_ones_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_programs_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -457,7 +458,30 @@ CREATE TABLE public.academy_lessons (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   archived_at timestamp with time zone,
-  CONSTRAINT academy_lessons_pkey PRIMARY KEY (id)
+  tags text[] DEFAULT '{}'::text[] NOT NULL,
+  must_watch boolean DEFAULT false NOT NULL,
+  media_id integer,
+  media_link text,
+  CONSTRAINT academy_lessons_pkey PRIMARY KEY (id),
+  CONSTRAINT academy_lessons_media_link_check CHECK (media_link IS NULL OR media_link ~ '^https?://'::text AND char_length(media_link) <= 1000),
+  CONSTRAINT academy_lessons_tags_check CHECK (cardinality(tags) <= 12)
+);
+
+CREATE TABLE public.academy_media (
+  id integer DEFAULT nextval('public.academy_media_id_seq'::regclass) NOT NULL,
+  mime text NOT NULL,
+  size_bytes integer NOT NULL,
+  bytes bytea,
+  object_path text,
+  created_by text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT academy_media_pkey PRIMARY KEY (id),
+  CONSTRAINT academy_media_check CHECK (bytes IS NOT NULL OR object_path IS NOT NULL),
+  CONSTRAINT academy_media_created_by_check CHECK (char_length(created_by) >= 1 AND char_length(created_by) <= 200),
+  CONSTRAINT academy_media_mime_check CHECK (mime ~ '^(video|audio)/[a-z0-9.+-]{1,40}$'::text),
+  CONSTRAINT academy_media_object_path_check CHECK (object_path IS NULL OR char_length(object_path) <= 400),
+  CONSTRAINT academy_media_size_bytes_check CHECK (size_bytes > 0 AND size_bytes <= 26214400)
 );
 
 CREATE TABLE public.academy_modules (
@@ -3624,6 +3648,7 @@ ALTER SEQUENCE public.academy_enrollment_history_id_seq OWNED BY public.academy_
 ALTER SEQUENCE public.academy_enrollments_id_seq OWNED BY public.academy_enrollments.id;
 ALTER SEQUENCE public.academy_idp_goals_id_seq OWNED BY public.academy_idp_goals.id;
 ALTER SEQUENCE public.academy_lessons_id_seq OWNED BY public.academy_lessons.id;
+ALTER SEQUENCE public.academy_media_id_seq OWNED BY public.academy_media.id;
 ALTER SEQUENCE public.academy_modules_id_seq OWNED BY public.academy_modules.id;
 ALTER SEQUENCE public.academy_one_on_ones_id_seq OWNED BY public.academy_one_on_ones.id;
 ALTER SEQUENCE public.academy_programs_id_seq OWNED BY public.academy_programs.id;
@@ -3767,6 +3792,7 @@ CREATE INDEX academy_enrollments_user_idx ON public.academy_enrollments USING bt
 CREATE INDEX academy_idp_goals_student_idx ON public.academy_idp_goals USING btree (student, status);
 CREATE INDEX academy_lessons_module_idx ON public.academy_lessons USING btree (module_id);
 CREATE INDEX academy_lessons_playbook_idx ON public.academy_lessons USING gin (playbook_ids);
+CREATE INDEX academy_lessons_tags_idx ON public.academy_lessons USING gin (tags);
 CREATE INDEX academy_modules_program_idx ON public.academy_modules USING btree (program_id);
 CREATE INDEX academy_one_on_ones_student_idx ON public.academy_one_on_ones USING btree (student, met_at DESC);
 CREATE UNIQUE INDEX academy_promotion_requests_pending_uniq ON public.academy_promotion_requests USING btree (user_name) WHERE (status = 'pending'::text);
@@ -4007,6 +4033,7 @@ ALTER TABLE public.academy_assignments ADD CONSTRAINT academy_assignments_module
 ALTER TABLE public.academy_attendance ADD CONSTRAINT academy_attendance_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.academy_sessions(id);
 ALTER TABLE public.academy_enrollments ADD CONSTRAINT academy_enrollments_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES public.academy_cohorts(id);
 ALTER TABLE public.academy_lesson_progress ADD CONSTRAINT academy_lesson_progress_lesson_id_fkey FOREIGN KEY (lesson_id) REFERENCES public.academy_lessons(id);
+ALTER TABLE public.academy_lessons ADD CONSTRAINT academy_lessons_media_id_fkey FOREIGN KEY (media_id) REFERENCES public.academy_media(id);
 ALTER TABLE public.academy_lessons ADD CONSTRAINT academy_lessons_module_id_fkey FOREIGN KEY (module_id) REFERENCES public.academy_modules(id);
 ALTER TABLE public.academy_modules ADD CONSTRAINT academy_modules_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.academy_programs(id);
 ALTER TABLE public.academy_quiz_attempts ADD CONSTRAINT academy_quiz_attempts_quiz_id_fkey FOREIGN KEY (quiz_id) REFERENCES public.academy_quizzes(id);

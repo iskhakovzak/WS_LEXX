@@ -34,4 +34,5 @@ export default {
     gradedBody: "Оценка {total} из {max} ({pct}%).",
     gradedBodyComment: "Оценка {total} из {max} ({pct}%). {mentor}: {comment}",
   },
+  briefings: { programTitle: "Брифинги", moduleTitle: "Записи брифингов" },
 } as const;

@@ -223,6 +223,7 @@ export const PUBLIC_API_ROUTES: readonly PublicRoute[] = [
   { method: "POST", path: "/cron/tick" },       // PropReports heartbeat (pg_cron); Bearer CRON_SECRET checked by routes/cron.ts
   { method: "GET", path: "/cron/tick" },        // same, Vercel Cron
   { method: "GET", path: /^\/voice-notes\/\d+\/audio$/ }, // media_token checked by the route itself
+  { method: "GET", path: /^\/academy\/briefings\/media\/\d+\/file$/ }, // briefing recording; 10-min token checked by the route
 ];
 
 /** Mutations a guest may still perform (none touch data). */

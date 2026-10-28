@@ -32,4 +32,5 @@ export default {
     gradedBody: "Baho: {max} dan {total} ({pct}%).",
     gradedBodyComment: "Baho: {max} dan {total} ({pct}%). {mentor}: {comment}",
   },
+  briefings: { programTitle: "Brifinglar", moduleTitle: "Brifing yozuvlari" },
 } satisfies Messages<typeof ru>;

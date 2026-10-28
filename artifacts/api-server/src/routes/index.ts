@@ -78,6 +78,7 @@ import analystSignalsRouter from "./analyst-signals";
 import corpEventsRouter from "./corp-events";
 import analoguesRouter from "./analogues";
 import podsRouter from "./pods";
+import academyBriefingsRouter from "./academy-briefings";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -226,6 +227,7 @@ router.use(indicatorNotesRouter);
 router.use(academyPathRouter);
 router.use(academyCohortsRouter);
 router.use(academyContentRouter);
+router.use(academyBriefingsRouter); // briefing video library: lessons with a recording, tags, «must watch»
 router.use(adminConsoleRouter);
 router.use(curatorRouter);
 router.use(curatorRequestsRouter);
