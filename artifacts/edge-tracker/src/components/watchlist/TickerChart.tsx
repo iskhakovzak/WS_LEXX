@@ -10,6 +10,7 @@ import { http } from "@/lib/api/http";
 import { addDays } from "@/lib/trading-date";
 import type { Candle } from "@/components/chart-engine/types";
 import { readChartTheme } from "@/components/chart-engine/theme";
+import { chartTableIsLayout } from "@/components/chart-engine/lib/chart-options";
 import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion";
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { tickMarkLabel, fmtEtDateTime, fmtEtDay } from "@/components/chart-engine/lib/time";
@@ -97,6 +98,7 @@ export function TickerChart({
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
     });
+    chartTableIsLayout(el);
 
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: th.up(), downColor: th.down(), borderUpColor: th.up(), borderDownColor: th.down(), wickUpColor: th.up(0.8), wickDownColor: th.down(0.8),

@@ -479,7 +479,7 @@ function GoalsList({ goals }: { goals: ProfilePayload["goals"] }) {
               <span className="line-clamp-2 min-w-0 flex-1 break-words font-medium text-foreground" title={g.title}>{g.title}</span>
               <Pill tone={st.tone}>{st.label}</Pill>
             </div>
-            <LimitBar size="sm" used={pctDone ?? 0} limit={100} warnAt={0} tone="ok" showValues={false} hint={`${pctDone != null ? `${pctDone}%` : t("profile.notCounted")}${g.dueOn ? ` · ${t("profile.due", { date: fmtDate(g.dueOn, "dayMonth") })}` : ""}`} />
+            <LimitBar size="sm" used={pctDone ?? 0} limit={100} warnAt={0} tone="ok" showValues={false} ariaLabel={g.title} hint={`${pctDone != null ? `${pctDone}%` : t("profile.notCounted")}${g.dueOn ? ` · ${t("profile.due", { date: fmtDate(g.dueOn, "dayMonth") })}` : ""}`} />
           </li>
         );
       })}

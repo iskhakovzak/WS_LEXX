@@ -134,7 +134,7 @@ export function FeesPanel({ fees, prev, trades, counts }: {
             ))}
           </div>
           {fees.gross != null && fees.gross > 0 && (
-            <div className="mt-3" aria-label={t("fees.eatsAria", { share: fmtRate(share) })}>
+            <div className="mt-3" role="img" aria-label={t("fees.eatsAria", { share: fmtRate(share) })}>
               <div className="h-2 overflow-hidden rounded-full bg-up/30">
                 <div className="h-full rounded-full bg-down" style={{ width: `${bar}%` }} />
               </div>

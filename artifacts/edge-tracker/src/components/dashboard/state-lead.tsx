@@ -51,7 +51,7 @@ export function StopCard({ risk, state, quietDay }: { risk: RiskMe | null | unde
           {used && <p className="text-sm tabular-nums text-foreground">{limit ? t("stop.usedOf", { used, limit }) : used}</p>}
         </div>
       </div>
-      {facts && facts.limit != null && <LimitBar used={facts.used} limit={facts.limit} warnAt={0.7} size="sm" showValues={false} />}
+      {facts && facts.limit != null && <LimitBar used={facts.used} limit={facts.limit} warnAt={0.7} size="sm" showValues={false} ariaLabel={ruleText} />}
       <p className="max-w-prose text-sm text-muted-foreground">{quietDay ? t("stop.closed") : t(`stop.lift.${rule}`)}</p>
       <div className="flex flex-wrap items-center gap-2">
         <AskCuratorButton

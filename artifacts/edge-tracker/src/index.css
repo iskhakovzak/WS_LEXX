@@ -1,4 +1,5 @@
-/* Fonts (Inter + IBM Plex Mono for code) are loaded from index.html so they don't block CSS parsing. */
+/* Fonts: Inter + IBM Plex Mono (code) are self-hosted in fonts.css (imported below); index.html preloads the two
+   Inter subsets every page paints with. */
 
 /* ══ Geometry scale (desktop). Primitives in components/ui + components/ds.tsx follow it; pages get it for free. ══
    RADIUS
@@ -31,6 +32,7 @@
    BORDERS 1px hairlines: --glass-border on surfaces, --field-border on controls, border/50 between table rows.
    ELEVATION  canvas < glass-panel (shadow-sm) < overlay (glass-thick + --glass-shadow) ; tiles have no shadow.
    ══════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+@import "./fonts.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";

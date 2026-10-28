@@ -209,7 +209,7 @@ function RiskCell({ risk, desk, team, loading, quietDay, stopLead }: { risk: Ris
       hint={t("hero.usedOf", { limit: fmtUsd(limit, { decimals: 0 }), pct: fmtRate(Math.min(1, loss / limit)) })}
       href={links.risk(risk.trader)}
       extra={<>
-        <LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" />
+        <LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} ariaLabel={t("hero.dailyLimit")} className="mt-1" />
         {bp != null && <span className="truncate text-2xs tabular-nums text-muted-foreground">{t("hero.buyingPower", { amount: fmtUsd(bp, { decimals: 0 }) })}</span>}
         <LiveBadge live={risk.live} className="mt-0.5" />
       </>}

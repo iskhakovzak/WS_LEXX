@@ -16,7 +16,7 @@ import { TF_LABEL } from "@/components/chart-engine/types";
 import { readChartTheme } from "@/components/chart-engine/theme";
 import { aggregate } from "@/components/chart-engine/lib/aggregate";
 import { fmtEtTime, isoToEpoch } from "@/components/chart-engine/lib/time";
-import { baseChartOptions, candleColors, priceFormatFor, refPrice, topMargin } from "@/components/chart-engine/lib/chart-options";
+import { baseChartOptions, candleColors, chartTableIsLayout, priceFormatFor, refPrice, topMargin } from "@/components/chart-engine/lib/chart-options";
 import { dayLevels } from "@/components/chart-engine/lib/levels";
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { LevelsPrimitive, type LevelLine } from "@/components/chart-engine/primitives/LevelsPrimitive";
@@ -146,6 +146,7 @@ export function DeskDayChart({ day, bars: baseBars, baseSec, colors, focus, onTo
     // Shared options (chart-engine/lib/chart-options): same look, touch rules and price precision as every chart.
     const h = el.clientHeight || 340;
     const chart = createChart(el, baseChartOptions(theme, { width: el.clientWidth || 320, height: h, intraday: true, rightOffset: 4 }));
+    chartTableIsLayout(el);
     const candles = chart.addSeries(CandlestickSeries, {
       ...candleColors(theme), priceLineVisible: false, lastValueVisible: false,
       // Per series (not chart-wide localization): the office pane formats its own scale in %.

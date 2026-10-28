@@ -81,3 +81,11 @@ export function wheelNeedsModifier(host: HTMLElement): () => void {
   host.addEventListener("wheel", on, { capture: true });
   return () => host.removeEventListener("wheel", on, { capture: true });
 }
+
+/**
+ * lightweight-charts lays its panes out with a <table>; screen readers and audits (axe td-has-header) read it as a
+ * data table without headers. Mark it as layout. Call right after createChart(host).
+ */
+export function chartTableIsLayout(host: HTMLElement): void {
+  for (const t of host.querySelectorAll("table")) t.setAttribute("role", "presentation");
+}

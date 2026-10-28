@@ -35,5 +35,5 @@ export {
 } from "./lib/position";
 export { buildGeometry, type Geometry, type GeometryInput } from "./lib/geometry";
 export { DRAWING_LABEL, DRAWING_POINTS, makeDrawing, isValidDrawing, toApiDrawing, fromApiDrawing, parseDrawingsResponse, moveDrawing, movePoint } from "./lib/drawings";
-export { baseChartOptions, priceFormatFor, candleColors, wheelNeedsModifier } from "./lib/chart-options";
+export { baseChartOptions, priceFormatFor, candleColors, wheelNeedsModifier, chartTableIsLayout } from "./lib/chart-options";
 export { buildSparkData, type SparkInput } from "./lib/sparkline";

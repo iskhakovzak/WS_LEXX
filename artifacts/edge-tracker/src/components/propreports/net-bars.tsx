@@ -24,7 +24,7 @@ export function NetBars({ rows, labelOf, title, className }: { rows: PerfRow[]; 
   const worst = rows.length > 1 ? Math.min(...nets) : null;
   return (
     <section className={cn("flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3 sm:p-4", className)} aria-label={title}>
-      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
       <div className="group/bars relative grid gap-1" role="list">
         {/* The zero axis: one crisp hairline through every row. */}
         <div className="pointer-events-none absolute inset-y-0 left-[calc(50%+4rem)] w-px bg-foreground/25" aria-hidden="true" />

@@ -1,6 +1,6 @@
 /**
  * Share card renderer: plain Canvas 2D on a 1080×1350 canvas, no dependency. Layout and texts come from model.ts;
- * this file only paints. Fonts: Inter (index.html), loaded with `loadCardFonts()` before the first draw — a canvas
+ * this file only paints. Fonts: Inter (self-hosted, src/fonts.css), loaded with `loadCardFonts()` before the first draw — a canvas
  * never waits for a web font by itself.
  *
  * Layers, bottom up: background (artwork / photo cover, or procedural marble / night) → profit gold / loss steel tint →

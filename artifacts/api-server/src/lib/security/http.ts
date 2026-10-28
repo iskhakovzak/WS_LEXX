@@ -59,7 +59,7 @@ export function corsMiddleware(production: boolean = config.isProduction): Reque
 // ─── CSP ────────────────────────────────────────────────────────────────────────────────────────────────
 /**
  * External origins the SPA needs (checked in the code, 2026-10-17):
- *   fonts.googleapis.com (CSS) + fonts.gstatic.com (font files) — index.html;
+ *   (fonts: none since 2026-10-28 — Inter and IBM Plex Mono are self-hosted, web src/fonts.css);
  *   img https: — user screenshot URLs (any host) and TradingView snapshots (s3.tradingview.com);
  *   media https: — voice notes redirect to a signed object-storage URL (storage.googleapis.com);
  *   frames — academy video embeds: youtube-nocookie.com / youtube.com, player.vimeo.com, loom.com.
@@ -79,8 +79,8 @@ export function cspDirectives(scriptHashes: readonly string[] = []): Record<stri
     "default-src": ["'self'"],
     "script-src": ["'self'", ...scriptHashes.map((h) => `'${h}'`)],
     // React style= attributes and Recharts emit inline styles; scripts are what matters.
-    "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-    "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
+    "style-src": ["'self'", "'unsafe-inline'"],
+    "font-src": ["'self'", "data:"],
     "img-src": ["'self'", "data:", "blob:", "https:"],
     "media-src": ["'self'", "blob:", "https:"],
     "connect-src": ["'self'"],
@@ -95,11 +95,14 @@ export function cspDirectives(scriptHashes: readonly string[] = []): Record<stri
   };
 }
 
-/** sha256 hashes of the inline <script> bodies of an HTML document (the theme bootstrap in index.html). */
+/**
+ * sha256 hashes of the inline <script> bodies of an HTML document (the theme bootstrap in index.html), over the text
+ * the browser hashes: HTML parsing turns CRLF / CR into LF, so a CRLF checkout must hash the LF form.
+ */
 export function inlineScriptHashes(html: string): string[] {
   const out: string[] = [];
   for (const m of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
-    const body = m[1];
+    const body = m[1].replace(/\r\n?/g, "\n");
     if (body.trim()) out.push(`sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`);
   }
   return out;

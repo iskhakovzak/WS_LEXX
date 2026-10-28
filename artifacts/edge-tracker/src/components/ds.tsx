@@ -1175,9 +1175,12 @@ export function LimitBar({
   hint,
   size = "md",
   showValues = true,
+  ariaLabel,
   className,
 }: {
   label?: React.ReactNode;
+  /** Accessible name of the meter when there is no text `label` (a bar under a heading that already says what it is). */
+  ariaLabel?: string;
   /** Amount consumed (sign ignored: a −$800 day against a $1,000 limit is 80%). */
   used: number | null | undefined;
   limit: number | null | undefined;
@@ -1195,11 +1198,15 @@ export function LimitBar({
   const ratio = hasLimit ? u / (limit as number) : 0;
   const t = tone ?? limitTone(u, limit, warnAt);
   const reduce = useReducedMotion();
+  const labelId = React.useId();
+  // A meter needs a name: the caller's ariaLabel, else a text label, else the label node (by id).
+  const named = ariaLabel ?? (typeof label === "string" ? label : undefined);
+  const byLabelNode = !named && !!label;
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       {(label || showValues) && (
         <div className="flex items-baseline justify-between gap-2 text-xs">
-          {label ? <span className="truncate text-muted-foreground">{label}</span> : <span />}
+          {label ? <span id={labelId} className="truncate text-muted-foreground">{label}</span> : <span />}
           {showValues && (
             <span className="shrink-0 tabular-nums">
               <span className={cn("font-semibold", hasLimit ? LIMIT_TEXT[t] : "text-foreground")}>{format(u)}</span>
@@ -1214,7 +1221,8 @@ export function LimitBar({
         aria-valuemax={hasLimit ? (limit as number) : 0}
         aria-valuenow={u}
         aria-valuetext={hasLimit ? commonI18n.t("ds.limitValue", { pct: fmtRate(ratio), state: limitWord(t) }) : commonI18n.t("trading.limitNotSet")}
-        aria-label={typeof label === "string" ? label : undefined}
+        aria-label={named}
+        aria-labelledby={byLabelNode ? labelId : undefined}
         className={cn(
           "relative w-full overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]",
           size === "sm" ? "h-1.5" : "h-2",

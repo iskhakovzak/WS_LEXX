@@ -11,6 +11,11 @@ describe("csp meta (build)", () => {
     expect(inlineScriptHashes(html)).toEqual([expected]);
   });
 
+  it("hashes the parsed text: CRLF / CR endings count as LF, like the browser", () => {
+    expect(inlineScriptHashes(html.replace(/\n/g, "\r\n"))).toEqual(inlineScriptHashes(html));
+    expect(inlineScriptHashes(html.replace(/\n/g, "\r"))).toEqual(inlineScriptHashes(html));
+  });
+
   it("locks scripts to self + the inline hash, no plugins, no base hijack", () => {
     const p = metaCsp(["sha256-x"]);
     expect(p).toContain("script-src 'self' 'sha256-x'");

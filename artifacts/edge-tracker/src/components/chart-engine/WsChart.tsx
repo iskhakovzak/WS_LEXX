@@ -32,7 +32,7 @@ import { isOpening, positionAt, replayMark } from "./lib/position";
 import { replayKeyAction, stepSpeed } from "./lib/replay-clock";
 import { buildTradeSummary, fmtPerShare } from "./lib/trade-summary";
 import { capVolumes, daySpanOf, defaultViewRange, followCursor, isViewMode, type ViewMode } from "./lib/view";
-import { baseChartOptions, candleColors, priceFormatFor, refPrice, topMargin, wheelNeedsModifier } from "./lib/chart-options";
+import { baseChartOptions, candleColors, chartTableIsLayout, priceFormatFor, refPrice, topMargin, wheelNeedsModifier } from "./lib/chart-options";
 import { chartI18n } from "@/i18n/ns/chart";
 import { readChartTheme, type ChartTheme } from "./theme";
 import { useChartData } from "./hooks/useChartData";
@@ -271,6 +271,7 @@ export function WsChart({
     const theme = readChartTheme();
     const h = el.clientHeight || height;
     const chart = createChart(el, { ...baseChartOptions(theme, { width: el.clientWidth || 320, height: h, intraday, rightOffset: 8 }) });
+    chartTableIsLayout(el);
 
     const full = bars.map((b) => ({ time: b.t as UTCTimestamp, open: b.o, high: b.h, low: b.l, close: b.c }));
     const ws = bars.map((b) => ({ time: b.t as UTCTimestamp }));

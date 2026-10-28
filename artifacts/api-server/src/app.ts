@@ -18,6 +18,7 @@ import {
 import { shutdownConnectionClose } from "./lib/security/lifecycle";
 import { captureFailedResponse, captureServerError } from "./lib/errorTracking";
 import { rateLimitedBody } from "./lib/rateLimits";
+import { REVALIDATE, staticCacheHeaders } from "./lib/staticCache";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = config.isProduction;
@@ -100,8 +101,10 @@ app.use("/api", jsonCompression());
 app.use("/api", authMiddleware, apiAuthGate, requestLang, jsonBody(), router);
 
 if (isProduction) {
-  app.use(express.static(staticDir));
+  // Hashed /assets/* a year (immutable), the HTML shell always revalidated, other public files a day (lib/staticCache).
+  app.use(express.static(staticDir, { setHeaders: staticCacheHeaders(staticDir) }));
   app.get("/{*path}", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", REVALIDATE);
     res.sendFile(path.join(staticDir, "index.html"));
   });
 }

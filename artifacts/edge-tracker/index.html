@@ -11,6 +11,7 @@
     <meta name="application-name" content="WS_Desk" />
     <meta name="apple-mobile-web-app-title" content="WS_Desk" />
     <title>WS_Desk</title>
+    <meta name="description" content="WS_Desk — рабочее место трейдера и деска: сделки, статистика, риск и план дня." />
     <script>
       // Apply the saved theme and the «Вид» look (lib/appearance/apply.ts: ws_lexx_look) before first paint,
       // so a light-theme or customised user never sees a flash of the default dark look.
@@ -33,9 +34,9 @@
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=line" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=line" />
     <link rel="manifest" href="/manifest.webmanifest?v=line" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Self-hosted Inter (src/fonts.css): only the two subsets every screen paints with are preloaded. -->
+    <link rel="preload" href="/src/assets/fonts/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/src/assets/fonts/inter/inter-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <div id="root"></div>

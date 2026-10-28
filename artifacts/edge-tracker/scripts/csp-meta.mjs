@@ -10,11 +10,15 @@
  */
 import { createHash } from "node:crypto";
 
-/** sha256 hashes of inline <script> bodies (scripts with src= are covered by 'self'). */
+/**
+ * sha256 hashes of inline <script> bodies (scripts with src= are covered by 'self'). The browser hashes the text after
+ * HTML parsing, which turns CRLF / CR into LF: a CRLF checkout (Windows) got a hash that never matched, and the
+ * theme bootstrap was blocked with a console error.
+ */
 export function inlineScriptHashes(html) {
   const out = [];
   for (const m of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
-    const body = m[1];
+    const body = m[1].replace(/\r\n?/g, "\n");
     if (body.trim()) out.push(`sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`);
   }
   return out;

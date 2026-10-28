@@ -139,7 +139,7 @@ export function ReviewTradeRow({
         highlight && "bg-primary/[0.14] shadow-[inset_2px_0_0_hsl(var(--primary))]",
       )}
     >
-      <span onClick={(e) => e.stopPropagation()} className={cn("flex items-center", CELL_PHONE.check)}>
+      <span role="cell" onClick={(e) => e.stopPropagation()} className={cn("flex items-center", CELL_PHONE.check)}>
         {/* 16px box, ~40px hit area: on phones a near miss would open the trade sheet instead of selecting. */}
         <Checkbox
           className="relative after:absolute after:-inset-3 after:content-['']"
@@ -149,7 +149,7 @@ export function ReviewTradeRow({
           onCheckedChange={() => { /* handled in onClick (shift-range) */ }}
         />
       </span>
-      <span className={cn("flex flex-col leading-tight max-md:flex-row max-md:gap-1.5", CELL_PHONE.when)}>
+      <span role="cell" className={cn("flex flex-col leading-tight max-md:flex-row max-md:gap-1.5", CELL_PHONE.when)}>
         <span className="text-sm tabular-nums text-foreground max-md:text-xs max-md:text-muted-foreground">
           {showDate ? fmtDayLong(t.date.slice(0, 10), false) : open ?? "—"}
         </span>
@@ -157,7 +157,7 @@ export function ReviewTradeRow({
           {showDate ? (open ? `${open} · ${fmtHold(hold)}` : fmtHold(hold)) : fmtHold(hold)}
         </span>
       </span>
-      <span className={cn("flex min-w-0 flex-col leading-tight", CELL_PHONE.ticker)}>
+      <span role="cell" className={cn("flex min-w-0 flex-col leading-tight", CELL_PHONE.ticker)}>
         <span className="flex min-w-0 items-center gap-1.5">
           <button type="button" onClick={(e) => { e.stopPropagation(); onFocusRow(t.id); onOpen(t); }} className="truncate text-sm font-semibold text-foreground hover:underline" title={t.ticker}>
             {t.ticker}
@@ -167,25 +167,25 @@ export function ReviewTradeRow({
         {showTrader && t.trader && <span className="truncate text-xs text-muted-foreground" title={personName(t.trader)}>{personName(t.trader)}</span>}
         {!showTrader && t.qty != null && <span className="hidden truncate text-xs tabular-nums text-muted-foreground md:inline">{commonI18n.t("units.shares", { count: fmtCount(t.qty) })}</span>}
       </span>
-      <span className="hidden items-center md:flex" aria-hidden="true">
+      <span role="cell" className="hidden items-center md:flex" aria-hidden="true">
         <TradeSparkline trade={t} width={100} height={30} />
       </span>
-      <span className={cn("flex flex-col items-end leading-tight", CELL_PHONE.net)}>
+      <span role="cell" className={cn("flex flex-col items-end leading-tight", CELL_PHONE.net)}>
         <span className={cn("text-sm font-semibold tabular-nums", moneyText(net, beRange))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
         {r != null && <span className="text-xs tabular-nums text-muted-foreground md:hidden" title={tr("review.rGrossTitle")}>{fmtR(r, 2)}</span>}
         {t.fees ? <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:inline" title={tr("review.grossFeesTitle")}>{tr("review.grossFees", { gross: fmtUsd(t.pnl, { signed: true, decimals: "auto" }), fees: fmtUsd(Math.abs(t.fees), { signed: true, decimals: "auto" }).replace("+", "") })}</span> : null}
       </span>
-      <span className="hidden justify-end md:flex">
+      <span role="cell" className="hidden justify-end md:flex">
         <CaptureCell q={quality[t.id]} pending={qualityPending} />
       </span>
       {/* Strategy chips (colours from «Вид» → Чипы) lead the tag chips in the same cell. */}
-      <span className="hidden min-w-0 flex-wrap items-center gap-1 md:flex">
+      <span role="cell" className="hidden min-w-0 flex-wrap items-center gap-1 md:flex">
         {t.strategy && <TradeChip group="strategy" value={t.strategy} />}
         {isImxTrade(t) && t.strategy !== "IMX" && <TradeChip group="strategy" value="IMX" />}
         <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} />
       </span>
       {/* Row actions: «Картинка» (own closed trades, share-card) and «В плейбук» / the open chevron. */}
-      <span className="hidden items-center justify-end md:flex">
+      <span role="cell" className="hidden items-center justify-end md:flex">
         <ShareCardRowButton trade={t} active={active} onFocusRow={onFocusRow} />
         {onAddToPlaybook ? (
           <button

@@ -19,7 +19,7 @@ import {
   createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode,
   type IChartApi, type ISeriesApi, type UTCTimestamp, type Time,
 } from "lightweight-charts";
-import { readChartTheme, sessionVwap, tickMarkLabel, fmtEtDateTime, type Candle, type ChartTheme } from "@/components/chart-engine";
+import { chartTableIsLayout, readChartTheme, sessionVwap, tickMarkLabel, fmtEtDateTime, type Candle, type ChartTheme } from "@/components/chart-engine";
 import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion";
 import { SessionShadingPrimitive } from "@/components/chart-engine/primitives/SessionShadingPrimitive";
 import { LevelsPrimitive, type LevelLine } from "@/components/chart-engine/primitives/LevelsPrimitive";
@@ -164,6 +164,7 @@ export function SimChart({
       handleScale: SCALE_ON,
       handleScroll: SCROLL_ON,
     });
+    chartTableIsLayout(el);
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: theme.up(), downColor: theme.down(), borderUpColor: theme.up(), borderDownColor: theme.down(), wickUpColor: theme.up(0.9), wickDownColor: theme.down(0.9),
       priceLineVisible: true, priceLineStyle: 2, priceLineColor: theme.muted(0.6), lastValueVisible: true,
