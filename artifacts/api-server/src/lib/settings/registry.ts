@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -432,6 +432,32 @@ export const SETTINGS = {
   // «Day two after a strong catalyst» in the brief (lib/catalyst dayTwoHints): the smallest close-to-close move of
   // yesterday, in %, that makes a strong catalyst a day-two candidate today.
   "mentor.dayTwoMovePct": { group: "mentor", type: "number", default: 4, min: 1, max: 30, step: 0.5, unit: "pct" },
+  // Catalyst strength from the analyst feed (lib/catalyst/analystSignal): a cluster of same-direction calls from this
+  // many firms within the window, or one price-target change this large, pre-fills the catalyst mark as «strong» (the
+  // trader confirms). analystDayTwo: analyst comments the day after a catalyst make it a «day two» line.
+  "catalyst.analystClusterMin": { group: "catalyst", type: "number", default: 3, min: 2, max: 10, step: 1, unit: "count" },
+  "catalyst.analystClusterHours": { group: "catalyst", type: "number", default: 24, min: 1, max: 120, step: 1 },
+  "catalyst.analystTargetPct": { group: "catalyst", type: "number", default: 50, min: 10, max: 150, step: 5, unit: "pct" },
+  "catalyst.analystDayTwo": { group: "catalyst", type: "boolean", default: true },
+  // Corporate and index events (lib/corpEvents): a lock-up without a stated term ends this long after the IPO (an
+  // estimate, marked so); the calendar shows this far ahead.
+  "catalyst.lockupDefaultDays": { group: "catalyst", type: "number", default: 180, min: 30, max: 730, step: 15, unit: "days" },
+  "catalyst.corpLookaheadDays": { group: "catalyst", type: "number", default: 45, min: 7, max: 180, step: 1, unit: "days" },
+  // Library of analogues (lib/analogues): how many similar past cases, how far back, the gap bands (% edges) and the
+  // points per matching trait; a case below analogueMinScore is not shown.
+  "catalyst.analogueLimit": { group: "catalyst", type: "number", default: 8, min: 3, max: 30, step: 1, unit: "count" },
+  "catalyst.analogueLookbackDays": { group: "catalyst", type: "number", default: 730, min: 30, max: 2000, step: 30, unit: "days" },
+  "catalyst.analogueGapBands": { group: "catalyst", type: "text", default: "2,5,10,20", maxLength: 60 },
+  "catalyst.analogueMinScore": { group: "catalyst", type: "number", default: 3, min: 0, max: 30, step: 0.5, unit: "points" },
+  "catalyst.analogueWeightSetup": { group: "catalyst", type: "number", default: 3, min: 0, max: 10, step: 0.5, unit: "points" },
+  "catalyst.analogueWeightKind": { group: "catalyst", type: "number", default: 2, min: 0, max: 10, step: 0.5, unit: "points" },
+  "catalyst.analogueWeightGap": { group: "catalyst", type: "number", default: 2, min: 0, max: 10, step: 0.5, unit: "points" },
+  "catalyst.analogueWeightDirection": { group: "catalyst", type: "number", default: 2, min: 0, max: 10, step: 0.5, unit: "points" },
+  "catalyst.analogueWeightStrength": { group: "catalyst", type: "number", default: 1, min: 0, max: 10, step: 0.5, unit: "points" },
+  "catalyst.analogueWeightRegime": { group: "catalyst", type: "number", default: 1, min: 0, max: 10, step: 0.5, unit: "points" },
+  // Trading pods (lib/pods): 2–4 traders of one curator's group by default.
+  "pods.minMembers": { group: "pods", type: "number", default: 2, min: 2, max: 4, step: 1, unit: "people" },
+  "pods.maxMembers": { group: "pods", type: "number", default: 4, min: 2, max: 8, step: 1, unit: "people" },
   "mentor.pushesEnabled": { group: "mentor", type: "boolean", default: false },
   "mentor.briefTime": { group: "mentor", type: "time", default: "08:45" },
   "mentor.debriefTime": { group: "mentor", type: "time", default: "16:30" },

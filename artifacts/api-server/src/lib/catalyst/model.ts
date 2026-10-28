@@ -128,7 +128,12 @@ export function insightOf(setups: readonly SetupRow[]): Insight | null {
 // ─── suggestions (prefill: the trader only confirms) ───────────────────────────────────────────────────────────────
 
 export type DayEvent = { ticker: string; kind: Kind; direction: Direction | null; movePct: number | null; source: "event" | "earnings" };
-export type Hint = { ticker: string; direction: Direction | null; kind: Kind | null; source: "event" | "earnings" | "gap"; movePct: number | null };
+export type Hint = {
+  ticker: string; direction: Direction | null; kind: Kind | null; source: "event" | "earnings" | "gap" | "analyst"; movePct: number | null;
+  /** Suggested strength (lib/catalyst/analystSignal: an analyst cluster / a big target change) — the trader confirms. */
+  strength?: Strength | null;
+  analyst?: { reason: "cluster" | "target"; count: number; targetPct: number | null } | null;
+};
 
 /** Events page type → catalyst kind (analyst up / downgrades are news; momentum, squeezes and the rest are «other»). */
 export function kindOfEventType(type: string | null | undefined): Kind {
@@ -172,8 +177,9 @@ export type SetupLite = { id: number; name: string; setupType: string | null; fo
 export type DayTwoHint = {
   ticker: string;
   direction: Direction;
-  /** Where «strong» came from: the trader's own mark, or the day's event / earnings. */
-  source: "mark" | "event" | "earnings";
+  /** Where «strong» came from: the trader's own mark, or the day's event / earnings; «analyst» = analysts commented
+   *  on the ticker the day after its catalyst (lib/catalyst/analystSignal dayTwoAnalyst). */
+  source: "mark" | "event" | "earnings" | "analyst";
   kind: Kind | null;
   /** Yesterday's close vs the close before, %. */
   movePct: number;
@@ -212,6 +218,8 @@ export function dayTwoHints(x: {
   minMovePct: number;
   setups: readonly SetupLite[];
   limit?: number;
+  /** Tickers analysts commented on TODAY (the day after the catalyst) → their net direction; null = no direction. */
+  analyst?: ReadonlyMap<string, Direction | null>;
 }): DayTwoHint[] {
   const out = new Map<string, DayTwoHint>();
   const marks = new Map(x.marks.map((m) => [m.ticker, m]));
@@ -229,6 +237,22 @@ export function dayTwoHints(x: {
     const own = marks.get(e.ticker);
     if (own && isMarked(own) && own.strength !== "strong") continue; // the trader called it weak (or left the strength open)
     consider(e.ticker, own?.direction ?? e.direction, e.source, e.kind, e.movePct);
+  }
+  // Analysts talking about a ticker the day after its catalyst make it a day-two candidate even below the move bar.
+  for (const [ticker, aDir] of x.analyst ?? []) {
+    if (out.has(ticker)) continue;
+    const own = marks.get(ticker);
+    const ev = x.events.find((e) => e.ticker === ticker);
+    if (!(own && isMarked(own)) && !ev) continue; // no catalyst yesterday → just analyst noise
+    const move = x.moves.get(ticker) ?? ev?.movePct ?? null;
+    const moveDir: Direction | null = move != null && Number.isFinite(move) && move !== 0 ? (move > 0 ? "bull" : "bear") : null;
+    const dir = own?.direction ?? ev?.direction ?? moveDir ?? aDir;
+    if (!dir || (moveDir && moveDir !== dir)) continue;
+    const setup = dayTwoSetup(x.setups, dir);
+    out.set(ticker, {
+      ticker, direction: dir, source: "analyst", kind: own?.kind ?? ev?.kind ?? null, movePct: move == null ? 0 : Math.round(move * 100) / 100,
+      setupId: setup?.id ?? null, setupName: setup?.name ?? null,
+    });
   }
   return [...out.values()].sort((a, b) => Math.abs(b.movePct) - Math.abs(a.movePct) || a.ticker.localeCompare(b.ticker)).slice(0, x.limit ?? 3);
 }

@@ -36,7 +36,8 @@ export function CatalystTaps({
   const mark = day.data?.marks.find((m) => m.ticker === ticker) ?? null;
   const marked = !!mark && (mark.direction != null || mark.strength != null);
   // A suggestion is read only while there is nothing to confirm yet (one cached request per ticker and day).
-  const hintQ = useQuery({ ...catalystHintQuery(date, ticker), enabled: valid && day.isSuccess && !mark && planBias !== "bull" && planBias !== "bear" });
+  // With the plan's own direction the hint still matters: it may carry the analysts' «strong» (same direction only).
+  const hintQ = useQuery({ ...catalystHintQuery(date, ticker), enabled: valid && day.isSuccess && !mark });
   const suggestion: Suggestion | null = mark ? null : suggestDirection({ planBias, hint: hintQ.data ?? null, gapPct });
   const save = useSaveMark(date);
   if (!valid) return null;
@@ -47,6 +48,9 @@ export function CatalystTaps({
   };
   const sourceText = (s: Suggestion) =>
     s.source === "gap" ? t("catalyst.source.gap", { gap: fmtPct(s.movePct ?? 0, 1) }) : t(`catalyst.source.${s.source}`);
+  const analystText = (s: Suggestion) => !s.analyst ? "" : s.analyst.reason === "cluster"
+    ? t("catalyst.analystCluster", { count: s.analyst.count })
+    : t("catalyst.analystTarget", { pct: fmtPct(s.analyst.targetPct ?? 0, 0) });
 
   return (
     <span className={cn("inline-flex flex-wrap items-center gap-1", className)} data-catalyst-marked={marked || undefined}>
@@ -76,17 +80,21 @@ export function CatalystTaps({
         })}
       </span>
       <span role="group" aria-label={t("catalyst.strengthAria", { ticker })} className="inline-flex items-center gap-0.5">
-        {STRENGTHS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            aria-pressed={mark?.strength === s}
-            onClick={() => tap({ strength: s })}
-            className="chip inline-flex h-7 items-center px-2 text-xs font-medium"
-          >
-            {t(`catalyst.strength.${s}`)}
-          </button>
-        ))}
+        {STRENGTHS.map((s) => {
+          const hinted = !mark?.strength && suggestion?.strength === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={mark?.strength === s}
+              onClick={() => tap({ strength: s })}
+              title={hinted ? t("catalyst.suggested", { source: analystText(suggestion!) }) : undefined}
+              className={cn("chip inline-flex h-7 items-center px-2 text-xs font-medium", hinted && "border-dashed text-primary")}
+            >
+              {t(`catalyst.strength.${s}`)}
+            </button>
+          );
+        })}
       </span>
     </span>
   );

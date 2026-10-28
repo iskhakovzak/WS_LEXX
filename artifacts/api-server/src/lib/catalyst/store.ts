@@ -21,6 +21,8 @@ import {
   type Hint, type Kind, type MarkSource, type SetupLite, type Strength,
 } from "./model";
 import type { Queryable } from "../interventions/log";
+import { analystDayTwo, analystSignalsFor } from "./analystStore";
+import { withAnalystStrength } from "./analystSignal";
 
 const MARK_COLS = `trader, day, ticker, direction, strength, kind, source, suggested`;
 
@@ -113,8 +115,9 @@ export async function prevSessionDay(day: string): Promise<string> {
 /** Prefill suggestions for the tickers of a screen on `day` (an event, earnings with the gap, or the gap alone). */
 export async function dayHintsOf(day: string, tickers: readonly string[], db: Queryable = pool): Promise<Hint[]> {
   if (!tickers.length) return [];
-  const [events, moves] = await Promise.all([dayEvents(day, tickers, db), dayMoves(day, tickers, db)]);
-  return tickers.map((t) => hintFrom(t, events, moves.get(t)?.gap ?? null)).filter((h): h is Hint => h != null);
+  const [events, moves, signals] = await Promise.all([dayEvents(day, tickers, db), dayMoves(day, tickers, db), analystSignalsFor(day, tickers, db)]);
+  const hints = tickers.map((t) => hintFrom(t, events, moves.get(t)?.gap ?? null)).filter((h): h is Hint => h != null);
+  return withAnalystStrength(hints, signals, tickers) as Hint[];
 }
 
 // ─── trades ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -188,7 +191,8 @@ export async function dayTwoOf(trader: string, today: string, minMovePct: number
   const tickers = [...new Set([...inView, ...events.map((e) => e.ticker)])];
   const moves = await dayMoves(yesterday, tickers, db);
   const moveOnly = new Map([...moves].filter(([, v]) => v.move != null).map(([k, v]) => [k, v.move as number]));
-  return { yesterday, hints: dayTwoHints({ marks, events, moves: moveOnly, minMovePct, setups }) };
+  const analyst = await analystDayTwo(today, tickers, db);
+  return { yesterday, hints: dayTwoHints({ marks, events, moves: moveOnly, minMovePct, setups, analyst }) };
 }
 
 /** The trader's trades of [from, to] on a setup whose formula needs a catalyst, checked against the plan marks. */

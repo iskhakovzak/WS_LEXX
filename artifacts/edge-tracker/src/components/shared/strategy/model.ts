@@ -15,7 +15,13 @@ export type CatalystMark = {
   trader: string; day: string; ticker: string; direction: Direction | null; strength: Strength | null; kind: Kind | null;
   source: MarkSource; suggested: boolean;
 };
-export type CatalystHint = { ticker: string; direction: Direction | null; kind: Kind | null; source: "event" | "earnings" | "gap"; movePct: number | null };
+export type AnalystBasis = { reason: "cluster" | "target"; count: number; targetPct: number | null };
+export type CatalystHint = {
+  ticker: string; direction: Direction | null; kind: Kind | null; source: "event" | "earnings" | "gap" | "analyst"; movePct: number | null;
+  /** Suggested strength (api lib/catalyst/analystSignal: an analyst cluster / a big target change). */
+  strength?: Strength | null;
+  analyst?: AnalystBasis | null;
+};
 export type CatalystDay = { trader: string; date: string; marks: CatalystMark[]; hints: CatalystHint[] };
 
 /** The $ block of the shared math (api lib/playbookEdge computeUsdStats; $ fields null when hidden). */
@@ -54,20 +60,29 @@ export function isEmptyFormula(f: StrategyFormula | null | undefined): boolean {
 }
 
 export type DayTwoHint = {
-  ticker: string; direction: Direction; source: "mark" | "event" | "earnings"; kind: Kind | null; movePct: number;
+  ticker: string; direction: Direction; source: "mark" | "event" | "earnings" | "analyst"; kind: Kind | null; movePct: number;
   setupId: number | null; setupName: string | null;
 };
 
 /** Where a suggested direction comes from: the plan's own ticker direction first, then the day's event / earnings / gap. */
-export type Suggestion = { direction: Direction; source: "plan" | "event" | "earnings" | "gap"; kind: Kind | null; movePct: number | null };
+export type Suggestion = {
+  direction: Direction; source: "plan" | "event" | "earnings" | "gap" | "analyst"; kind: Kind | null; movePct: number | null;
+  /** «Strong» suggested by the analysts (only when it agrees with the suggested direction). */
+  strength?: Strength | null;
+  analyst?: AnalystBasis | null;
+};
+
+/** The hint's analyst strength, when its direction agrees with `direction`. */
+const strengthFor = (hint: CatalystHint | null | undefined, direction: Direction) =>
+  hint?.strength && hint.direction === direction ? { strength: hint.strength, analyst: hint.analyst ?? null } : {};
 
 /**
  * The direction to prefill when the ticker has no mark yet (the trader only confirms). `planBias` is the ticker's
  * direction in the plan (bull / bear / neutral); `gapPct` is the live gap a screen already has (watchlist quote).
  */
 export function suggestDirection(x: { planBias?: string | null; hint?: CatalystHint | null; gapPct?: number | null }): Suggestion | null {
-  if (x.planBias === "bull" || x.planBias === "bear") return { direction: x.planBias, source: "plan", kind: x.hint?.kind ?? null, movePct: null };
-  if (x.hint?.direction) return { direction: x.hint.direction, source: x.hint.source, kind: x.hint.kind, movePct: x.hint.movePct };
+  if (x.planBias === "bull" || x.planBias === "bear") return { direction: x.planBias, source: "plan", kind: x.hint?.kind ?? null, movePct: null, ...strengthFor(x.hint, x.planBias) };
+  if (x.hint?.direction) return { direction: x.hint.direction, source: x.hint.source, kind: x.hint.kind, movePct: x.hint.movePct, ...strengthFor(x.hint, x.hint.direction) };
   if (x.gapPct != null && Number.isFinite(x.gapPct) && Math.abs(x.gapPct) >= GAP_HINT_PCT) {
     return { direction: x.gapPct > 0 ? "bull" : "bear", source: "gap", kind: x.hint?.kind ?? null, movePct: x.gapPct };
   }
@@ -87,7 +102,10 @@ export function tapMark(
   const strength0 = cur?.strength ?? null;
   if ("direction" in tap) {
     const direction = direction0 === tap.direction ? null : tap.direction;
-    return { direction, strength: strength0, suggested: !direction0 && !!suggestion && suggestion.direction === direction };
+    const confirms = !direction0 && !!suggestion && suggestion.direction === direction;
+    // Confirming a suggested direction that came with a suggested strength (analysts) takes the strength too — one tap.
+    const strength = strength0 ?? (cur == null && confirms ? suggestion?.strength ?? null : null);
+    return { direction, strength, suggested: confirms };
   }
   const strength = strength0 === tap.strength ? null : tap.strength;
   // Tapping the strength while the direction is only a suggestion (no mark yet) takes the suggestion too: one tap

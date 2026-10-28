@@ -24,7 +24,9 @@ export function DayTwoLines({ hints, className }: { hints: readonly DayTwoHint[]
         {hints.map((h) => (
           <li key={h.ticker} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-foreground">
             <span>
-              {t(`dayTwo.line.${h.direction}`, { ticker: h.ticker, move: fmtPct(h.movePct, 1) })}
+              {h.source === "analyst"
+                ? t(`dayTwo.lineAnalyst.${h.direction}`, { ticker: h.ticker })
+                : t(`dayTwo.line.${h.direction}`, { ticker: h.ticker, move: fmtPct(h.movePct, 1) })}
             </span>
             {h.setupId != null && h.setupName ? (
               <Link href={`/playbook?id=${h.setupId}`} className={cn("rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-[var(--glass-hover-bg)]", toneText(h.direction === "bull" ? "up" : "down"))}>

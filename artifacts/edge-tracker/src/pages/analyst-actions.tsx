@@ -25,6 +25,7 @@ import { FirmStatsPanel, FirmStatsSheet, FirmWeightPanel } from "@/components/an
 import { HotkeysHelp } from "@/components/analyst/HotkeysHelp";
 import { MyDaysPanel } from "@/components/analyst/MyDaysPanel";
 import { PremarketPanel } from "@/components/analyst/PremarketPanel";
+import { StrengthSignals } from "@/components/analyst/StrengthSignals";
 import { TickerSheet } from "@/components/analyst/TickerSheet";
 import { enrich, sortRows, weightMap, type Row, type SortState } from "@/components/analyst/rows";
 import {
@@ -476,6 +477,7 @@ export default function AnalystActionsPage() {
           onAddPlan={planRow}
         />
         <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label={tf("page.asideAria")}>
+          <StrengthSignals day={win.sessionDay} canEdit={canEdit} onOpen={setSheetTicker} />
           <MyDaysPanel data={myDays.data} isLoading={myDays.isLoading} scopeLabel={scopeLabel} />
           {firmWeight.data ? (
             <FirmWeightPanel

@@ -74,6 +74,7 @@ import edgeRouter from "./edge";
 import myEdgeRouter from "./my-edge";
 import marketRegimeRouter from "./market-regime";
 import catalystsRouter from "./catalysts";
+import analystSignalsRouter from "./analyst-signals";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -169,6 +170,7 @@ router.use(psychologyanalyticsRouter);
 router.use(weeklyPsychologyReportRouter);
 router.use(candlesRouter);
 router.use(executionsRouter);
+router.use(analystSignalsRouter); // before /analyst-actions: catalyst strength from analyst clusters / big target changes
 router.use(analystActionsRouter);
 router.use(dailyQuotesRouter);
 router.use(quotesRouter);
