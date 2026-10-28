@@ -31,9 +31,12 @@ export function OpenWindowLine({ trader, className }: { trader: string | null; c
         {!s.lifted && s.source === "stage" && s.share != null && <span className="text-xs text-muted-foreground">{t("openWindow.stageShare", { share: fmtRate(s.share) })}</span>}
         {!s.lifted && s.source === "own" && <span className="text-xs text-muted-foreground">{t("openWindow.own")}</span>}
       </p>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        {s.lifted ? proof : t("openWindow.toLift", { trades: Math.min(s.edge.n, s.liftMinTrades), need: s.liftMinTrades, net: fmtUsd(s.edge.netExTop3, { signed: true, decimals: 0 }) })}
-      </p>
+      {/* A limit the risk desk set by hand never lifts by itself: no progress line for it. */}
+      {s.source !== "own" && (
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {s.lifted ? proof : t("openWindow.toLift", { trades: Math.min(s.edge.n, s.liftMinTrades), need: s.liftMinTrades, net: fmtUsd(s.edge.netExTop3, { signed: true, decimals: 0 }) })}
+        </p>
+      )}
     </div>
   );
 }

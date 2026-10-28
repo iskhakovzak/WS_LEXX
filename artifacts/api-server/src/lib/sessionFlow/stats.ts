@@ -81,11 +81,13 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 /** Trades whose timing their setup's matrix does not allow (setup id → allowed timings; a setup without one never flags). */
 export function offTimingTrades(trades: readonly FlowTrade[], allowedBySetup: ReadonlyMap<number, readonly Timing[]>): DayFlowFacts["offTiming"] {
   const out: DayFlowFacts["offTiming"] = [];
+  const seen = new Set<string>();
   for (const t of trades) {
     if (t.setupId == null) continue;
     const allowed = allowedBySetup.get(t.setupId) ?? [];
     const timing = timingOf(t);
-    if (timing && offTiming(timing, allowed)) out.push({ ticker: t.ticker.toUpperCase(), setup: t.setupName ?? String(t.setupId), timing, allowed: [...allowed] });
+    const k = `${t.ticker.toUpperCase()}|${t.setupId}|${timing}`;
+    if (timing && offTiming(timing, allowed) && !seen.has(k) && seen.add(k)) out.push({ ticker: t.ticker.toUpperCase(), setup: t.setupName ?? String(t.setupId), timing, allowed: [...allowed] });
   }
   return out;
 }
