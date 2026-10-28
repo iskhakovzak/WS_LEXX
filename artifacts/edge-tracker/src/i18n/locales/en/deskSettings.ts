@@ -210,6 +210,17 @@ export default {
       maxSnapshots: { label: "EM snapshots per run", help: "How many tickers with upcoming reports one run snapshots (plan and watchlist tickers first)." },
       historyQuarters: { label: "Historical EM: quarters", help: "How many recent reports the historical EM averages." },
     },
+    pulse: {
+      windowDays: { label: "Desk pulse: window", help: "How many calendar days «what works this season» covers." },
+      minTrades: { label: "Pulse: trades per cell", help: "A «family × timing» cell with fewer trades is greyed out and not judged." },
+      minTraders: { label: "Pulse: people per cell", help: "At least three: a sum over two people gives the other one's result away. Below it traders see no numbers of the cell." },
+      gapPct: { label: "Family: gap", help: "An open this many percent above or below the previous close is a gap day (gap up / down), else «no gap»." },
+      easyMovePct: { label: "Easy money: move", help: "A clean move of the day — at least this many percent from the open to the close (or a gap that held)." },
+      easyCleanShare: { label: "Easy money: cleanliness", help: "The day's body (open → close) is at least this share of its range. Less is chop, not easy money." },
+      easyMaxTickers: { label: "Easy money: in-play tickers", help: "How many in-play tickers a day checks (desk plan, catalyst marks, events, reports, analysts, desk trades)." },
+      easyDebriefMissed: { label: "Debrief: «missed» lines", help: "How many of the biggest missed moves the trader sees in the day's debrief." },
+      reportMinTrades: { label: "Season report: trades per row", help: "A «setup × timing» row with fewer trades is shown in the report but not judged." },
+    },
     capital: {
       achievementsEnabled: { label: "Achievements in the risk allocation", help: "Big achievements (setup, leak, clean month, comeback) add to a raise; never raise without a proven edge." },
       weightAchievements: { label: "Achievements weight", help: "Share of the achievements signal in the composite; counted only when it is above zero." },

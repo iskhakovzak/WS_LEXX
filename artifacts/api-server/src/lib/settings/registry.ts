@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em" | "pulse";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -440,6 +440,19 @@ export const SETTINGS = {
   "em.implied": { group: "em", type: "boolean", default: true },
   "em.maxSnapshots": { group: "em", type: "number", default: 40, min: 0, max: 200, step: 5, unit: "count" },
   "em.historyQuarters": { group: "em", type: "number", default: 8, min: 2, max: 20, step: 1, unit: "count" },
+  // Desk pulse, easy money of the day, the season report (lib/deskPulse): the desk window of the pulse, its minimum
+  // sample (trades and people — never below the desk's three-people privacy rule), the gap that makes a setup family,
+  // what counts as a clean move, how many in-play tickers a day checks, the missed lines of the debrief, and the
+  // trades a season-report row needs before it is judged.
+  "pulse.windowDays": { group: "pulse", type: "number", default: 21, min: 5, max: 120, step: 1, unit: "days" },
+  "pulse.minTrades": { group: "pulse", type: "number", default: 12, min: 3, max: 500, step: 1, unit: "trades" },
+  "pulse.minTraders": { group: "pulse", type: "number", default: 3, min: 3, max: 20, step: 1, unit: "people" },
+  "pulse.gapPct": { group: "pulse", type: "number", default: 2, min: 0.5, max: 20, step: 0.5, unit: "pct" },
+  "pulse.easyMovePct": { group: "pulse", type: "number", default: 4, min: 1, max: 50, step: 0.5, unit: "pct" },
+  "pulse.easyCleanShare": { group: "pulse", type: "number", default: 0.6, min: 0.3, max: 1, step: 0.05, unit: "ratio" },
+  "pulse.easyMaxTickers": { group: "pulse", type: "number", default: 40, min: 5, max: 150, step: 5, unit: "count" },
+  "pulse.easyDebriefMissed": { group: "pulse", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "count" },
+  "pulse.reportMinTrades": { group: "pulse", type: "number", default: 5, min: 1, max: 100, step: 1, unit: "trades" },
   // Capital allocation (lib/capital): weekly (Fri 19:30 NY) and on demand, per trader raise / keep / cut of the daily loss
   // limit (BP in the same ratio) from the shrunk edge, the edge in the current regime and discipline. Proposals land in
   // the scaling queue; autoApply (off by default) lets the weekly job apply them itself. Weights are relative shares.

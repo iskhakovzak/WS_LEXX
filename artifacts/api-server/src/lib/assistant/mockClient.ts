@@ -126,6 +126,8 @@ function mockMentor(turn: string): string {
   if (ctx.openWindow?.limitUsd != null) brief.push(t(ctx.openWindow.lifted ? "mock.mentor.openLifted" : "mock.mentor.openWindow", { limit: usd(ctx.openWindow.limitUsd) }));
   if (ctx.season?.quiet) brief.push(t("mock.mentor.quiet"));
   if (ctx.season?.prime) brief.push(t("mock.mentor.prime"));
+  const cell = (c: any) => (c ? `${c.family} · ${c.timing}` : "—");
+  if (ctx.deskPulse) brief.push(t("mock.mentor.pulse", { works: cell(ctx.deskPulse.works), fails: cell(ctx.deskPulse.fails) }));
   const demo = t("mock.mentor.demo");
   const out = kind === "brief"
     ? { headline: demo, points: brief.slice(0, 3), ruleToday: ctx.season?.quiet ? t("mock.mentor.quietRule") : t("mock.mentor.rule"), setupIds: [] }

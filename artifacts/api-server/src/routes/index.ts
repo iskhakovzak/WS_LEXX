@@ -82,6 +82,7 @@ import academyBriefingsRouter from "./academy-briefings";
 import sessionFlowRouter from "./session-flow";
 import expectedMoveRouter from "./expected-move";
 import ideasRouter from "./ideas";
+import deskPulseRouter from "./desk-pulse";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -215,6 +216,7 @@ router.use(catalystsRouter); // catalyst direction × strength: plan / watchlist
 router.use(sessionFlowRouter); // session flow: re-entries, chases, give-back from the peak, green-to-red (lib/sessionFlow)
 router.use(expectedMoveRouter); // expected move on earnings: implied snapshot / historical average, levels, EM broken
 router.use(ideasRouter); // plan idea tiers + setup checklist scores: marks, prefill, limits, stats (lib/sessionFlow/ideaStore)
+router.use(deskPulseRouter); // desk pulse: setup family × timing of the desk window, desk aggregates only (lib/deskPulse)
 router.use(leakGuardRouter); // live leak guard: active pauses, acknowledgement, impact in $, desk, levels
 router.use(capitalRouter); // capital allocation: risk moves to proven edge (lib/capital), proposals in the scaling queue
 router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)

@@ -3,7 +3,8 @@
  *
  * Market tone (risk-on / risk-off) → 7 compact tiles → leadership vs QQQ (RS, gap/premarket, time-of-day
  * RVOL, VWAP, nearest levels, correlation, contribution to QQQ) → own results on these tickers →
- * catalysts of the week. A tile or row opens the detail sheet with the chart and levels.
+ * the desk pulse («что работает в сезоне»: setup family × timing of the desk window) → catalysts of the week. A tile or
+ * row opens the detail sheet with the chart and levels.
  *
  * Data: 5-minute extended-hours candles from the server cache (past days stored, today refreshed every
  * 5 min) — re-polled every 3 min only in premarket/regular hours; quotes every 60 s only during the
@@ -41,6 +42,7 @@ import {
 import { nextEarnings } from "@/components/big7/ui";
 import { fmtDate } from "@/lib/format";
 import { useTodayCloseMin } from "@/components/shell/market-clock";
+import { DeskPulsePanel } from "@/components/shared/desk-pulse/pulse-panel";
 
 const BENCH = ["QQQ", "SPY"] as const;
 /** Max symbols that get intraday bars (board + hot); keeps the server/Yahoo load bounded. */
@@ -302,6 +304,8 @@ export default function Big7() {
           {hasMyTrades && myShown && (
             <MyStatsPanel stats={myShown} period={statsPeriod} onOpen={setOpenSym} />
           )}
+
+          <DeskPulsePanel />
 
           {board.length > 0 && (
             <CatalystWeek

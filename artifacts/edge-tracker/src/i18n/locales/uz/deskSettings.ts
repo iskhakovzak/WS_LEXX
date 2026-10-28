@@ -210,6 +210,17 @@ export default {
       maxSnapshots: { label: "Bir ishga tushirishda EM snapshotlari", help: "Bir ishga tushirishda yaqin hisobotli nechta tiker olinadi (avval reja va vochlist tikerlari)." },
       historyQuarters: { label: "Tarixiy EM: choraklar", help: "Tarixiy EM uchun nechta oxirgi hisobot oʻrtachalanadi." },
     },
+    pulse: {
+      windowDays: { label: "Desk pulsi: oyna", help: "«Mavsumda nima ishlaydi» necha kalendar kuni boʻyicha hisoblanadi." },
+      minTrades: { label: "Puls: katakdagi bitimlar", help: "Bitimlari kamroq «oila × vaqt» katagi kulrang va baholanmaydi." },
+      minTraders: { label: "Puls: katakdagi odamlar", help: "Kamida uch: ikki kishi boʻyicha yigʻindi boshqasining natijasini ochib qoʻyadi. Undan kam boʻlsa treyderlar katak raqamlarini koʻrmaydi." },
+      gapPct: { label: "Oila: gep", help: "Ochilish oldingi yopilishdan shuncha foiz yuqori yoki past — gepli kun (yuqoriga / pastga gep), aks holda «gepsiz»." },
+      easyMovePct: { label: "Oson pul: harakat", help: "Kunning toza harakati — ochilishdan yopilishgacha kamida shuncha foiz (yoki saqlanib qolgan gep)." },
+      easyCleanShare: { label: "Oson pul: tozalik", help: "Kun tanasi (ochilish → yopilish) kun diapazonining kamida shu ulushi. Kamroq — arra, oson pul emas." },
+      easyMaxTickers: { label: "Oson pul: oʻyindagi tikerlar", help: "Kuniga nechta oʻyindagi tiker tekshiriladi (desk rejasi, katalizator belgilari, voqealar, hisobotlar, analitiklar, desk bitimlari)." },
+      easyDebriefMissed: { label: "Tahlil: «oʻtkazib yubordi» qatorlari", help: "Treyderga kun tahlilida eng katta oʻtkazib yuborilgan harakatlardan nechtasi koʻrsatiladi." },
+      reportMinTrades: { label: "Mavsum hisoboti: qatordagi bitimlar", help: "Bitimlari kamroq «setap × vaqt» qatori hisobotda koʻrsatiladi, lekin baholanmaydi." },
+    },
     capital: {
       achievementsEnabled: { label: "Risk taqsimotida yutuqlar", help: "Katta yutuqlar (setap, yoʻqotish, toza oy, qaytish) — oshirish qaroriga qoʻshimcha; isbotlangan edge'siz oshirilmaydi." },
       weightAchievements: { label: "Yutuqlar vazni", help: "Yutuqlar signalining umumiy bahodagi ulushi; faqat noldan katta boʻlganda hisobga olinadi." },

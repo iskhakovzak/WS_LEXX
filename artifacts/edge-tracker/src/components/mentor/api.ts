@@ -6,6 +6,7 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import type { DayTwoHint } from "@/components/shared/strategy/model";
+import type { PulseHighlight } from "@/components/shared/desk-pulse/api";
 
 export const MENTOR_DOMAIN = "mentor";
 
@@ -37,6 +38,8 @@ export type BriefContent = {
   headline: string; points: string[]; ruleToday: string; setupIds: number[]; setups: { id: number; name: string }[];
   /** «Второй день» lines (api lib/catalyst) — absent in briefs written before them. */
   dayTwo?: DayTwoHint[];
+  /** The desk pulse line (api lib/deskPulse) — absent in briefs written before it. */
+  pulse?: { works: PulseHighlight | null; fails: PulseHighlight | null } | null;
 };
 export type DebriefContent = {
   summary: string; vsPlan: string; lesson: string; praise: string | null; challenge: string | null; ruleTomorrow: Proposal | null;

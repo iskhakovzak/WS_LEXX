@@ -14,6 +14,7 @@ import { mentorI18n } from "@/i18n/ns/mentor";
 import { useRhythm, type BriefContent, type DebriefContent, type Digest, type MentorState, type RhythmKind, type WeeklyContent } from "./api";
 import { CheckinStrip } from "./checkin";
 import { DayTwoLines } from "@/components/shared/strategy/day-two";
+import { PulseLine } from "@/components/shared/desk-pulse/pulse-line";
 
 const KINDS: readonly RhythmKind[] = ["brief", "debrief", "weekly"];
 
@@ -33,6 +34,7 @@ function BriefView({ d }: { d: BriefContent }) {
       <p className="text-base font-semibold text-foreground">{d.headline}</p>
       {d.points.length > 0 && <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-foreground">{d.points.map((p) => <li key={p}>{p}</li>)}</ul>}
       <DayTwoLines hints={d.dayTwo} />
+      <PulseLine pulse={d.pulse} />
       <Block label={t("rhythm.ruleToday")} tone="accent">{d.ruleToday}</Block>
       {d.setups.length > 0 && (
         <Block label={t("rhythm.setups")}>

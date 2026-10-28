@@ -34,6 +34,8 @@ import { seasonDay } from "../sessionFlow/seasonStore";
 import type { SeasonDay } from "../sessionFlow/season";
 import { openWindowStateOf } from "../sessionFlow/gates";
 import type { OpenWindowState } from "../sessionFlow/openWindow";
+import { deskPulseOf } from "../deskPulse/store";
+import type { PulseHighlight } from "../deskPulse/pulse";
 
 /** Calendar days of trades the formula check looks back over (≈ two trading weeks; the debrief names the latest). */
 const FORMULA_LOOKBACK_DAYS = 14;
@@ -78,6 +80,8 @@ export type MentorFacts = {
   season: SeasonDay | null;
   /** The opening window 09:30–10:00 today (lib/sessionFlow/openWindow): its own loss limit, or lifted by a proven edge. */
   openWindow: OpenWindowState | null;
+  /** «This season» on the desk (lib/deskPulse): the family × timing that works and the one that fails (desk aggregates). */
+  pulse: { works: PulseHighlight | null; fails: PulseHighlight | null; from: string; to: string } | null;
 };
 
 const LOOKBACK_DAYS = 35;
@@ -185,7 +189,7 @@ async function playbookFacts(trader: string, regime: string | null): Promise<Men
 /** Everything the mentor knows about `trader` today. */
 export async function gatherFacts(trader: string, today: string): Promise<MentorFacts> {
   const from = addDays(today, -LOOKBACK_DAYS);
-  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus, dayTwo, breaks, flow, season, openWindow] = await Promise.all([
+  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus, dayTwo, breaks, flow, season, openWindow, pulse] = await Promise.all([
     safe("stage", () => stageOf(trader), null),
     safe("hidden", () => hiddenFacts(trader), [] as string[]),
     safe("notes", () => listNotes(trader), [] as Note[]),
@@ -202,6 +206,10 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     safe("flow", async (): Promise<DayFlowFacts | null> => { const f = await dayFlowFactsOf(trader, today); return isEmptyDayFlow(f) ? null : f; }, null),
     safe("season", (): Promise<SeasonDay | null> => seasonDay(today), null),
     safe("openWindow", (): Promise<OpenWindowState | null> => openWindowStateOf(trader, today), null),
+    safe("pulse", async (): Promise<MentorFacts["pulse"]> => {
+      const p = await deskPulseOf(today);
+      return p.works || p.fails ? { works: p.works, fails: p.fails, from: p.from, to: p.to } : null;
+    }, null),
   ]);
   // Commitments may have started before the lookback: load the older trades only when one needs them.
   const oldest = commitments.active.map((c) => c.startedOn).sort()[0];
@@ -236,6 +244,7 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     flow,
     season,
     openWindow,
+    pulse,
   };
 }
 

@@ -117,7 +117,7 @@ export function openerOf(kind: RhythmKind, v: Brief | Debrief | Weekly): string 
   return [w.summary, ...w.commitments.map((c) => `• ${c.note}`), `→ ${w.nextFocus}`].join("\n");
 }
 
-export type RhythmContent = (Brief & { setups: { id: number; name: string }[]; dayTwo: DayTwoHint[] }) | (Debrief & { savedCommitmentId: number | null; ruleSkipped: Applied["skipped"] }) | (Weekly & { applied: { id: number; status: string }[]; savedCommitmentId: number | null });
+export type RhythmContent = (Brief & { setups: { id: number; name: string }[]; dayTwo: DayTwoHint[]; pulse: MentorFacts["pulse"] }) | (Debrief & { savedCommitmentId: number | null; ruleSkipped: Applied["skipped"] }) | (Weekly & { applied: { id: number; status: string }[]; savedCommitmentId: number | null });
 
 /** Applies a validated rhythm answer for `trader` and returns the content to store. Shared with the batch job. */
 export async function applyRhythm(kind: RhythmKind, value: Brief | Debrief | Weekly, f: MentorFacts): Promise<RhythmContent> {
@@ -126,7 +126,7 @@ export async function applyRhythm(kind: RhythmKind, value: Brief | Debrief | Wee
     const b = value as Brief;
     const names = new Map(f.playbook.map((s) => [s.id, s.name]));
     // The day-two lines are data, not model text: stored with the digest as codes + params, rendered by the web.
-    return { ...b, setupIds: b.setupIds.filter((id) => names.has(id)), setups: b.setupIds.filter((id) => names.has(id)).map((id) => ({ id, name: names.get(id)! })), dayTwo: f.risk.stopped ? [] : f.dayTwo };
+    return { ...b, setupIds: b.setupIds.filter((id) => names.has(id)), setups: b.setupIds.filter((id) => names.has(id)).map((id) => ({ id, name: names.get(id)! })), dayTwo: f.risk.stopped ? [] : f.dayTwo, pulse: f.risk.stopped ? null : f.pulse };
   }
   if (kind === "debrief") {
     const d = value as Debrief;
