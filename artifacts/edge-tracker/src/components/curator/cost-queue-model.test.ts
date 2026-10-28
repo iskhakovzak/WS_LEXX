@@ -30,6 +30,8 @@ describe("attentionRows", () => {
     });
     expect(rows.map((r) => `${r.trader}:${r.type === "cost" ? r.item.date : ""}:${r.type === "cost" && r.cont ? "cont" : ""}`))
       .toEqual(["A:2026-10-16:", "A:2026-10-15:cont", "A:2026-10-14:cont", "B:2026-10-16:"]);
+    // Every card of A's run (the first one too) is marked as one group; B's single day is not.
+    expect(rows.map((r) => r.type === "cost" && !!r.group)).toEqual([true, true, true, false]);
   });
 
   it("works without byCost (older API): the plain next steps", () => {

@@ -7,7 +7,8 @@ import type { NextAction, QueueItem, TodayPayload, CostQueueRow } from "./api";
  *   3. wards without a 1:1 for > 30 days (`oneOnOneDue`) whose next step is something else (OLGA-18);
  *   4. cost rows already reviewed — at the bottom, dimmed («Разобрано»).
  * A trader's other open days follow their most expensive day (`cont`: same trader as the row above — the view shows
- * the name once), so one trader does not take three of the top four places as separate rows.
+ * the name once), so one trader does not take three of the top four places as separate rows. `group`: the row belongs
+ * to such a run of 2+ days (its first row included) — the view marks every card of the run alike (connectedness).
  * Pure: no React, no i18n — tested in cost-queue-model.test.ts.
  */
 
@@ -17,7 +18,7 @@ export type TraderNext = NextAction & { trader: string };
 export type DayReview = { eodId: number; closedAt: string | null; hoursWaiting: number | null };
 
 export type AttentionRow =
-  | { type: "cost"; key: string; trader: string; item: CostQueueRow; next: TraderNext | null; breachPending: boolean; eod: DayReview | null; cont?: boolean }
+  | { type: "cost"; key: string; trader: string; item: CostQueueRow; next: TraderNext | null; breachPending: boolean; eod: DayReview | null; cont?: boolean; group?: boolean }
   | { type: "next"; key: string; trader: string; next: TraderNext }
   | { type: "oneOnOne"; key: string; trader: string; days: number | null };
 
@@ -51,7 +52,7 @@ export function attentionRows(data: Pick<TodayPayload, "nextActions" | "queue"> 
 function groupByTrader(rows: AttentionRow[]): AttentionRow[] {
   const by = new Map<string, AttentionRow[]>();
   for (const r of rows) by.set(r.trader, [...(by.get(r.trader) ?? []), r]);
-  return [...by.values()].flatMap((list) => list.map((r, i) => (r.type === "cost" && i > 0 ? { ...r, cont: true } : r)));
+  return [...by.values()].flatMap((list) => list.map((r, i) => (r.type === "cost" && list.length > 1 ? { ...r, group: true, ...(i > 0 ? { cont: true } : {}) } : r)));
 }
 
 export type PrimaryAction =

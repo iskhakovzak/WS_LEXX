@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "wouter";
-import { ArrowRight, BookCheck, Check, Layers, NotebookPen, Sparkles, Users } from "lucide-react";
+import { ArrowRight, BookCheck, Check, CornerDownRight, Layers, NotebookPen, Sparkles, Users } from "lucide-react";
 import { EmptyState, Panel, Pill, toneBg, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -100,23 +100,28 @@ export function AttentionPanel({ data, onOpenTrader, onTemplate, onReviewDay, ex
       {rows.length === 0 ? (
         <EmptyState compact icon={Sparkles} title={t("today.allClear")} description={t("today.allClearHint")} />
       ) : (
-        <ul className="@container flex flex-col gap-1.5">
-          {shown.map((r) => (r.type === "cost"
-            ? <CostRow key={r.key} row={r} onOpenTrader={onOpenTrader} onReviewDay={onReviewDay} />
-            : r.type === "oneOnOne"
-              ? <OneOnOneRow key={r.key} row={r} onOpenTrader={onOpenTrader} />
-              : <NextRow key={r.key} row={r} onOpenTrader={onOpenTrader} onTemplate={onTemplate} />))}
-          {!!data.nextActionsMore && (
-            <li className="px-1 text-xs text-muted-foreground">{coachI18n.t("priority.moreInDigest", { count: data.nextActionsMore })}</li>
-          )}
-          {rows.length > VISIBLE && (
-            <li>
-              <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="inline-flex min-h-8 items-center px-1 text-xs text-primary hover:underline">
-                {all ? commonI18n.t("actions.collapse") : t("showMore", { count: rows.length - VISIBLE })}
-              </button>
-            </li>
-          )}
-        </ul>
+        // Wide (@xl): one grid for the whole list, cost rows on a subgrid — name · reasons · money · action · note are
+        // shared columns, so every amount and every action sits in the same slot whatever the action's label width.
+        // The edge tracks include the card's px-3 (a subgrid's padding is taken from its edge tracks): name 8rem, note 2rem.
+        <div className="@container">
+          <ul className="flex flex-col gap-1.5 @xl:grid @xl:grid-cols-[8.75rem_minmax(0,1fr)_6rem_auto_2.75rem] @xl:gap-x-3">
+            {shown.map((r) => (r.type === "cost"
+              ? <CostRow key={r.key} row={r} onOpenTrader={onOpenTrader} onReviewDay={onReviewDay} />
+              : r.type === "oneOnOne"
+                ? <OneOnOneRow key={r.key} row={r} onOpenTrader={onOpenTrader} />
+                : <NextRow key={r.key} row={r} onOpenTrader={onOpenTrader} onTemplate={onTemplate} />))}
+            {!!data.nextActionsMore && (
+              <li className="col-span-full px-1 text-xs text-muted-foreground">{coachI18n.t("priority.moreInDigest", { count: data.nextActionsMore })}</li>
+            )}
+            {rows.length > VISIBLE && (
+              <li className="col-span-full">
+                <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="inline-flex min-h-8 items-center px-1 text-xs text-primary hover:underline">
+                  {all ? commonI18n.t("actions.collapse") : t("showMore", { count: rows.length - VISIBLE })}
+                </button>
+              </li>
+            )}
+          </ul>
+        </div>
       )}
     </Panel>
   );
@@ -133,23 +138,36 @@ function CostRow({ row, onOpenTrader, onReviewDay }: {
   const day = fmtDate(item.date, "dayMonth");
   const journalDay = curatorLinks.journalDay(item.trader, item.date);
   return (
-    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 @xl:flex-row @xl:items-center @xl:gap-3", item.resolved && "opacity-70", row.cont && "-mt-1 ml-4 border-l-2 border-[var(--glass-border)]")}>
-      <div className="flex min-w-0 items-baseline gap-2 @xl:w-32 @xl:shrink-0 @xl:flex-col @xl:gap-0">
+    // Own card at the list's normal gap, full width (no pull-up / inset: that made the run read as one merged card and
+    // shifted its columns). A run of one trader's days is tied by the same left rule on each of its cards and the «↳»
+    // before a continuation's date. Wide: a subgrid of the list's columns.
+    <li
+      className={cn(
+        "tile flex min-w-0 flex-col gap-2 px-3 py-2 @xl:col-span-full @xl:grid @xl:grid-cols-subgrid @xl:items-center",
+        // An inset rule, not a border: it must not narrow the first column (the shared track would truncate names).
+        row.group && "shadow-[inset_2px_0_0_hsl(var(--muted-foreground)/0.45)]",
+        item.resolved && "opacity-70",
+      )}
+    >
+      <div className="flex min-w-0 items-baseline gap-2 @xl:flex-col @xl:gap-0">
         {/* Another day of the trader above: the name is not repeated (the group reads as one trader). */}
         {row.cont ? <span className="sr-only">{personName(item.trader)}</span> : (
           <button type="button" onClick={() => onOpenTrader(item.trader)} className="max-w-full truncate text-left text-sm font-medium text-foreground hover:text-primary" title={personName(item.trader)}>
             {personName(item.trader)}
           </button>
         )}
-        <Link href={curatorLinks.journalDay(item.trader, item.date)} className="text-xs tabular-nums text-muted-foreground hover:text-primary" title={t("costQueue.dayTitle", { date: day })}>
+        <Link href={curatorLinks.journalDay(item.trader, item.date)} className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground hover:text-primary" title={t("costQueue.dayTitle", { date: day })}>
+          {row.cont && <CornerDownRight className="h-3 w-3 shrink-0" aria-hidden="true" />}
           {day}
         </Link>
       </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
         {item.reasons.map((r, i) => <ReasonChip key={`${r.kind}:${i}`} r={r} />)}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-        <span className="flex w-24 flex-col items-end leading-tight">
+      {/* Narrow: money at the left, actions at the right (the amount never moves with the button's width).
+          Wide: `contents` — money, action and note become cells of the shared columns. */}
+      <div className="flex items-center gap-1.5 @xl:contents">
+        <span className="mr-auto flex w-24 flex-col items-start leading-tight @xl:mr-0 @xl:items-end">
           <span className={cn("text-sm font-medium tabular-nums", item.costNet < 0 ? "text-down" : "text-muted-foreground")} title={t("costQueue.totalTitle")}>
             {item.costNet < 0 ? fmtUsd(item.costNet, { signed: true, decimals: 0 }) : "—"}
           </span>
@@ -159,27 +177,29 @@ function CostRow({ row, onOpenTrader, onReviewDay }: {
             </span>
           )}
         </span>
-        {item.resolved ? (
-          <Pill tone="up" title={t("costQueue.resolvedTitle")}><Check className="h-3 w-3" aria-hidden="true" /> {t("costQueue.resolved")}</Pill>
-        ) : action.kind === "breach" ? (
-          <Button type="button" size="sm" variant="ghost" onClick={() => onOpenTrader(item.trader, "risk")}>{t("costQueue.breach")}</Button>
-        ) : action.kind === "review" && onReviewDay ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            title={t("costQueue.reviewDayTitle", { date: day })}
-            onClick={() => onReviewDay({ eodId: action.eod.eodId, trader: item.trader, date: item.date, closedAt: action.eod.closedAt, hoursWaiting: action.eod.hoursWaiting })}
-          >
-            <BookCheck className="h-3.5 w-3.5" /> {t("costQueue.reviewDay")}
-          </Button>
-        ) : (
-          <Button asChild size="sm" variant="ghost">
-            <Link href={action.kind === "next" ? action.href : journalDay} title={action.kind === "next" ? undefined : t("costQueue.dayTitle", { date: day })}>
-              {action.kind === "next" ? t("open") : t("costQueue.openDay")} <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        )}
+        <span className="flex min-w-0 @xl:justify-self-start">
+          {item.resolved ? (
+            <Pill tone="up" title={t("costQueue.resolvedTitle")}><Check className="h-3 w-3" aria-hidden="true" /> {t("costQueue.resolved")}</Pill>
+          ) : action.kind === "breach" ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => onOpenTrader(item.trader, "risk")}>{t("costQueue.breach")}</Button>
+          ) : action.kind === "review" && onReviewDay ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              title={t("costQueue.reviewDayTitle", { date: day })}
+              onClick={() => onReviewDay({ eodId: action.eod.eodId, trader: item.trader, date: item.date, closedAt: action.eod.closedAt, hoursWaiting: action.eod.hoursWaiting })}
+            >
+              <BookCheck className="h-3.5 w-3.5" /> {t("costQueue.reviewDay")}
+            </Button>
+          ) : (
+            <Button asChild size="sm" variant="ghost">
+              <Link href={action.kind === "next" ? action.href : journalDay} title={action.kind === "next" ? undefined : t("costQueue.dayTitle", { date: day })}>
+                {action.kind === "next" ? t("open") : t("costQueue.openDay")} <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          )}
+        </span>
         <QuickNote trader={item.trader} day={item.date} prefill={`${day}: ${item.reasons.map(reasonDetail).join("; ")}`} />
       </div>
     </li>
@@ -206,7 +226,7 @@ function NextRow({ row, onOpenTrader, onTemplate }: {
   const { t } = curatorI18n.useT();
   const a = row.next;
   return (
-    <li className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+    <li className="tile col-span-full flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
       <button type="button" onClick={() => onOpenTrader(a.trader)} title={personName(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(a.trader)}
       </button>
@@ -229,7 +249,7 @@ function OneOnOneRow({ row, onOpenTrader }: { row: Extract<AttentionRow, { type:
   const { t } = curatorI18n.useT();
   const label = row.days == null ? t("oneOnOne.never") : t("oneOnOne.days", { count: row.days });
   return (
-    <li className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+    <li className="tile col-span-full flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
       <button type="button" onClick={() => onOpenTrader(row.trader)} title={personName(row.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(row.trader)}
       </button>
