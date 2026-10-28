@@ -15,6 +15,7 @@ import { useRhythm, type BriefContent, type DebriefContent, type Digest, type Me
 import { CheckinStrip } from "./checkin";
 import { DayTwoLines } from "@/components/shared/strategy/day-two";
 import { PulseLine } from "@/components/shared/desk-pulse/pulse-line";
+import { EasyMoneyLines } from "@/components/shared/desk-pulse/easy-money-lines";
 
 const KINDS: readonly RhythmKind[] = ["brief", "debrief", "weekly"];
 
@@ -53,6 +54,7 @@ function DebriefView({ d }: { d: DebriefContent }) {
     <div className="flex flex-col gap-3">
       <p className="text-sm text-foreground">{d.summary}</p>
       <Block label={t("rhythm.vsPlan")}>{d.vsPlan}</Block>
+      <EasyMoneyLines lines={d.easyMoney} />
       <Block label={t("rhythm.lesson")}>{d.lesson}</Block>
       {d.praise && <Block label={t("rhythm.praise")}>{d.praise}</Block>}
       {d.challenge && <Block label={t("rhythm.challenge")}>{d.challenge}</Block>}

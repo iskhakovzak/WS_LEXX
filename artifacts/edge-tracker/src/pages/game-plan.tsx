@@ -28,6 +28,7 @@ import { shellI18n } from "@/i18n/ns/shell";
 import { AskCuratorButton } from "@/components/shared/ask-curator";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { MentorLine } from "@/components/mentor/mentor-line";
+import { EasyMoneyBoard } from "@/components/shared/desk-pulse/easy-money-board";
 
 type HorizonFilter = "all" | Horizon;
 const HZ_FILTERS: readonly string[] = ["all", ...Object.keys(HORIZON)];
@@ -197,7 +198,11 @@ export default function GamePlanPage() {
 
       {!!user && <DayStrips date={date} mine={view === "my" && isToday} />}
       {view === "my" ? (
-        <MyPlan date={date} deskPlan={plan} />
+        <>
+          <MyPlan date={date} deskPlan={plan} />
+          {/* Curators and seniors: the clean moves of the last closed session vs the group, noted in the own plan. */}
+          <EasyMoneyBoard date={date < today ? date : null} />
+        </>
       ) : view === "traders" ? (
         <TraderPlans date={date} />
       ) : (

@@ -171,6 +171,13 @@ export async function collectTargetRows(): Promise<{ symbol: string; day: string
     `SELECT ticker, left(idea_date, 10) FROM trade_ideas WHERE deleted_at IS NULL AND idea_date ~ '^\\d{4}-\\d{2}-\\d{2}'`,
     // Playbook cases (migration 0286: a ticker + day of a setup, not our trade) — the analogue charts and the quiz.
     `SELECT ticker, day FROM playbook_cases WHERE deleted_at IS NULL`,
+    // Planned tickers (lib/deskPulse «лёгкие деньги дня»: «planned and skipped» needs the day of a ticker nobody traded):
+    // the plan idea marks, the catalyst taps and the desk plan's in-play list.
+    `SELECT ticker, day FROM plan_idea_marks`,
+    `SELECT ticker, day FROM catalyst_marks WHERE direction IS NOT NULL OR strength IS NOT NULL`,
+    `SELECT UPPER(TRIM(x->>'ticker')), g.date FROM game_plans g,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(g.in_play) = 'array' THEN g.in_play ELSE '[]'::jsonb END) x
+      WHERE g.deleted_at IS NULL AND g.date ~ '^\\d{4}-\\d{2}-\\d{2}$'`,
   ];
   const { rows: reg } = await pool.query<{ sim: string | null }>(`SELECT to_regclass('public.sim_games')::text AS sim`);
   if (reg[0]?.sim) parts.push(`SELECT ticker, left(day, 10) FROM sim_games WHERE mode = 'intraday' AND day ~ '^\\d{4}-\\d{2}-\\d{2}'`);

@@ -1418,6 +1418,20 @@ CREATE TABLE public.discussions (
   CONSTRAINT discussions_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE public.easy_money_notes (
+  author text NOT NULL,
+  day text NOT NULL,
+  ticker text NOT NULL,
+  note text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT easy_money_notes_pkey PRIMARY KEY (author, day, ticker),
+  CONSTRAINT easy_money_notes_author_check CHECK (char_length(author) >= 1 AND char_length(author) <= 200),
+  CONSTRAINT easy_money_notes_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT easy_money_notes_note_check CHECK (char_length(note) >= 1 AND char_length(note) <= 500),
+  CONSTRAINT easy_money_notes_ticker_check CHECK (ticker ~ '^[A-Z0-9][-A-Z0-9.]{0,11}$'::text)
+);
+
 CREATE TABLE public.edge_map (
   id bigint DEFAULT nextval('public.edge_map_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,
@@ -3910,6 +3924,7 @@ CREATE UNIQUE INDEX discussion_votes_unique ON public.discussion_votes USING btr
 CREATE INDEX discussions_ticker_idx ON public.discussions USING btree (ticker);
 CREATE INDEX discussions_ticker_upper_idx ON public.discussions USING btree (upper(ticker));
 CREATE INDEX discussions_trade_id_idx ON public.discussions USING btree (trade_id);
+CREATE INDEX easy_money_notes_day_idx ON public.easy_money_notes USING btree (day);
 CREATE INDEX edge_map_latest_idx ON public.edge_map USING btree (trader, as_of DESC);
 CREATE INDEX edge_map_verdict_idx ON public.edge_map USING btree (as_of, verdict) WHERE (verdict <> 'NONE'::text);
 CREATE INDEX emotional_state_log_date_idx ON public.emotional_state_log USING btree (date);

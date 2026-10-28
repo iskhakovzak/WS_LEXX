@@ -7,6 +7,7 @@ import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import type { DayTwoHint } from "@/components/shared/strategy/model";
 import type { PulseHighlight } from "@/components/shared/desk-pulse/api";
+import type { EasyLine } from "@/components/shared/desk-pulse/easy-api";
 
 export const MENTOR_DOMAIN = "mentor";
 
@@ -44,6 +45,8 @@ export type BriefContent = {
 export type DebriefContent = {
   summary: string; vsPlan: string; lesson: string; praise: string | null; challenge: string | null; ruleTomorrow: Proposal | null;
   savedCommitmentId: number | null; ruleSkipped: "full" | "duplicate" | null;
+  /** «Лёгкие деньги дня» lines (api lib/deskPulse) — absent in debriefs written before them. */
+  easyMoney?: EasyLine[];
 };
 export type WeeklyContent = {
   summary: string; commitments: { id: number; verdict: "keep" | "close_achieved" | "drop"; note: string }[]; nextFocus: string;

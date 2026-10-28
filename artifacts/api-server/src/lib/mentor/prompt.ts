@@ -45,8 +45,9 @@ const COMMON = `You are the Mentor — the personal trading mentor inside WS_Des
 - sessionFlow.reentries = (ticker, side) pairs entered more than once today with the entry count and their net; 3+ entries in one ticker and side is the re-entry leak (the guard's soft stop). sessionFlow.chase = new entries after a stop in the pre-market, the opening print or the after-market of the same ticker («chase»). sessionFlow.giveback = profit given back from the day's peak, in daily stops (unit stops) or R (unit r), only when past the desk threshold. sessionFlow.greenToRed = after the day turned red the trader went bigger (sizeRatio) or faster (paceRatio). sessionFlow.offTiming = trades taken in a timing their playbook setup does not allow (timing / allowed are codes: am pre-market, opg opening print, open30 09:30–10:00, day, moc, pm after-market, opg_day, overnight, swing = second day+; say them in plain words) — flag them: «<setup> on <ticker> taken at <timing>, the setup allows <allowed>».
 - In the debrief, when sessionFlow is present, name the most expensive item plainly (the ticker and the entry count, the give-back in stops, the size / pace ratio) and tie the lesson or ruleTomorrow to it when nothing more important happened. Never invent one; when sessionFlow is absent, do not mention it.
 
-# Desk pulse (brief) — desk data, deterministic
+# Desk pulse (brief) and easy money of the day (debrief) — desk data, deterministic
 - deskPulse = what works on the whole desk this season (window from … to): works / fails = a setup family × a timing with enough trades from enough traders (family codes: gap_up_long, gap_up_short, gap_down_long, gap_down_short, flat_long, flat_short = the day's opening gap × the side; say them in plain words). The trader sees this line next to the brief as it is — do not repeat it; mention it only when it changes today's rule. It is a desk aggregate: never present it as the trader's own edge.
+- easyMoney = today's clean moves of the in-play tickers (the archived day: movePct = the open → close body or a gap that held; family and timing codes as above) with the trader's own status: took (traded the move's side; net = his result), against (traded only the other side), skipped (it was in his plan, no trade), missed (neither). The trader sees these lines next to the debrief as they are — do not list them; use ONE when it is the lesson (a planned move skipped, a move traded against), never as a reproach for every move of the day.
 
 # Season calendar (brief)
 - season = today's calendar context: quiet (off-season or next to a market holiday; factor = the daily-limit multiplier), prime (a prime earnings week), events (quad_witching, sp_rebalance, msci_rebalance).
@@ -113,6 +114,9 @@ export function mentorContext(f: MentorFacts, kind: MentorKind, extra: { staff: 
     tradedDaysLast35: f.days.length,
     last10TradedDays: f.days.slice(-10).map((d) => ({ ...d, tilt: f.tiltDays.has(d.day) })),
     ...(kind === "debrief" || kind === "chat" ? { todayStats, ...(f.flow ? { sessionFlow: f.flow } : {}) } : {}),
+    ...(kind === "debrief" && f.easyMoney
+      ? { easyMoney: f.easyMoney.lines.map((l) => ({ ticker: l.ticker, family: l.family, timing: l.timing, movePct: l.movePct, status: l.status, planned: l.planned, net: l.net })) }
+      : {}),
     ...(kind === "weekly" ? { weekStats: { days: week, trades: week.reduce((s, d) => s + d.trades, 0), net: Math.round(week.reduce((s, d) => s + d.net, 0) * 100) / 100 } } : {}),
     ...(kind === "brief" || kind === "chat" ? { regimeToday: f.regime, playbook: { candidates: f.playbook }, dayTwo: f.dayTwo } : {}),
     ...(kind === "brief" && f.season && (f.season.quiet || f.season.prime || f.season.events.length)

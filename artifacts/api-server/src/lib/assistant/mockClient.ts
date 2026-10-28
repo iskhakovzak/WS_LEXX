@@ -119,6 +119,11 @@ function mockMentor(turn: string): string {
   if (flow?.greenToRed) lines.push(t("mock.mentor.greenToRed", { size: String(flow.greenToRed.sizeRatio ?? "—"), pace: String(flow.greenToRed.paceRatio ?? "—") }));
   if (flow?.offTiming?.length) lines.push(t("mock.mentor.offTiming", { ticker: flow.offTiming[0].ticker, setup: flow.offTiming[0].setup }));
   const fb = ctx.formulaChecks?.[0];
+  const easy = (ctx.easyMoney ?? []) as any[];
+  const took = easy.find((x) => x.status === "took");
+  const miss = easy.find((x) => x.status === "skipped" || x.status === "missed");
+  if (took) lines.push(t("mock.mentor.easyTook", { ticker: took.ticker, move: `${took.movePct}%`, net: usd(Number(took.net ?? 0)) }));
+  if (miss) lines.push(t("mock.mentor.easyMissed", { ticker: miss.ticker, move: `${miss.movePct}%` }));
   if (fb) lines.push(t("mock.mentor.formulaBreak", { ticker: fb.ticker, day: fb.day, setup: fb.setupName ?? "—" }));
   const day = ctx.todayStats;
   const summary = day ? t("mock.mentor.day", { n: Number(day.trades ?? 0), net: usd(Number(day.net ?? 0)) }) : t("mock.mentor.noDay");

@@ -85,6 +85,7 @@ const TEXT: Record<string, readonly string[]> = {
   discussion_reads: ["user_name"],
   discussion_votes: ["trader"],
   discussions: ["trader"],
+  easy_money_notes: ["author"],
   emotional_state_log: ["user_id"],
   emotional_state_log_dupes_0274: ["user_id"],
   eod_days: ["reviewed_by", "trader"],

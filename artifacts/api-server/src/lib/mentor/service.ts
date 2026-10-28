@@ -19,6 +19,7 @@ import type { Lang } from "../../i18n";
 import { MAX_ACTIVE, parseParams, type CommitmentKind, type CommitmentParams } from "./commitments";
 import { gatherFacts, weekOf, type MentorFacts } from "./facts";
 import type { DayTwoHint } from "../catalyst/model";
+import type { EasyLine } from "../deskPulse/easyMoney";
 import { contextBlock, mentorContext, mentorSystem, rhythmUserTurn } from "./prompt";
 import { callMentor, totalUsage, type MentorCall } from "./run";
 import { guardStopped } from "./stopGuard";
@@ -117,7 +118,7 @@ export function openerOf(kind: RhythmKind, v: Brief | Debrief | Weekly): string 
   return [w.summary, ...w.commitments.map((c) => `• ${c.note}`), `→ ${w.nextFocus}`].join("\n");
 }
 
-export type RhythmContent = (Brief & { setups: { id: number; name: string }[]; dayTwo: DayTwoHint[]; pulse: MentorFacts["pulse"] }) | (Debrief & { savedCommitmentId: number | null; ruleSkipped: Applied["skipped"] }) | (Weekly & { applied: { id: number; status: string }[]; savedCommitmentId: number | null });
+export type RhythmContent = (Brief & { setups: { id: number; name: string }[]; dayTwo: DayTwoHint[]; pulse: MentorFacts["pulse"] }) | (Debrief & { savedCommitmentId: number | null; ruleSkipped: Applied["skipped"]; easyMoney: EasyLine[] }) | (Weekly & { applied: { id: number; status: string }[]; savedCommitmentId: number | null });
 
 /** Applies a validated rhythm answer for `trader` and returns the content to store. Shared with the batch job. */
 export async function applyRhythm(kind: RhythmKind, value: Brief | Debrief | Weekly, f: MentorFacts): Promise<RhythmContent> {
@@ -131,9 +132,11 @@ export async function applyRhythm(kind: RhythmKind, value: Brief | Debrief | Wee
   if (kind === "debrief") {
     const d = value as Debrief;
     await addNotes(trader, d.notes, f);
-    if (!d.ruleTomorrow) return { ...d, savedCommitmentId: null, ruleSkipped: null };
+    // The easy-money lines are data, not model text: stored with the digest as codes + params, rendered by the web.
+    const easyMoney = f.easyMoney?.lines ?? [];
+    if (!d.ruleTomorrow) return { ...d, savedCommitmentId: null, ruleSkipped: null, easyMoney };
     const a = await addCommitment(trader, d.ruleTomorrow, { source: "mentor", by: "mentor", startedOn: nextWeekday(f.today), active: f.commitments.active });
-    return { ...d, savedCommitmentId: a.commitment?.id ?? null, ruleSkipped: a.skipped };
+    return { ...d, savedCommitmentId: a.commitment?.id ?? null, ruleSkipped: a.skipped, easyMoney };
   }
   const w = value as Weekly;
   await addNotes(trader, w.notes, f);
