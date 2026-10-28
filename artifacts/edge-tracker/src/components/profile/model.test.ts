@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Attribute, ProfileSummary, TimelineEvent } from "./api";
 import {
   attrExplain, attrValueText, eventText, heatGrid, holdText, orderedAttributes, parsePersonId, radarPath, radarPoint,
-  sampleText, styleGroups, summaryText, themeQuoteIds,
+  sampleText, styleGroups, summaryText,
 } from "./model";
 
 const attr = (over: Partial<Attribute> = {}): Attribute => ({
@@ -96,13 +96,6 @@ describe("misc", () => {
     });
     expect(g.map((x) => x.key)).toEqual(["horizon", "side", "price", "hold"]);
     expect(g[1]!.rows).toEqual([{ key: "long", label: "Лонг", share: 0.4 }, { key: "short", label: "Шорт", share: 0.6 }]);
-  });
-  it("quotes on the theme, stable per seed, falling back to all", () => {
-    const q = [{ id: "a", tags: ["patience"] }, { id: "b", tags: ["risk"] }, { id: "c", tags: ["patience", "focus"] }];
-    const ids = themeQuoteIds(q, "patience", "144:2026-10-21");
-    expect([...ids].sort()).toEqual(["a", "c"]);
-    expect(themeQuoteIds(q, "patience", "144:2026-10-21")).toEqual(ids);
-    expect(themeQuoteIds(q, "unknown", "x")).toHaveLength(3);
   });
   it("person id from the path", () => {
     expect(parsePersonId("144")).toBe(144);

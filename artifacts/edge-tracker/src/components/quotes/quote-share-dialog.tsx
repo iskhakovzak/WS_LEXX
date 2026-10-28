@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { citationOf, quoteMarks } from "@/lib/quotes/library";
+import { citationOf, quoteMarks } from "@/lib/quotes/format";
 import type { Quote, QuoteLang } from "@/lib/quotes/types";
 import { OLYMP_ART, artOf, artThumbUrl, loadArt, type LoadedImage } from "@/components/shared/share-canvas/art";
 import { canvasPng } from "@/components/shared/share-canvas/canvas";

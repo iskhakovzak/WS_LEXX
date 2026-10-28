@@ -2,10 +2,10 @@
 /**
  * Quote library — merge authoring batches into the shipped layout (src/data/quotes):
  *
- *   meta.json         { version, quotes: [{ id, cat, tags, author, work, loc, lang?, rel, o? }] } — always loaded
+ *   meta.json         { version, quotes: [{ id, cat, tags, author, work, loc, lang?, rel, o? }] } — ids and sources
  *   text.<lang>.json  { authors: {key: name}, works: {key: title}, texts: {id: text} }        — one per ru/en/uz/uk,
- *                     a separate lazy chunk each (the reader downloads only their language)
- *   orig.json         { id: original-language text }                                           — on demand («Оригинал»)
+ *                     read by the API on first use of the language (src/lib/quotes/library.ts)
+ *   orig.json         { id: original-language text }                                           — GET /quotes/orig/:id
  *
  * The data are JSON on purpose: the repo's i18n / size ratchets scan *.ts(x) only, so quote texts in four languages
  * never count as hard-coded UI strings (they are content, like the share-card art credits). Validation of the shipped

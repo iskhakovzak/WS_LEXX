@@ -1,11 +1,14 @@
 /**
  * Per-browser state of the quote rotation (localStorage, per signed-in name), readable while the screen is locked:
  *
- *   ws_quotes.rot.<surface>.<user>   RotationState (./rotation.ts) of the dashboard card / the lock screen
+ *   ws_quotes.rot.<surface>.<user>   the no-repeat cycle of the dashboard card / the lock screen (RotationState of
+ *                                    api-server lib/quotes/rotation.ts — sent with every POST /api/quotes/pick, the
+ *                                    answer's state stored back; validated by the server)
  *   ws_quotes.hist.<user>            the last HISTORY_MAX quotes shown (id, time, surface) — the card's «История»
  *   ws_quotes.ledger.<user>          finished-day results for context matching (./context.ts)
  *   ws_quotes.prefs.<user>           mirror of users.settings.quotes (seed, favourites, categories) so the lock screen
  *                                    and an offline card use them without a request
+ *   ws_quotes.cache                  the last quotes shown (./api.ts) — today's quote without a request
  *   ws_lexx_lock_quote               lock-screen quote interval, minutes (Settings → Безопасность; per browser like
  *                                    the auto-lock)
  *
@@ -13,11 +16,14 @@
  */
 import { useSyncExternalStore } from "react";
 import { QUOTE_CATS, QUOTE_LANGS, type QuoteCat, type QuoteLang } from "./types";
-import { hashString, parseRotation, type RotationState, type Surface } from "./rotation";
 import { parseLedger, type DayLedger } from "./context";
 import { parseLockQuoteInterval, type LockQuoteInterval } from "./lock-timer";
 
-const userKey = (user: string | null | undefined) => (user || "me").trim().toLowerCase();
+/** Dashboard card / lock screen. */
+export type Surface = "dash" | "lock";
+
+/** The name the state is keyed by ("me" for a guest); the server salts the seed with the same string. */
+export const userKey = (user: string | null | undefined) => (user || "me").trim().toLowerCase();
 
 function readJson(key: string): unknown {
   try {
@@ -33,9 +39,15 @@ function writeJson(key: string, value: unknown) {
 
 // ─── Rotation ─────────────────────────────────────────────────────────────────
 const rotKey = (surface: Surface, user: string | null | undefined) => `ws_quotes.rot.${surface}.${userKey(user)}`;
-export const readRotation = (surface: Surface, user: string | null | undefined): RotationState =>
-  parseRotation(readJson(rotKey(surface, user)));
-export const writeRotation = (surface: Surface, user: string | null | undefined, s: RotationState) => writeJson(rotKey(surface, user), s);
+/** The stored cycle as is (the server validates it; anything malformed counts as a fresh cycle there). */
+export const readRotation = (surface: Surface, user: string | null | undefined): unknown => readJson(rotKey(surface, user));
+export const writeRotation = (surface: Surface, user: string | null | undefined, s: unknown) => writeJson(rotKey(surface, user), s);
+
+/** The quote on screen of a stored cycle and its slot (null when none or malformed). */
+export function rotationCurrent(raw: unknown): { id: string; slot: string } | null {
+  const cur = raw && typeof raw === "object" ? (raw as { current?: { id?: unknown; slot?: unknown } | null }).current : null;
+  return cur && typeof cur.id === "string" && typeof cur.slot === "string" ? { id: cur.id, slot: cur.slot } : null;
+}
 
 // ─── History ──────────────────────────────────────────────────────────────────
 export const HISTORY_MAX = 60;
@@ -82,12 +94,6 @@ export function parsePrefs(raw: unknown): QuotePrefs {
 const prefsKey = (user: string | null | undefined) => `ws_quotes.prefs.${userKey(user)}`;
 export const readPrefs = (user: string | null | undefined) => parsePrefs(readJson(prefsKey(user)));
 export const writePrefs = (user: string | null | undefined, p: QuotePrefs) => writeJson(prefsKey(user), p);
-
-/** The reader's seed for a surface: the stored seed (or the name's hash) salted per surface. */
-export function seedFor(prefs: QuotePrefs, user: string | null | undefined, surface: Surface): number {
-  const base = prefs.seed ?? hashString(userKey(user));
-  return hashString(`${base}:${surface}`);
-}
 
 // ─── Quote language (the card's picker; the lock screen follows it) ─────────────
 export const QUOTE_LANG_KEY = "daily_quote_lang";

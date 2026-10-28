@@ -1,6 +1,8 @@
 /**
- * Rotation without repeats. Each reader has a seed (users.settings.quotes.seed, else a hash of the name) and, per
- * surface (dashboard card / lock screen), a cycle: the ids already shown in it. The next quote is a weighted,
+ * Rotation without repeats (served by POST /api/quotes/pick, routes/quotes.ts). Each reader has a seed
+ * (users.settings.quotes.seed, else a hash of the name) and, per surface (dashboard card / lock screen), a cycle: the
+ * ids already shown in it. The cycle itself stays in the reader's browser (edge-tracker lib/quotes/store.ts) and is
+ * sent with each pick; the server keeps nothing, it only draws. The next quote is a weighted,
  * deterministic draw among the eligible ids NOT yet shown in the cycle — so no quote repeats until the whole eligible
  * pool has been shown; then a new cycle starts (never with the quote that closed the previous one).
  *
@@ -128,6 +130,15 @@ export function quoteForSlot(
   if (state.current && state.current.slot === slot && ids.has(state.current.id)) return { id: state.current.id, state, changed: false };
   const next = nextQuote(pool, state, opt, slot);
   return next ? { ...next, changed: true } : null;
+}
+
+/** The name a browser keys its quote state by ("me" for a guest / no name). */
+const userKey = (user: string | null | undefined) => (user || "me").trim().toLowerCase();
+
+/** The reader's seed for a surface: the stored seed (or the name's hash) salted per surface. */
+export function seedFor(seed: number | null | undefined, user: string | null | undefined, surface: Surface): number {
+  const base = seed ?? hashString(userKey(user));
+  return hashString(`${base}:${surface}`);
 }
 
 /** Validate a stored rotation (anything malformed → empty). */

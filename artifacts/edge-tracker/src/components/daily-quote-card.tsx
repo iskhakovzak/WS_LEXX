@@ -1,7 +1,7 @@
 /**
- * Dashboard «Цитата дня»: a quote from the curated library (src/data/quotes, ~1,800 entries in ru / uz / uk / en —
- * gods and heroes of Homer and the tragedians, philosophers and Stoics, classics of discipline, traders, psychology),
- * one per trading day from the reader's no-repeat cycle, plus «Следующая». Author, precise source and a reliability
+ * Dashboard «Цитата дня»: a quote from the curated library (served by the API — api-server routes/quotes.ts, ~1,800
+ * entries in ru / uz / uk / en — gods and heroes of Homer and the tragedians, philosophers and Stoics, classics of
+ * discipline, traders, psychology), one per trading day from the reader's no-repeat cycle, plus «Следующая». Author, precise source and a reliability
  * badge; copy, «Картинка с цитатой» on an «Олимп» artwork, favourites and history; categories to show; the old AI
  * pair stays as an optional extra. Mounted by the dashboard as `<DailyQuoteCard />` (no props).
  */
@@ -17,14 +17,15 @@ import { Segmented } from "@/components/ds";
 import { getLang } from "@/i18n";
 import { quotesI18n } from "@/i18n/ns/quotes";
 import { WidgetShell, IconAction, WidgetError, useStoredState } from "@/components/widgets/widget-kit";
-import { quoteOf, quotePlainText } from "@/lib/quotes/library";
+import { quotePlainText } from "@/lib/quotes/format";
 import { QUOTE_CATS, QUOTE_LANGS, type QuoteCat, type QuoteLang } from "@/lib/quotes/types";
 import { QUOTE_LANG_KEY } from "@/lib/quotes/store";
 import { MOOD_TAGS } from "@/lib/quotes/context";
 import { CAT_ICON, QuoteBody } from "@/components/quotes/quote-body";
 import { QuoteHistory } from "@/components/quotes/quote-history";
 import { AiQuotePanel } from "@/components/quotes/ai-quote";
-import { useDashQuote, useQuoteLibrary, useQuotePrefs } from "@/components/quotes/use-quote-feed";
+import { useDashQuote, useQuotePrefs } from "@/components/quotes/use-quote-feed";
+import { useQuote } from "@/lib/quotes/hooks";
 
 const QuoteShareDialog = React.lazy(() => import("@/components/quotes/quote-share-dialog"));
 
@@ -42,23 +43,23 @@ export function DailyQuoteCard() {
   // First visit: the quote follows the interface language; the reader's own pick is remembered after that.
   const uiLang = getLang();
   const [lang, setLang] = useStoredState<QuoteLang>(QUOTE_LANG_KEY, uiLang === "en" || uiLang === "uz" ? uiLang : "ru", QUOTE_LANGS);
-  const lib = useQuoteLibrary(lang);
   const { prefs, save, toggleFav } = useQuotePrefs(name, !!name);
-  const feed = useDashQuote(lib.data, prefs, name);
+  const feed = useDashQuote(lang, prefs, name);
   const [viewId, setViewId] = React.useState<string | null>(null);
+  const shown = useQuote(lang, viewId ?? feed.currentId);
   const [copied, setCopied] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [ai, setAi] = React.useState(false);
 
-  if (lib.isError) {
+  const quote = shown.quote;
+  if (!quote && (feed.error || shown.isError)) {
     return (
       <WidgetShell icon={QuoteIcon} title={t("title")}>
-        <WidgetError message={t("loadFailed")} onRetry={() => void lib.refetch()} />
+        <WidgetError message={t("loadFailed")} onRetry={() => { feed.retry(); void shown.refetch(); }} />
       </WidgetShell>
     );
   }
-  const quote = lib.data ? quoteOf(lib.data, viewId ?? feed.currentId) : null;
-  if (!lib.data || !quote) {
+  if (!quote) {
     return (
       <div className="glass-panel rounded-2xl p-4" aria-busy="true" aria-label={t("loading")}>
         <Skeleton className="mb-3 h-3.5 w-32" />
@@ -116,7 +117,7 @@ export function DailyQuoteCard() {
             data-testid="button-quote-fav"
           />
           <QuoteHistory
-            lib={lib.data}
+            lang={lang}
             history={feed.history}
             favs={prefs.favs}
             onOpen={(id) => { setAi(false); setViewId(id); }}
@@ -159,12 +160,14 @@ export function DailyQuoteCard() {
         <>
           <QuoteBody quote={quote} lang={lang} note={note} />
           <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="text-2xs tabular-nums text-muted-foreground">{t("library", { count: lib.data.quotes.length })}</span>
+            <span className="text-2xs tabular-nums text-muted-foreground">{feed.total != null ? t("library", { count: feed.total }) : null}</span>
             <Button
               variant="ghost"
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
               onClick={() => { setViewId(null); feed.next(); }}
+              onPointerEnter={feed.prefetchNext}
+              onFocus={feed.prefetchNext}
               data-testid="button-quote-next"
             >
               {t("nextShort")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />

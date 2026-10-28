@@ -125,3 +125,26 @@ describe("parseRotation / hashString", () => {
     expect(hashString("zakir")).not.toBe(hashString("Zakir"));
   });
 });
+
+// The tag sets the web sends after a red day / on a green streak (edge-tracker lib/quotes/context.ts MOOD_TAGS).
+describe("context selection", () => {
+  const list: QuoteMeta[] = [
+    ...Array.from({ length: 40 }, (_, i) => ({ id: `w-${i}`, cat: "trading" as const, tags: ["wisdom" as const], author: "a", work: "w", loc: "", rel: "verified" as const })),
+    { id: "r-1", cat: "philosophy", tags: ["loss"], author: "a", work: "w", loc: "", rel: "verified" },
+    { id: "r-2", cat: "olympus", tags: ["patience", "fate"], author: "a", work: "w", loc: "", rel: "verified" },
+    { id: "g-1", cat: "psychology", tags: ["humility"], author: "a", work: "w", loc: "", rel: "verified" },
+    { id: "g-2", cat: "trading", tags: ["process"], author: "a", work: "w", loc: "", rel: "verified" },
+  ];
+  it("after a red day the day's quote carries a patience / loss / resilience tag", () => {
+    for (let seed = 0; seed < 25; seed++) {
+      const r = nextQuote(list, EMPTY_ROTATION, { seed, weights: SURFACE_WEIGHTS.dash, preferTags: ["patience", "loss", "resilience", "endurance", "control"] }, "d")!;
+      expect(["r-1", "r-2"]).toContain(r.id);
+    }
+  });
+  it("on a green streak it carries humility / process", () => {
+    for (let seed = 0; seed < 25; seed++) {
+      const r = nextQuote(list, EMPTY_ROTATION, { seed, weights: SURFACE_WEIGHTS.dash, preferTags: ["humility", "process", "moderation", "discipline", "ego"] }, "d")!;
+      expect(["g-1", "g-2"]).toContain(r.id);
+    }
+  });
+});

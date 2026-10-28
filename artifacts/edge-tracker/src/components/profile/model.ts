@@ -212,27 +212,6 @@ export const recentEras = (eras: readonly Era[], n = 18): Era[] => eras.slice(Ma
 
 export const personHref = (id: number): string => `/people/${id}`;
 
-// ─── quotes ─────────────────────────────────────────────────────────────────
-
-function hash32(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-/**
- * Quote ids on the profile's theme (a library tag), in a stable per-person order: the same person sees the same first
- * quote all day, «Другая цитата» walks the list. Falls back to the whole library when the tag is unknown.
- */
-export function themeQuoteIds(quotes: readonly { id: string; tags: readonly string[] }[], theme: string, seed: string): string[] {
-  const tagged = quotes.filter((q) => q.tags.includes(theme));
-  const pool = tagged.length ? tagged : quotes;
-  return pool.map((q) => ({ id: q.id, k: hash32(`${seed}\u0001${q.id}`) })).sort((a, b) => a.k - b.k || (a.id < b.id ? -1 : 1)).map((x) => x.id);
-}
-
 /** Path param of /people/:id → users.id (null for anything but a positive integer). */
 export function parsePersonId(raw: string | undefined | null): number | null {
   if (!raw || !/^\d{1,9}$/.test(raw)) return null;

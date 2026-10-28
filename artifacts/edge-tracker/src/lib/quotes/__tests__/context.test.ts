@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GREEN_STREAK_DAYS, MOOD_TAGS, greenStreak, moodOf, moodTags, parseLedger, recordDay } from "../context";
-import { EMPTY_ROTATION, SURFACE_WEIGHTS, nextQuote } from "../rotation";
-import type { QuoteMeta } from "../types";
+import { GREEN_STREAK_DAYS, greenStreak, moodOf, moodTags, parseLedger, recordDay } from "../context";
 
 describe("day ledger", () => {
   it("records finished days, corrects a re-sent day and keeps the newest 12", () => {
@@ -35,27 +33,5 @@ describe("mood", () => {
     expect(moodOf({})).toBeNull();
     expect(moodOf({ "2026-10-23": 0 })).toBeNull();
     expect(moodTags(null)).toBeNull();
-  });
-});
-
-describe("context selection", () => {
-  const list: QuoteMeta[] = [
-    ...Array.from({ length: 40 }, (_, i) => ({ id: `w-${i}`, cat: "trading" as const, tags: ["wisdom" as const], author: "a", work: "w", loc: "", rel: "verified" as const })),
-    { id: "r-1", cat: "philosophy", tags: ["loss"], author: "a", work: "w", loc: "", rel: "verified" },
-    { id: "r-2", cat: "olympus", tags: ["patience", "fate"], author: "a", work: "w", loc: "", rel: "verified" },
-    { id: "g-1", cat: "psychology", tags: ["humility"], author: "a", work: "w", loc: "", rel: "verified" },
-    { id: "g-2", cat: "trading", tags: ["process"], author: "a", work: "w", loc: "", rel: "verified" },
-  ];
-  it("after a red day the day's quote carries a patience / loss / resilience tag", () => {
-    for (let seed = 0; seed < 25; seed++) {
-      const r = nextQuote(list, EMPTY_ROTATION, { seed, weights: SURFACE_WEIGHTS.dash, preferTags: moodTags("red") }, "d")!;
-      expect(["r-1", "r-2"]).toContain(r.id);
-    }
-  });
-  it("on a green streak it carries humility / process", () => {
-    for (let seed = 0; seed < 25; seed++) {
-      const r = nextQuote(list, EMPTY_ROTATION, { seed, weights: SURFACE_WEIGHTS.dash, preferTags: MOOD_TAGS.green }, "d")!;
-      expect(["g-1", "g-2"]).toContain(r.id);
-    }
   });
 });

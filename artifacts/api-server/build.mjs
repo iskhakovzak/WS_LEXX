@@ -122,6 +122,11 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
 
   // Versioned SQL migrations are read from disk at boot (src/db/runner.ts resolveMigrationsDir → dist/migrations).
   await cp(path.resolve(artifactDir, "src/db/migrations"), path.resolve(distDir, "migrations"), { recursive: true });
+  // The quote library (src/lib/quotes/library.ts resolveQuotesDir → dist/quotes); authoring batches stay behind.
+  await cp(path.resolve(artifactDir, "src/data/quotes"), path.resolve(distDir, "quotes"), {
+    recursive: true,
+    filter: (src) => !src.includes("_batches"),
+  });
 }
 
 async function buildAll() {

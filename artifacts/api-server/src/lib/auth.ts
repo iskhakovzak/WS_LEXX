@@ -228,6 +228,7 @@ export const PUBLIC_API_ROUTES: readonly PublicRoute[] = [
 /** Mutations a guest may still perform (none touch data). */
 const GUEST_ALLOWED_MUTATIONS: readonly PublicRoute[] = [
   { method: "POST", path: "/auth/logout" },
+  { method: "POST", path: "/quotes/pick" }, // a pure draw from the quote library (routes/quotes.ts), stores nothing
 ];
 
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);

@@ -121,11 +121,11 @@ describe("screen lock policy (pure)", () => {
     expect(quickCodeKind(1234)).toBeNull();
   });
 
-  it("only unlock / lock / logout / permissions-me / healthz pass the gate while locked", () => {
-    for (const [m, p] of [["POST", "/auth/unlock"], ["POST", "/auth/lock"], ["GET", "/auth/lock"], ["POST", "/auth/logout"], ["GET", "/permissions/me"], ["HEAD", "/healthz"], ["OPTIONS", "/trades"]]) {
+  it("only unlock / lock / logout / permissions-me / healthz / the lock quote pass the gate while locked", () => {
+    for (const [m, p] of [["POST", "/auth/unlock"], ["POST", "/auth/lock"], ["GET", "/auth/lock"], ["POST", "/auth/logout"], ["GET", "/permissions/me"], ["HEAD", "/healthz"], ["POST", "/quotes/pick"], ["GET", "/quotes/items"], ["OPTIONS", "/trades"]]) {
       expect(allowedWhileLocked(m, p), `${m} ${p}`).toBe(true);
     }
-    for (const [m, p] of [["GET", "/trades"], ["GET", "/auth/me"], ["GET", "/auth/quick-code"], ["PUT", "/auth/quick-code"], ["POST", "/auth/logout-all"], ["GET", "/notifications/count"]]) {
+    for (const [m, p] of [["GET", "/trades"], ["GET", "/auth/me"], ["GET", "/auth/quick-code"], ["PUT", "/auth/quick-code"], ["POST", "/auth/logout-all"], ["GET", "/notifications/count"], ["GET", "/quotes/theme"]]) {
       expect(allowedWhileLocked(m, p), `${m} ${p}`).toBe(false);
     }
   });

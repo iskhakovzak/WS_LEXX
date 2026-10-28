@@ -1,7 +1,7 @@
 /**
  * Quote library UI: the dashboard card «Цитата дня» (daily-quote-card, components/quotes/*), the quote under the lock
- * clock (components/lock/lock-quote) and its Settings row. The quotes themselves are data (src/data/quotes) in four
- * languages, not dictionary entries.
+ * clock (components/lock/lock-quote) and its Settings row. The quotes themselves are data in four languages, served
+ * by the API (api-server src/data/quotes), not dictionary entries.
  */
 export default {
   title: "Цитата дня",

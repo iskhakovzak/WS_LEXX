@@ -1,6 +1,7 @@
 /**
- * The quote under the lock clock: from the bundled library (lib/quotes — no API call; the lock gate blocks data routes),
- * mostly «Олимп» and the philosophers, changing every N minutes on wall-clock slots (Settings → Безопасность: 1 / 5 /
+ * The quote under the lock clock: from the quote library (POST /api/quotes/pick — one of the few routes the lock gate
+ * lets through; the slot's quote is kept with the cycle, so a reload shows it without a request), mostly «Олимп» and
+ * the philosophers, changing every N minutes on wall-clock slots (Settings → Безопасность: 1 / 5 /
  * 15 min or off): the old quote drifts up into a blur while the new one surfaces word by word out of it (the
  * viewer's «Движение фона»; without it, an instant swap). The reader's own no-repeat cycle
  * (rotation «lock», per browser) and quote language (the dashboard card's pick, else the interface language). Each
@@ -8,10 +9,12 @@
  */
 import * as React from "react";
 import { quotesI18n } from "@/i18n/ns/quotes";
-import { citationOf, loadQuoteLibrary, quoteOf, type QuoteLibrary } from "@/lib/quotes/library";
+import { cachedQuote, pickQuote } from "@/lib/quotes/api";
+import { citationOf } from "@/lib/quotes/format";
 import { crossFadeMs, lockQuotePlan } from "@/lib/quotes/lock-timer";
-import { SURFACE_WEIGHTS, quoteForSlot } from "@/lib/quotes/rotation";
-import { pushHistory, readPrefs, readQuoteLang, readRotation, seedFor, useLockQuoteInterval, writeRotation } from "@/lib/quotes/store";
+import {
+  pushHistory, readPrefs, readQuoteLang, readRotation, rotationCurrent, useLockQuoteInterval, userKey, writeRotation,
+} from "@/lib/quotes/store";
 import type { Quote } from "@/lib/quotes/types";
 import { WordReveal } from "@/components/shared/word-reveal";
 
@@ -23,19 +26,12 @@ export function LockQuote({ owner, dim, motion }: { owner: string | null; dim: b
   const { t, lang: uiLang } = quotesI18n.useT();
   const interval = useLockQuoteInterval();
   const lang = React.useMemo(() => readQuoteLang(uiLang), [uiLang]);
-  const [lib, setLib] = React.useState<QuoteLibrary | null>(null);
   const [layers, setLayers] = React.useState<Layers>({ a: null, b: null, front: "a" });
   const fade = crossFadeMs(!motion);
 
   React.useEffect(() => {
     if (interval === 0) return;
     let alive = true;
-    void loadQuoteLibrary(lang).then((l) => { if (alive) setLib(l); }).catch(() => undefined);
-    return () => { alive = false; };
-  }, [lang, interval]);
-
-  React.useEffect(() => {
-    if (!lib || interval === 0) return;
     let timer = 0;
     const show = (q: Quote) => setLayers((s) => {
       const cur = s.front === "a" ? s.a : s.b;
@@ -45,24 +41,29 @@ export function LockQuote({ owner, dim, motion }: { owner: string | null; dim: b
     const tick = () => {
       const plan = lockQuotePlan(Date.now(), interval);
       if (!plan) return;
-      const opt = { seed: seedFor(readPrefs(owner), owner, "lock"), weights: SURFACE_WEIGHTS.lock };
-      const r = quoteForSlot(lib.quotes, readRotation("lock", owner), opt, plan.slot);
-      if (r) {
-        if (r.changed) {
-          writeRotation("lock", owner, r.state);
-          pushHistory(owner, { id: r.id, at: Date.now(), s: "lock" });
-        }
-        const q = quoteOf(lib, r.id);
-        if (q) show(q);
-      }
       timer = window.setTimeout(tick, plan.nextInMs + 30);
+      const state = readRotation("lock", owner);
+      const cur = rotationCurrent(state);
+      const kept = cur?.slot === plan.slot ? cachedQuote(lang, cur.id) : null;
+      if (kept) { show(kept); return; }
+      // Offline or refused: the quote on screen stays until the next slot.
+      void pickQuote({ surface: "lock", lang, slot: plan.slot, seed: readPrefs(owner).seed ?? null, who: userKey(owner), state })
+        .then((r) => {
+          if (!alive) return;
+          if (r.changed) {
+            writeRotation("lock", owner, r.state);
+            pushHistory(owner, { id: r.id, at: Date.now(), s: "lock" });
+          }
+          show(r.quote);
+        })
+        .catch(() => undefined);
     };
     tick();
     // A sleeping laptop wakes past the boundary: re-check when the tab is shown again.
     const onVisible = () => { if (document.visibilityState === "visible") { window.clearTimeout(timer); tick(); } };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
-  }, [lib, interval, owner]);
+    return () => { alive = false; window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [lang, interval, owner]);
 
   if (interval === 0 || (!layers.a && !layers.b)) return null;
 

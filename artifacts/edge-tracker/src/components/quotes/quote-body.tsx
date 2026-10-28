@@ -1,12 +1,13 @@
 /**
  * One library quote in the card: category chip, reliability badge, the text, «— speaker · work, locator» and, for
- * Greek / Latin / Chinese… originals, a toggle that loads orig.json on demand.
+ * Greek / Latin / Chinese… originals, a toggle that asks the API for the original on demand.
  */
 import * as React from "react";
 import { BadgeCheck, Columns3, Feather, Landmark, Brain, TrendingUp, Languages, CircleHelp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { citationOf, loadQuoteOrig } from "@/lib/quotes/library";
+import { fetchQuoteOrig } from "@/lib/quotes/api";
+import { citationOf } from "@/lib/quotes/format";
 import type { Quote, QuoteCat, QuoteLang } from "@/lib/quotes/types";
 import { quotesI18n } from "@/i18n/ns/quotes";
 
@@ -59,7 +60,7 @@ export function QuoteBody({ quote, lang, note }: { quote: Quote; lang: QuoteLang
   React.useEffect(() => {
     if (!showOrig || orig !== null) return;
     let alive = true;
-    void loadQuoteOrig().then((m) => { if (alive) setOrig(m[quote.id] ?? ""); }).catch(() => { if (alive) setOrig(""); });
+    void fetchQuoteOrig(quote.id).then((text) => { if (alive) setOrig(text); }).catch(() => { if (alive) setOrig(""); });
     return () => { alive = false; };
   }, [showOrig, orig, quote.id]);
 

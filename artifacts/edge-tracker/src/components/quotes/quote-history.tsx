@@ -1,22 +1,25 @@
 /**
  * «История и избранное»: the quotes shown on this browser (dashboard and lock screen, newest first) and the starred
- * ones (synced via users.settings.quotes). A row opens the quote in the card.
+ * ones (synced via users.settings.quotes). A row opens the quote in the card. Only the open tab's quotes are asked
+ * from the API (GET /api/quotes/items), warmed when the pointer reaches the button.
  */
 import * as React from "react";
 import { LockKeyhole, Star } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Segmented } from "@/components/ds";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fmtRelative } from "@/lib/format";
-import { quoteOf, type QuoteLibrary } from "@/lib/quotes/library";
 import type { HistoryEntry } from "@/lib/quotes/store";
+import type { QuoteLang } from "@/lib/quotes/types";
+import { usePrefetchQuotes, useQuotes } from "@/lib/quotes/hooks";
 import { quotesI18n } from "@/i18n/ns/quotes";
 
 type Tab = "history" | "favs";
 
 export function QuoteHistory({
-  lib, history, favs, onOpen, trigger,
+  lang, history, favs, onOpen, trigger,
 }: {
-  lib: QuoteLibrary;
+  lang: QuoteLang;
   history: readonly HistoryEntry[];
   favs: readonly string[];
   onOpen: (id: string) => void;
@@ -29,11 +32,16 @@ export function QuoteHistory({
   const rows = tab === "history"
     ? history.map((h) => ({ id: h.id, at: h.at, lock: h.s === "lock" }))
     : favs.map((id) => ({ id, at: null as number | null, lock: false }));
-  const items = rows.map((r) => ({ ...r, q: quoteOf(lib, r.id) })).filter((r) => r.q);
+  const ids = rows.map((r) => r.id);
+  const quotes = useQuotes(lang, ids, open);
+  const prefetch = usePrefetchQuotes();
+  const byId = new Map((quotes.data ?? []).map((q) => [q.id, q]));
+  const items = rows.map((r) => ({ ...r, q: byId.get(r.id) })).filter((r) => r.q);
+  const loading = open && ids.length > 0 && !quotes.data && !quotes.isError;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild onPointerEnter={() => prefetch(lang, history.map((h) => h.id))}>
         {trigger}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-0">
@@ -50,7 +58,12 @@ export function QuoteHistory({
           />
         </div>
         <div className="max-h-[min(30rem,65dvh)] overflow-y-auto overscroll-contain px-3 py-1.5">
-          {items.length === 0 ? (
+          {loading ? (
+            <div className="space-y-2 py-2" aria-busy="true">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : items.length === 0 ? (
             <p className="py-3 text-sm text-muted-foreground">{t(tab === "history" ? "history.emptyHistory" : "history.emptyFavs")}</p>
           ) : (
             <ul className="divide-y divide-border/40">
@@ -62,7 +75,7 @@ export function QuoteHistory({
                     className="w-full rounded-md px-1 py-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label={`${t("history.open")}: ${q!.authorName}`}
                   >
-                    <p className="line-clamp-3 text-sm leading-snug text-foreground/90" lang={lib.lang}>{q!.text}</p>
+                    <p className="line-clamp-3 text-sm leading-snug text-foreground/90" lang={lang}>{q!.text}</p>
                     <p className="mt-0.5 flex items-center gap-1 text-2xs text-muted-foreground">
                       <span className="truncate">— {q!.authorName}</span>
                       {at != null && <span className="shrink-0 tabular-nums">· {fmtRelative(new Date(at))}</span>}

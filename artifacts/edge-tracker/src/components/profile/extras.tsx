@@ -1,7 +1,7 @@
 /**
  * Profile extras: «Похожий стиль» (the desk peer with the nearest trading style — staff only, the server leaves it out
- * otherwise) and «Цитата под характер» (a quote from the bundled library on the theme of the growth area, plus the
- * person's favourites on their own profile / for staff).
+ * otherwise) and «Цитата под характер» (a quote from the library on the theme of the growth area — the order from
+ * GET /api/quotes/theme, the texts by id — plus the person's favourites on their own profile / for staff).
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -10,12 +10,14 @@ import { Quote as QuoteIcon, RefreshCw, Users } from "lucide-react";
 import { Panel, SkeletonBlock } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { STALE } from "@/lib/api/keys";
-import { asQuoteLang, citationOf, loadQuoteLibrary, quoteMarks, quoteOf } from "@/lib/quotes/library";
+import { fetchThemeIds } from "@/lib/quotes/api";
+import { asQuoteLang, citationOf, quoteMarks } from "@/lib/quotes/format";
+import { useQuotes } from "@/lib/quotes/hooks";
 import { fmtRate } from "@/lib/format";
 import { personInitials, personName, useLang } from "@/i18n";
 import { profileI18n } from "@/i18n/ns/profile";
 import type { ProfileResponse } from "./api";
-import { personHref, themeQuoteIds } from "./model";
+import { personHref } from "./model";
 
 export function PeerCard({ peer, className }: { peer: NonNullable<ProfileResponse["peer"]>; className?: string }) {
   const { t } = profileI18n.useT();
@@ -40,15 +42,22 @@ export function PeerCard({ peer, className }: { peer: NonNullable<ProfileRespons
 export function QuoteCard({ profile, className }: { profile: ProfileResponse; className?: string }) {
   const { t } = profileI18n.useT();
   const lang = asQuoteLang(useLang());
-  const lib = useQuery({ queryKey: ["quote-library", lang], queryFn: () => loadQuoteLibrary(lang), staleTime: STALE.static, meta: { i18n: false } });
+  const seed = `${profile.person.id}:${profile.window.to}`;
+  const theme = useQuery({
+    queryKey: ["quotes", "theme", profile.quotes.theme, seed],
+    queryFn: () => fetchThemeIds(profile.quotes.theme, seed),
+    staleTime: STALE.static,
+    meta: { i18n: false },
+  });
   const [step, setStep] = React.useState(0);
-  const ids = React.useMemo(
-    () => (lib.data ? themeQuoteIds(lib.data.quotes, profile.quotes.theme, `${profile.person.id}:${profile.window.to}`) : []),
-    [lib.data, profile.quotes.theme, profile.person.id, profile.window.to],
-  );
+  const ids = theme.data ?? [];
+  const shownId = ids.length ? ids[step % ids.length]! : null;
+  const wanted = React.useMemo(() => [...(shownId ? [shownId] : []), ...profile.quotes.favs], [shownId, profile.quotes.favs]);
+  const items = useQuotes(lang, wanted);
+  const byId = new Map((items.data ?? []).map((q) => [q.id, q]));
   const [open, close] = quoteMarks(lang);
-  const quote = lib.data && ids.length ? quoteOf(lib.data, ids[step % ids.length]) : null;
-  const favs = lib.data ? profile.quotes.favs.map((id) => quoteOf(lib.data!, id)).filter((q): q is NonNullable<typeof q> => !!q) : [];
+  const quote = shownId ? byId.get(shownId) ?? null : null;
+  const favs = profile.quotes.favs.map((id) => byId.get(id)).filter((q): q is NonNullable<typeof q> => !!q);
 
   return (
     <Panel
@@ -63,7 +72,7 @@ export function QuoteCard({ profile, className }: { profile: ProfileResponse; cl
         </Button>
       ) : undefined}
     >
-      {!lib.data ? (
+      {!theme.data || (shownId && !items.data && !items.isError) ? (
         <SkeletonBlock className="h-20 w-full rounded-xl" />
       ) : quote ? (
         <figure className="flex flex-col gap-2" aria-live="polite">

@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { QUOTE_CATS, QUOTE_LANGS, QUOTE_TAGS, type QuoteMetaFile, type QuoteTextFile } from "../types";
-import { citationOf, loadQuoteLibrary, quoteOf, quotePlainText } from "../library";
+import { quoteLibrary, quoteOf, quoteOrig, quotePool, resolveQuotesDir, themeQuoteIds } from "../library";
 
 const DIR = path.resolve(import.meta.dirname, "../../../data/quotes");
 const read = <T>(f: string): T => JSON.parse(fs.readFileSync(path.join(DIR, f), "utf8")) as T;
@@ -92,16 +92,28 @@ describe("quote library dataset", () => {
 });
 
 describe("library loader", () => {
-  it("loads meta + one language as lazy chunks and builds displayable quotes", async () => {
-    const lib = await loadQuoteLibrary("ru");
+  it("finds the data next to the sources and builds displayable quotes per language", () => {
+    expect(path.resolve(resolveQuotesDir())).toBe(DIR);
+    const lib = quoteLibrary("ru");
     expect(lib.quotes.length).toBe(meta.quotes.length);
+    expect(quotePool()).toBe(lib.quotes);
     const q = quoteOf(lib, meta.quotes[0]!.id)!;
     expect(q.text).toBe(texts.ru.texts[q.id]);
     expect(q.authorName).toBe(texts.ru.authors[q.author]);
-    expect(citationOf(q)).toContain(q.workName);
-    expect(quotePlainText(q, "ru")).toMatch(/^«.+»\n— /s);
+    expect(q.workName).toBe(texts.ru.works[q.work]);
     expect(quoteOf(lib, "nope-000")).toBeNull();
-    const en = await loadQuoteLibrary("en");
-    expect(quotePlainText(quoteOf(en, q.id)!, "en").startsWith("“")).toBe(true);
+    const en = quoteLibrary("en");
+    expect(quoteOf(en, q.id)!.text).toBe(texts.en.texts[q.id]);
+    const withOrig = meta.quotes.find((m) => m.o === 1)!;
+    expect(quoteOrig(withOrig.id)).toBe(orig[withOrig.id]);
+    expect(quoteOrig("nope-000")).toBe("");
+  });
+
+  it("theme order: on the tag, stable per seed, falling back to all", () => {
+    const q = [{ id: "a", tags: ["patience"] }, { id: "b", tags: ["risk"] }, { id: "c", tags: ["patience", "focus"] }];
+    const ids = themeQuoteIds(q, "patience", "144:2026-10-21");
+    expect([...ids].sort()).toEqual(["a", "c"]);
+    expect(themeQuoteIds(q, "patience", "144:2026-10-21")).toEqual(ids);
+    expect(themeQuoteIds(q, "unknown", "x")).toHaveLength(3);
   });
 });

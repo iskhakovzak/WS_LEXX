@@ -4,7 +4,8 @@
  *  - The lock is per session (JWT `sid`, lib/security/sessions sessionKey): locking the office monitor does not lock the
  *    phone. A row in auth_session_locks = locked.
  *  - While locked, apiAuthGate (lib/auth.ts) answers 423 SESSION_LOCKED to that token on every route except
- *    SCREEN_LOCK_ROUTES (unlock, lock and its status, logout, permissions-me); public routes stay public.
+ *    SCREEN_LOCK_ROUTES (unlock, lock and its status, logout, permissions-me, the lock-screen quote); public routes
+ *    stay public.
  *  - Unlock takes the quick-unlock code (users.quick_code_hash, bcrypt) or, when none is set, the account password.
  *    MAX_UNLOCK_ATTEMPTS wrong answers in a row sign the session out (auth_revoked_sessions), so a guesser at the desk
  *    gets 5 tries, then the sign-in page.
@@ -46,6 +47,9 @@ export const SCREEN_LOCK_ROUTES: readonly LockRoute[] = [
   { method: "POST", path: "/auth/logout" },
   { method: "GET", path: "/permissions/me" },
   { method: "GET", path: "/healthz" },
+  // The quote under the lock clock (routes/quotes.ts: library texts only, nothing of the reader's data).
+  { method: "POST", path: "/quotes/pick" },
+  { method: "GET", path: "/quotes/items" },
 ];
 
 export function allowedWhileLocked(method: string, path: string): boolean {

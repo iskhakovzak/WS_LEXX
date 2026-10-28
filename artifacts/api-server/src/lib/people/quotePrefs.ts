@@ -1,14 +1,14 @@
 /**
  * Quote library preferences, stored per user in `users.settings.quotes` (PUT /users/me/settings { quotes }). The web
- * mirrors this shape in edge-tracker src/lib/quotes/store.ts (parsePrefs). The library itself ships with the web app
- * (src/data/quotes); the server only keeps the reader's choices so they follow them across devices:
+ * mirrors this shape in edge-tracker src/lib/quotes/store.ts (parsePrefs). The library itself is served by
+ * routes/quotes.ts (src/data/quotes); these are the reader's choices, so they follow them across devices:
  *   seed  rotation seed of the no-repeat cycle (lib/quotes/rotation.ts)
  *   favs  favourite quote ids («il-012»…), newest first, at most 300
  *   cats  categories kept on in the dashboard card (empty = all)
  */
 import { z } from "zod";
+import { QUOTE_CATS } from "../quotes/types";
 
-export const QUOTE_CATS = ["olympus", "philosophy", "discipline", "trading", "psychology"] as const;
 export const QUOTE_FAVS_MAX = 300;
 
 export const QuotePrefsSchema = z.object({
