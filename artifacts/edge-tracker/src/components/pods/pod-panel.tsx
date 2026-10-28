@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeApiError } from "@/lib/api/errors";
-import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDeskDateTime, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { personName } from "@/i18n";
@@ -117,7 +117,7 @@ function Feed({ pod }: { pod: Pod }) {
             <li key={p.id} className="rounded-lg bg-[var(--glass-bg)] px-3 py-2 text-sm">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">{personName(p.author)}</span>
-                <span>{fmtDate(p.createdAt, "dateTime")}</span>
+                <span>{fmtDeskDateTime(p.createdAt)}</span>
                 {p.author === user?.traderName && (
                   <Button size="icon" variant="ghost" className="ml-auto h-6 w-6" aria-label={t("feed.remove")} onClick={() => mut.removePost.mutate(p.id)}><Trash2 aria-hidden="true" /></Button>
                 )}

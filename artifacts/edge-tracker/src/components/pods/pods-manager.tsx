@@ -91,7 +91,7 @@ export function PodsManager() {
             <section key={g.id} aria-label={t("manage.group", { name: g.name })} className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-semibold text-foreground">{t("manage.group", { name: g.name })}</h4>
-                {draft?.groupId !== g.id && g.traders.length >= limits.min && (
+                {draft?.groupId !== g.id && g.traders.filter((tr) => !pods.some((p) => p.members.some((m) => m.id === tr.id))).length >= limits.min && (
                   <Button size="sm" variant="outline" className="ml-auto" onClick={() => setDraft({ podId: null, groupId: g.id, name: "", memberIds: [] })}><Plus aria-hidden="true" />{t("manage.add")}</Button>
                 )}
               </div>

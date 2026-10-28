@@ -71,15 +71,20 @@ export type BoardSignal = AnalystSignal & {
   mark: { direction: Direction | null; strength: "weak" | "strong" | null } | null;
 };
 
-/** The analyst page block «Сила катализатора»: the signals of `day` and of `prevDay`, newest first. */
+/**
+ * The analyst page block «Сила катализатора»: the signals of `prevDay`, `day` and of the session after it (calls out
+ * after today's close react tomorrow — the plan being written now), newest first.
+ */
 export async function signalsBoard(trader: string, day: string, prevDay: string, db: Queryable = pool): Promise<{ day: string; opts: SignalOpts; signals: BoardSignal[] }> {
   const opts = signalOpts();
-  const acts = await actsAround(day, null, db);
+  const back = Math.ceil(Math.max(1, opts.windowHours) / 24) + 3;
+  const acts = await analystActsOf(null, closeOf(addDays(day, -back)), closeOf(addDays(day, 4)), db);
   const signals = analystSignals(acts, opts)
     .map((s) => ({ s, day: reactionDay(new Date(s.lastAt)) }))
-    .filter((x) => x.day === day || x.day === prevDay)
+    .filter((x) => x.day >= prevDay)
     .slice(0, 60);
   const tickers = signals.map((x) => x.s.ticker);
+  const days = [...new Set(signals.map((x) => x.day))];
   if (!tickers.length) return { day, opts, signals: [] };
   const [watch, plan, marks] = await Promise.all([
     db.query(
@@ -90,22 +95,22 @@ export async function signalsBoard(trader: string, day: string, prevDay: string,
       [tickers, trader],
     ),
     db.query(
-      `SELECT DISTINCT UPPER(TRIM(x->>'ticker')) AS t FROM trader_plans p
+      `SELECT DISTINCT p.date AS day, UPPER(TRIM(x->>'ticker')) AS t FROM trader_plans p
          CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(p.doc->'inPlay') = 'array' THEN p.doc->'inPlay' ELSE '[]'::jsonb END) x
-        WHERE p.trader = $1 AND p.date = $2 AND p.deleted_at IS NULL`,
-      [trader, day],
+        WHERE p.trader = $1 AND p.date = ANY($2::text[]) AND p.deleted_at IS NULL`,
+      [trader, days],
     ),
-    db.query(`SELECT ticker, direction, strength FROM catalyst_marks WHERE trader = $1 AND day = $2 AND ticker = ANY($3::text[])`, [trader, day, tickers]),
+    db.query(`SELECT day, ticker, direction, strength FROM catalyst_marks WHERE trader = $1 AND day = ANY($2::text[]) AND ticker = ANY($3::text[])`, [trader, days, tickers]),
   ]);
   const w = new Set(watch.rows.map((r) => String(r.t)));
-  const p = new Set(plan.rows.map((r) => String(r.t)));
-  const m = new Map(marks.rows.map((r) => [String(r.ticker), { direction: r.direction ?? null, strength: r.strength ?? null }]));
+  const p = new Set(plan.rows.map((r) => `${String(r.day).slice(0, 10)}|${String(r.t)}`));
+  const m = new Map(marks.rows.map((r) => [`${r.day}|${r.ticker}`, { direction: r.direction ?? null, strength: r.strength ?? null }]));
   return {
     day,
     opts,
     signals: signals.map(({ s, day: d }) => {
       const t = normTicker(s.ticker) ?? s.ticker;
-      return { ...s, day: d, inWatchlist: w.has(t), inPlan: p.has(t), mark: m.get(t) ?? null };
+      return { ...s, day: d, inWatchlist: w.has(t), inPlan: p.has(`${d}|${t}`), mark: m.get(`${d}|${t}`) ?? null };
     }),
   };
 }

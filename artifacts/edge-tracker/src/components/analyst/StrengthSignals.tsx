@@ -11,7 +11,7 @@ import { ArrowDown, ArrowUp, Check, Flame } from "lucide-react";
 import { EmptyState, ErrorState, ListSkeleton, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { fmtPct } from "@/lib/format";
+import { fmtDate, fmtPct } from "@/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { useSaveMark } from "@/components/shared/strategy/api";
@@ -72,7 +72,8 @@ function SignalRow({ s, planDay, onOpen }: { s: StrengthSignal; planDay: string;
   const { t } = analystSignalsI18n.useT();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const save = useSaveMark(planDay);
+  // The mark belongs to the session that trades the signal (a call after today's close → tomorrow's plan).
+  const save = useSaveMark(s.day);
   const addPlan = useAddToPlan();
   const done = isConfirmed(s);
   const Icon = s.direction === "bull" ? ArrowUp : ArrowDown;
@@ -80,7 +81,7 @@ function SignalRow({ s, planDay, onOpen }: { s: StrengthSignal; planDay: string;
   const reason = s.reason === "cluster" ? t("reason.cluster", { count: s.count }) : t("reason.target", { pct: fmtPct(s.targetPct ?? 0, 0) });
 
   const confirm = () => save.mutate(
-    { date: planDay, ticker: s.ticker, direction: s.direction, strength: "strong", kind: "news", source: "plan", suggested: true },
+    { date: s.day, ticker: s.ticker, direction: s.direction, strength: "strong", kind: "news", source: "plan", suggested: true },
     {
       onSuccess: () => {
         toast({ title: t("saved", { ticker: s.ticker, dir: dir.toLowerCase() }) });
@@ -89,7 +90,7 @@ function SignalRow({ s, planDay, onOpen }: { s: StrengthSignal; planDay: string;
     },
   );
   const toPlan = () => addPlan.mutate(
-    { date: planDay, ticker: s.ticker, catalyst: reason, bias: s.direction },
+    { date: s.day, ticker: s.ticker, catalyst: reason, bias: s.direction },
     { onSuccess: () => void qc.invalidateQueries({ queryKey: ["catalysts", "analyst-signals"] }) },
   );
 
@@ -99,7 +100,7 @@ function SignalRow({ s, planDay, onOpen }: { s: StrengthSignal; planDay: string;
         <button type="button" onClick={() => onOpen?.(s.ticker)} className="font-semibold text-foreground hover:underline">{s.ticker}</button>
         <Pill tone={s.direction === "bull" ? "up" : "down"}><Icon className="h-3 w-3" aria-hidden="true" />{dir}</Pill>
         <span className="text-xs text-muted-foreground">{reason}</span>
-        {s.day !== planDay && <span className="text-xs text-muted-foreground">· {t("day.prev")}</span>}
+        {s.day !== planDay && <span className="text-xs text-muted-foreground">· {s.day < planDay ? t("day.prev") : t("day.next", { date: fmtDate(s.day, "dayMonth") })}</span>}
         {s.inWatchlist && <Pill tone="neutral">{t("inWatchlist")}</Pill>}
         {s.inPlan && <Pill tone="accent">{t("inPlan")}</Pill>}
       </div>
@@ -115,7 +116,7 @@ function SignalRow({ s, planDay, onOpen }: { s: StrengthSignal; planDay: string;
           </Button>
         )}
         {!s.inPlan && <Button size="sm" variant="ghost" disabled={addPlan.isPending} onClick={toPlan}>{t("addPlan")}</Button>}
-        <Button size="sm" variant="ghost" asChild><Link href={s.inPlan ? links.myPlan(planDay) : links.watchlist(s.ticker)}>{s.inPlan ? t("inPlan") : t("openWatchlist")}</Link></Button>
+        <Button size="sm" variant="ghost" asChild><Link href={s.inPlan ? links.myPlan(s.day) : links.watchlist(s.ticker)}>{s.inPlan ? t("inPlan") : t("openWatchlist")}</Link></Button>
       </div>
     </li>
   );
