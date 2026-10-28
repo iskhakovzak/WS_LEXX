@@ -11,6 +11,9 @@ export default {
   mock: {
     assistFill: "Across your trades of the last 30 days this setup has a positive expectancy — a hypothesis for now; check it on 20+ more trades.",
     lookingStats: "Looking at your statistics for the last 30 days…\n\n",
+    mentor: {
+      formulaBreak: "{ticker}, {day}: entered «{setup}» without the catalyst its formula requires.",
+    },
     lookingDraft: "Putting together a setup draft from your best trades…\n\n",
     statsIntro: "**{from} – {to}:** {n} trades, win rate {wr}, net {net}, total R {r}.\n\n",
     colSetup: "Setup",

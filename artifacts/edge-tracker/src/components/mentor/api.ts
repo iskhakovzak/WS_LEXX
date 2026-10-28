@@ -5,6 +5,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import type { DayTwoHint } from "@/components/shared/strategy/model";
 
 export const MENTOR_DOMAIN = "mentor";
 
@@ -32,7 +33,11 @@ export type Message = { id: number; role: "user" | "mentor"; kind: "chat" | "bri
 
 export type RhythmKind = "brief" | "debrief" | "weekly";
 export type Proposal = { kind: CommitmentKind; minutes: number | null; count: number | null; usd: number | null; time: string | null; text: string; replaceId: number | null };
-export type BriefContent = { headline: string; points: string[]; ruleToday: string; setupIds: number[]; setups: { id: number; name: string }[] };
+export type BriefContent = {
+  headline: string; points: string[]; ruleToday: string; setupIds: number[]; setups: { id: number; name: string }[];
+  /** «Второй день» lines (api lib/catalyst) — absent in briefs written before them. */
+  dayTwo?: DayTwoHint[];
+};
 export type DebriefContent = {
   summary: string; vsPlan: string; lesson: string; praise: string | null; challenge: string | null; ruleTomorrow: Proposal | null;
   savedCommitmentId: number | null; ruleSkipped: "full" | "duplicate" | null;

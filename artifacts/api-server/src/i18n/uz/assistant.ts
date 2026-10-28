@@ -11,6 +11,9 @@ export default {
   mock: {
     assistFill: "Soʻnggi 30 kunlik bitimlaringiz boʻyicha bu setap ijobiy kutilmaga ega — hozircha gipoteza, yana 20+ bitimda tekshiring.",
     lookingStats: "Soʻnggi 30 kunlik statistikangizni koʻryapman…\n\n",
+    mentor: {
+      formulaBreak: "{ticker}, {day}: «{setup}» boʻyicha formulada talab qilingan katalizatorsiz kirish.",
+    },
     lookingDraft: "Eng yaxshi bitimlaringiz boʻyicha setap qoralamasini tayyorlayapman…\n\n",
     statsIntro: "**{from} – {to}:** {n} ta bitim, vinreyt {wr}, netto {net}, jami R {r}.\n\n",
     colSetup: "Setap",

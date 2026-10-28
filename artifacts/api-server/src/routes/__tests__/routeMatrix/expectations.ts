@@ -265,6 +265,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /whatif/scenarios": member("the own what-if scenarios"),
   "PUT /auth/quick-code": member("sets / changes the own quick-unlock code"),
   "PUT /author-notes": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
+  "PUT /catalysts/mark": member("the own catalyst mark of a plan / watchlist ticker (direction × strength taps)"),
   "PUT /chart/drawings": member("the own chart drawings"),
   "PUT /daily/focus/:trader/:date": cap("journal.review", "curator sets a trader's focus (checked after the body is validated)"),
   "PUT /eod/day/:date": member("the own end-of-day record"),

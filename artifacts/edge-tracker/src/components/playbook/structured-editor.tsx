@@ -27,6 +27,7 @@ import {
 } from "./model";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookSetupI18n, type SetupTemplateId } from "@/i18n/ns/playbookSetup";
+import { StrategyFormulaCard } from "@/components/shared/strategy/formula-card";
 
 const st = playbookSetupI18n.t; // called at render / call time only
 
@@ -149,6 +150,7 @@ export function StructuredDescription({
   const anyStructured = filled.length > 0;
   const legacySplit = React.useMemo(() => (entry.conditions ? splitLegacy(entry.conditions) : null), [entry.conditions]);
   const media = entry.media ?? [];
+  const formulaEditable = canEdit && (!entry.access || entry.access.space === "office" || entry.access.mine);
 
   async function addImages(files: File[]) {
     if (!files.length || !canEdit) return;
@@ -201,6 +203,10 @@ export function StructuredDescription({
     <div className="@container min-w-0" onPaste={onPaste}>
     <div className="grid min-w-0 gap-[var(--grid-gap)] @[68rem]:grid-cols-[minmax(0,1fr)_340px] @[68rem]:items-start">
       <div className="contents @[68rem]:flex @[68rem]:min-w-0 @[68rem]:flex-col @[68rem]:gap-[var(--grid-gap)]">
+        {/* Strategy formula (catalyst → setup → trade) leads the card; a curator sees a trader's own formula read-only. */}
+        {live && (formulaEditable || entry.formula) && (
+          <StrategyFormulaCard setupId={entry.id} formula={entry.formula} canEdit={formulaEditable} className="order-0 glass-panel min-w-0 rounded-2xl p-[var(--panel-p)] @[68rem]:order-none" />
+        )}
         <div className="order-1 min-w-0 @[68rem]:order-none">
         {live ? (
           <DocSection title={t("editor.card")} icon={Target} actions={meta}>

@@ -13,6 +13,7 @@ import {
 import { fmtRelative } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookI18n, type SetupSourceKey, type TimeOfDayKey } from "@/i18n/ns/playbook";
+import type { StrategyFormula, UsdBlock } from "@/components/shared/strategy/model";
 
 export type PlaybookEntry = {
   id: number; name: string; folder: string | null; setupType: string | null; conditions: string | null;
@@ -41,6 +42,8 @@ export type PlaybookEntry = {
   idealConditions?: string | null; timeOfDay?: string | null; horizon?: string | null;
   /** «Сегодня»: minimum tier for the lock (trainee | junior | trader | senior | lead) and the cheat-sheet picture key. */
   minTier?: string | null; schema?: string | null;
+  /** Strategy formula: catalyst → setup → trade (components/shared/strategy). */
+  formula?: StrategyFormula | null;
   /** Above the viewer's tier (DEV-06): the API sent no card (rules, checklist, notes, media) — show the lock instead. */
   locked?: boolean;
   unlock?: { key: string; params?: Record<string, string | number | null> } | null;
@@ -151,6 +154,8 @@ export type SetupStats = {
   byHorizon: Record<string, UsdStats>;
   traders: (UsdStats & { trader: string })[] | null;
   firstDate: string | null; lastDate: string | null;
+  /** Trade variants (child setups) side by side; the setup's own trades are «unspecified». Null without variants. */
+  variants?: { variants: (UsdBlock & { id: number; name: string })[]; unspecified: UsdBlock } | null;
 };
 
 /** Horizon code → label (getters: current UI language). */

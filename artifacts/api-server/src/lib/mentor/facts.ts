@@ -25,6 +25,13 @@ import type { BehaviorTrade } from "../behaviorEngine";
 import { commitmentVerdict, trackCommitment, type Progress, type Verdict } from "./commitments";
 import { lastWeekdays, type TradedDay } from "./escalation";
 import { listCommitments, listNotes, hiddenFacts, type Commitment, type Note } from "./store";
+import { dayTwoOf, formulaBreaksOf } from "../catalyst/store";
+import type { DayTwoHint, FormulaBreak } from "../catalyst/model";
+import { normFormula, type StrategyFormula } from "../strategyFormula";
+import { setting } from "../settings/registry";
+
+/** Calendar days of trades the formula check looks back over (≈ two trading weeks; the debrief names the latest). */
+const FORMULA_LOOKBACK_DAYS = 14;
 
 export type FactKind = "stage" | "strength" | "weakness" | "leak" | "edge" | "regime" | "agreement" | "focus";
 /** One data fact: a stable key (hide / show), a kind and its params (numbers, codes, the agreement's own title). */
@@ -54,8 +61,12 @@ export type MentorFacts = {
    */
   risk: RiskSummary;
   regime: string | null;
-  playbook: { id: number; name: string; fitsRegime: boolean; picked: boolean; verdict: string | null; trades: number; winRate: number | null }[];
+  playbook: { id: number; name: string; fitsRegime: boolean; picked: boolean; verdict: string | null; trades: number; winRate: number | null; formula?: StrategyFormula | null }[];
   focus: { mistake: string | null; costNet: number | null; count: number; own: string | null } | null;
+  /** «Day two after a strong catalyst» (lib/catalyst): yesterday's strong catalysts that moved big — deterministic lines. */
+  dayTwo: DayTwoHint[];
+  /** Recent trades entered on a setup whose strategy formula needs a catalyst the plan mark does not show. */
+  formulaBreaks: FormulaBreak[];
 };
 
 const LOOKBACK_DAYS = 35;
@@ -144,15 +155,17 @@ async function playbookFacts(trader: string, regime: string | null): Promise<Men
   const open = pb.setups.filter((s) => !s.locked);
   const ids = open.map((s) => s.id);
   const regimes = new Map<number, string[]>();
-  if (ids.length && regime) {
-    const { rows } = await pool.query<{ id: number; regimes: string[] }>(`SELECT id, regimes FROM playbook WHERE id = ANY($1::int[])`, [ids]);
-    for (const r of rows) regimes.set(Number(r.id), r.regimes ?? []);
+  const formulas = new Map<number, StrategyFormula | null>();
+  if (ids.length) {
+    const { rows } = await pool.query<{ id: number; regimes: string[]; formula: unknown }>(`SELECT id, regimes, formula FROM playbook WHERE id = ANY($1::int[])`, [ids]);
+    for (const r of rows) { regimes.set(Number(r.id), r.regimes ?? []); formulas.set(Number(r.id), normFormula(r.formula)); }
   }
   const rank = (v: string | null | undefined) => (v === "best" ? 0 : v === "good" ? 1 : v === "new" ? 2 : 3);
   return open
     .map((s) => ({
       id: s.id, name: s.name.slice(0, 80), fitsRegime: !!regime && (regimes.get(s.id) ?? []).includes(regime), picked: pb.picks.includes(s.id),
       verdict: s.myEdge?.verdict ?? null, trades: s.myEdge?.trades ?? 0, winRate: s.myEdge?.winRate ?? null,
+      formula: formulas.get(s.id) ?? null,
     }))
     .sort((a, b) => Number(b.picked) - Number(a.picked) || Number(b.fitsRegime) - Number(a.fitsRegime) || rank(a.verdict) - rank(b.verdict))
     .slice(0, 8);
@@ -161,7 +174,7 @@ async function playbookFacts(trader: string, regime: string | null): Promise<Men
 /** Everything the mentor knows about `trader` today. */
 export async function gatherFacts(trader: string, today: string): Promise<MentorFacts> {
   const from = addDays(today, -LOOKBACK_DAYS);
-  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus] = await Promise.all([
+  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus, dayTwo, breaks] = await Promise.all([
     safe("stage", () => stageOf(trader), null),
     safe("hidden", () => hiddenFacts(trader), [] as string[]),
     safe("notes", () => listNotes(trader), [] as Note[]),
@@ -173,6 +186,8 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     safe("regime", () => regimeFacts(trader, today), { regime: null, facts: [] as Fact[] }),
     safe("agreements", () => agreements(trader), [] as { id: number; title: string; dueOn: string | null }[]),
     safe("focus", () => focusFor(trader, today), null),
+    safe("dayTwo", async () => (await dayTwoOf(trader, today, setting("mentor.dayTwoMovePct"))).hints, [] as DayTwoHint[]),
+    safe("formula", () => formulaBreaksOf(trader, addDays(today, -FORMULA_LOOKBACK_DAYS), today), [] as FormulaBreak[]),
   ]);
   // Commitments may have started before the lookback: load the older trades only when one needs them.
   const oldest = commitments.active.map((c) => c.startedOn).sort()[0];
@@ -202,6 +217,8 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     regime: reg.regime,
     playbook: hiddenSet.has("playbook") ? [] : await safe("playbook", () => playbookFacts(trader, reg.regime), []),
     focus: focus ? { mistake: focus.mistake, costNet: focus.costNet, count: focus.count, own: focus.ownText ?? null } : null,
+    dayTwo: hiddenSet.has("playbook") ? dayTwo.map((h) => ({ ...h, setupId: null, setupName: null })) : dayTwo,
+    formulaBreaks: hiddenSet.has("playbook") ? [] : breaks,
   };
 }
 

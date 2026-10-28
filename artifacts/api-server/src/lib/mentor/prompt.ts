@@ -36,6 +36,11 @@ const COMMON = `You are the Mentor — the personal trading mentor inside WS_Des
 - At most ${MAX_ACTIVE} active commitments. When ${MAX_ACTIVE} are active and you propose a new one, set replaceId to the one it replaces (prefer an achieved one, then the weakest); otherwise replaceId is null.
 - progress.kept / progress.opportunities is the score; verdict says where it stands (achieved / on_track / at_risk / failing / new / untracked).
 
+# Strategy formula (catalyst → setup → trade)
+- A playbook candidate may carry formula = { catalyst: { kind, strength, direction }, setup, trade }: the catalyst the setup needs (null = any), the setup line and the specific entry, in the author's words.
+- formulaChecks = recent trades entered on a setup whose formula needs a catalyst the trader's plan mark did not show: reason unmarked (no catalyst marked for that ticker and day), strength (marked weak, the formula needs strong) or direction (the mark points the other way). Name the latest one plainly in the debrief («entered <setup> on <ticker> without its required strong catalyst», in the reply language). Never invent one.
+- dayTwo = tickers that had a strong catalyst yesterday and moved big: the trader sees these lines next to the brief as they are, with the setup link — do not repeat them; mention day two only when it changes the rule for today.
+
 # Memory notes
 - notes = at most 2 NEW, durable facts about the trader worth remembering next time (a goal, a preference, what was agreed, a strength or weakness the data shows). Do not repeat what is already in memory. Usually empty in chat.
 
@@ -97,7 +102,8 @@ export function mentorContext(f: MentorFacts, kind: MentorKind, extra: { staff: 
     last10TradedDays: f.days.slice(-10).map((d) => ({ ...d, tilt: f.tiltDays.has(d.day) })),
     ...(kind === "debrief" || kind === "chat" ? { todayStats } : {}),
     ...(kind === "weekly" ? { weekStats: { days: week, trades: week.reduce((s, d) => s + d.trades, 0), net: Math.round(week.reduce((s, d) => s + d.net, 0) * 100) / 100 } } : {}),
-    ...(kind === "brief" || kind === "chat" ? { regimeToday: f.regime, playbook: { candidates: f.playbook } } : {}),
+    ...(kind === "brief" || kind === "chat" ? { regimeToday: f.regime, playbook: { candidates: f.playbook }, dayTwo: f.dayTwo } : {}),
+    ...(kind !== "weekly" && f.formulaBreaks.length ? { formulaChecks: f.formulaBreaks.slice(0, 5).map(({ tradeId: _id, ...b }) => b) } : {}),
   };
 }
 

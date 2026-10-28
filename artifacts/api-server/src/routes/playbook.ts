@@ -23,6 +23,7 @@ import marksRouter from "./playbook-marks";
 import { setupLockGuard } from "../lib/playbookLock";
 import { langOf } from "../i18n";
 import { winRateOf } from "../lib/coreMetrics/kpi";
+import { normFormula } from "../lib/strategyFormula";
 
 /**
  * Playbook (setups) + per-setup edge.
@@ -154,6 +155,7 @@ const PLAYBOOK_SELECT_FIELDS = `
   schema_key        AS "schema",
   horizon,
   media,
+  formula,
   updated_at        AS "updatedAt"
 `;
 
@@ -907,6 +909,10 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (body.media !== undefined) {
     const m = normMedia(body.media) ?? [];
     fields.push(`media = $${i++}::jsonb`); vals.push(m.length ? JSON.stringify(m) : null);
+  }
+  if (body.formula !== undefined) {
+    const f = normFormula(body.formula); // strategy formula: catalyst → setup → trade (lib/strategyFormula)
+    fields.push(`formula = $${i++}::jsonb`); vals.push(f ? JSON.stringify(f) : null);
   }
   if (ticker !== undefined) { fields.push(`ticker = $${i++}`); vals.push(ticker ? String(ticker).toUpperCase() : null); }
   if (marketCap !== undefined) { fields.push(`market_cap = $${i++}`); vals.push(marketCap ? String(marketCap) : null); }

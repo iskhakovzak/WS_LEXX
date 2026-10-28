@@ -202,6 +202,7 @@ export default {
       escBreakCount: { label: "5 kunda majburiyat buzilishi", help: "Soʻnggi 5 savdo kunida faol majburiyatlarning shuncha buzilishi — kuratorga signal." },
       escDrawdownShare: { label: "Drawdown: limit ulushi", help: "Choʻqqidan drawdown treyderning maksimal drawdownining shu ulushiga yetganda signal." },
       escSilenceDays: { label: "Jimlik: kunlar", help: "Oxirgi oyda savdo qilgan treyder shuncha savdo kuni savdosiz, chek-insiz va mentor bilan suhbatsiz." },
+      dayTwoMovePct: { label: "Ikkinchi kun: kechagi harakat, %", help: "Kecha kuchli katalizatorli tiker yopilishdan yopilishgacha kamida shuncha yurgan boʻlsa, brifda «ikkinchi kun» qatori chiqadi." },
       pushesEnabled: { label: "Brif va tahlil oldindan", help: "Sukut boʻyicha oʻchirilgan. Yoqilgan — belgilangan vaqtga mentor brif (sessiyadan oldin) va tahlilni (keyin) paketda yarim narxda tayyorlaydi va bildirishnoma yuboradi. Shaxsiy limitlar sarflanmaydi — faqat yuborish limiti." },
       briefTime: { label: "Brif vaqti", help: "Soʻnggi ikki haftada savdo qilganlar uchun brif tayyorlanadigan Nyu-York vaqti." },
       debriefTime: { label: "Tahlil vaqti", help: "Bugun savdo qilganlar uchun tahlil tayyorlanadigan Nyu-York vaqti." },

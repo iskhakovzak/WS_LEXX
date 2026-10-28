@@ -1098,6 +1098,27 @@ CREATE TABLE public.candles_cache (
   CONSTRAINT candles_cache_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE public.catalyst_marks (
+  trader text NOT NULL,
+  day text NOT NULL,
+  ticker text NOT NULL,
+  direction text,
+  strength text,
+  kind text,
+  source text DEFAULT 'plan'::text NOT NULL,
+  suggested boolean DEFAULT false NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT catalyst_marks_pkey PRIMARY KEY (trader, day, ticker),
+  CONSTRAINT catalyst_marks_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT catalyst_marks_direction_check CHECK (direction = ANY (ARRAY['bull'::text, 'bear'::text])),
+  CONSTRAINT catalyst_marks_kind_check CHECK (kind = ANY (ARRAY['earnings'::text, 'news'::text, 'fda'::text, 'offering'::text, 'corporate'::text, 'macro'::text, 'other'::text])),
+  CONSTRAINT catalyst_marks_source_check CHECK (source = ANY (ARRAY['plan'::text, 'watchlist'::text])),
+  CONSTRAINT catalyst_marks_strength_check CHECK (strength = ANY (ARRAY['weak'::text, 'strong'::text])),
+  CONSTRAINT catalyst_marks_ticker_check CHECK (ticker ~ '^[A-Z0-9][-A-Z0-9.]{0,11}$'::text),
+  CONSTRAINT catalyst_marks_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
 CREATE TABLE public.chart_drawings (
   user_id integer NOT NULL,
   ticker text NOT NULL,
@@ -2051,7 +2072,9 @@ CREATE TABLE public.playbook (
   min_tier text,
   schema_key text,
   regimes text[] DEFAULT '{}'::text[] NOT NULL,
+  formula jsonb,
   CONSTRAINT playbook_pkey PRIMARY KEY (id),
+  CONSTRAINT playbook_formula_check CHECK (formula IS NULL OR jsonb_typeof(formula) = 'object'::text),
   CONSTRAINT playbook_regimes_check CHECK (regimes <@ ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text])
 );
 
@@ -3689,6 +3712,7 @@ CREATE UNIQUE INDEX candle_archive_key_uidx ON public.candle_archive USING btree
 CREATE UNIQUE INDEX candle_archive_misses_key_uidx ON public.candle_archive_misses USING btree (symbol, day);
 CREATE INDEX candles_cache_ticker_idx ON public.candles_cache USING btree (ticker);
 CREATE UNIQUE INDEX candles_cache_unique ON public.candles_cache USING btree (ticker, date, "interval", extended);
+CREATE INDEX catalyst_marks_day_idx ON public.catalyst_marks USING btree (day) WHERE (strength IS NOT NULL);
 CREATE INDEX comments_discussion_id_idx ON public.comments USING btree (discussion_id);
 CREATE INDEX content_reports_created_at_idx ON public.content_reports USING btree (created_at);
 CREATE INDEX content_reports_status_idx ON public.content_reports USING btree (status);

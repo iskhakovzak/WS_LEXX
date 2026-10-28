@@ -17,6 +17,7 @@ import {
   type MoneyViewer,
 } from "../lib/playbookPrivacy";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { setupVariants } from "../lib/playbook/variants";
 import { langOf } from "../i18n";
 import { playbookT } from "../i18n/ns";
 import { tradeTagged } from "../lib/playbookToday/service";
@@ -694,7 +695,7 @@ const COPY_COLUMNS = [
   "screenshot_url", "screenshot_notes", "screenshots", "tags", "ticker", "market_cap", "float", "adv", "atr",
   "relative_volume", "beta", "short_interest", "sector", "long_name",
   "context_text", "trigger_text", "entry_text", "stop_text", "targets_text", "management_text", "invalidation_text",
-  "ideal_conditions", "time_of_day", "horizon", "media",
+  "ideal_conditions", "time_of_day", "horizon", "media", "formula",
 ];
 
 router.post("/playbook/:id/copy", asyncHandler(async (req, res): Promise<void> => {
@@ -847,7 +848,10 @@ router.get("/playbook/:id/stats", asyncHandler(async (req, res): Promise<void> =
       .sort((a, b) => (showMoney ? (b.raw.net ?? 0) - (a.raw.net ?? 0) : b.raw.n - a.raw.n))
       .slice(0, 10)
       .map(({ trader, u }) => ({ trader, ...u }));
+  // Trade variants (child setups) side by side; this setup's own trades are «unspecified» (lib/playbook/variants).
+  const variants = await setupVariants(ctx.row.id, scope, ctx.v, (list) => (canSeeAggregateMoney(mv, list.map((t) => t.trader)) ? computeUsdStats(list) : redactUsdStats(computeUsdStats(list))), usd);
   res.json({
+    variants,
     trader: scope,
     count: trades.length,
     /** True when the $ fields were nulled (trades of other traders, viewer is not staff). */

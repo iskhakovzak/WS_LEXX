@@ -13,6 +13,7 @@ import { winrateTone } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { notLiveMessage, useSetupStats } from "./api";
 import { DocSection, RedactedHint } from "./setup-bits";
+import { VariantsBlock } from "./variants-block";
 import { HORIZON_LABEL, moneyTone, type SetupSummary, type SlotStat, type UsdStats } from "./model";
 import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -85,6 +86,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
             description={t("stats.emptyDesc")}
           />
         </div>
+        {s.variants && <VariantsBlock v={s.variants} />}
         {children}
       </div>
     );
@@ -128,6 +130,9 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
           {t("stats.decay", { count: s.recent.n, recent: fmtUsd(s.recent.expectancy, { signed: true, decimals: 2 }), all: fmtUsd(u.expectancy, { signed: true, decimals: 2 }) })}
         </p>
       )}
+
+      {/* Setup vs trade: the entries of this setup side by side (which one pays, which one eats the profit). */}
+      {s.variants && <VariantsBlock v={s.variants} />}
 
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
         <DocSection title={t("stats.bestTime")} icon={Clock}>

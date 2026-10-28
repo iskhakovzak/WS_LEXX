@@ -22,6 +22,7 @@ import { personName } from "@/i18n";
 import { CriterionRow, Field, StageLadder, selectCls } from "./bits";
 import { BindingLine, PaceBar, StageDays } from "./realism";
 import { criterionLabel, headlineText, noteText, stageName, stageTitle } from "./labels";
+import { StrategyLinesLesson } from "./strategy-lesson";
 
 /** Exams of a trader: own page for self, `?user=` for staff looking at someone else. */
 export const examsHref = (user: string, isSelf: boolean) => (isSelf ? "/academy/challenges" : `/academy/challenges?user=${encodeURIComponent(user)}`);
@@ -153,6 +154,9 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
           </div>
         )}
       </Panel>
+
+      {/* Джун → Трейдер: the lesson «Три строки стратегии» (staff without a stage get it on their own path too). */}
+      {(stageKey === "junior" || (isSelf && isStaff && !stageKey)) && <StrategyLinesLesson user={r.user} isSelf={isSelf} />}
 
       {isStaff && !isSelf && <AssignStage user={r.user} current={stageKey} config={config} />}
 

@@ -29,6 +29,7 @@ import { TickerChart } from "./TickerChart";
 import { fmtCompact, fmtDate, fmtPct, fmtPrice, fmtR, fmtRate, fmtRelative, fmtUsd } from "@/lib/format";
 import type { RowActions } from "./WatchlistRow";
 import type { WlRow } from "./WatchlistTable";
+import { CatalystTaps } from "@/components/shared/strategy/catalyst-taps";
 
 import { personName } from "@/i18n";
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
@@ -344,6 +345,7 @@ export function WatchlistDetailSheet({
                   {tags.length > 0 && <div className="flex flex-wrap gap-1">{tags.map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}</div>}
                 </div>
               )}
+              {me && <CatalystTaps ticker={item.ticker} date={planDay} source="watchlist" gapPct={row.quote?.gapPct ?? null} className="mb-3" />}
               <NotesEditor item={item} canEdit={mayModify} onSave={(n) => actions.saveNote(item, n)} />
             </Section>
 

@@ -429,6 +429,9 @@ export const SETTINGS = {
   "mentor.escBreakCount": { group: "mentor", type: "number", default: 4, min: 2, max: 20, step: 1, unit: "count" },
   "mentor.escDrawdownShare": { group: "mentor", type: "number", default: 0.8, min: 0.5, max: 1, step: 0.05, unit: "ratio" },
   "mentor.escSilenceDays": { group: "mentor", type: "number", default: 3, min: 2, max: 15, step: 1, unit: "days" },
+  // «Day two after a strong catalyst» in the brief (lib/catalyst dayTwoHints): the smallest close-to-close move of
+  // yesterday, in %, that makes a strong catalyst a day-two candidate today.
+  "mentor.dayTwoMovePct": { group: "mentor", type: "number", default: 4, min: 1, max: 30, step: 0.5, unit: "pct" },
   "mentor.pushesEnabled": { group: "mentor", type: "boolean", default: false },
   "mentor.briefTime": { group: "mentor", type: "time", default: "08:45" },
   "mentor.debriefTime": { group: "mentor", type: "time", default: "16:30" },

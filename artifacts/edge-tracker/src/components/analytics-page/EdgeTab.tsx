@@ -21,6 +21,8 @@ import { fmtPct, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { EdgeMapPanel } from "@/components/shared/edge-map/edge-verdicts";
+import { CatalystEdgePanel } from "@/components/shared/strategy/catalyst-edge-panel";
+import { filtersRange } from "./period";
 
 /** Breakdowns shown as tabs; the rest sit in the «Ещё разрезы» select. */
 const MAIN_DIMS: DimensionKey[] = ["horizon", "setup", "time", "weekday", "side", "ticker"];
@@ -59,6 +61,7 @@ export function EdgeTab({
   const [sort, setSort] = usePersistentState<{ key: SortKey; dir: "asc" | "desc" }>("analytics.edge.sort", { key: "natural", dir: "desc" });
 
   const dim = dimensionOf(dimension);
+  const range = filtersRange(filters); // the catalyst slice reads the same window (server side, by entry day)
   const allRows = useMemo(() => breakdown(trades, dimension), [trades, dimension]);
   const rows = useMemo(() => {
     const base = hideSmall ? allRows.filter((r) => r.n >= 3) : allRows;
@@ -121,6 +124,7 @@ export function EdgeTab({
     <div className="flex flex-col gap-section">
       {/* Edge map (roadmap R4): the robust verdicts of one trader — own map, or the picked trader for staff. */}
       {(!isStaff || filters.trader) && <EdgeMapPanel trader={filters.trader || null} />}
+      {(!isStaff || filters.trader) && <CatalystEdgePanel trader={filters.trader || null} from={range?.from ?? null} to={range?.to ?? null} />}
       {/* Choice overload (ARCHITECTURE §4a.6): the most used breakdowns as tabs, the other ~14 under «Ещё разрезы». */}
       <div className="flex flex-wrap items-center gap-2">
         <Segmented<DimensionKey>

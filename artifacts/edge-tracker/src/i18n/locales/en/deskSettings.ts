@@ -202,6 +202,7 @@ export default {
       escBreakCount: { label: "Commitment breaks in 5 days", help: "This many breaks of active commitments in the last 5 trading days signal the curator." },
       escDrawdownShare: { label: "Drawdown: share of the limit", help: "Signal when the drawdown from the peak reaches this share of the trader’s max drawdown." },
       escSilenceDays: { label: "Silence: days", help: "A trader who traded in the last month spends this many trading days without trades, a check-in or a word to the mentor." },
+      dayTwoMovePct: { label: "Day two: yesterday’s move, %", help: "A ticker with a strong catalyst yesterday gets a “day two” line in the brief when it moved at least this much close to close." },
       pushesEnabled: { label: "Brief and debrief ahead", help: "Off by default. On — at the set times the mentor prepares the brief (before the session) and the debrief (after it) in one batch at half price and sends a notice. Personal budgets are not spent — only the push budget." },
       briefTime: { label: "Brief by", help: "New York time when the brief is prepared for those who traded in the last two weeks." },
       debriefTime: { label: "Debrief by", help: "New York time when the debrief is prepared for those who traded today." },

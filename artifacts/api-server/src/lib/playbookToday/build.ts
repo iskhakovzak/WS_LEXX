@@ -282,7 +282,7 @@ export function checkPicks(raw: readonly number[], today: Pick<PlaybookToday, "s
 /** Card fields of a library setup row (GET /playbook) that a locked viewer must not get (DEV-06). */
 export const LOCKED_SETUP_FIELDS = [
   "conditions", "checklist", "notes", "screenshotUrl", "screenshotNotes", "contextText", "triggerText", "entryText",
-  "stopText", "targetsText", "managementText", "invalidationText", "idealConditions",
+  "stopText", "targetsText", "managementText", "invalidationText", "idealConditions", "formula",
 ] as const;
 const LOCKED_SETUP_LISTS = ["checklistItems", "screenshots", "media"] as const;
 
