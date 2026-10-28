@@ -22,7 +22,8 @@ import { can, resolveActor } from "../lib/permissions";
 import { AppError, idParam, notFound, route, unauthorized } from "../lib/http";
 import { addDays, isWeekend, nyDate } from "../lib/tradingDate";
 import { canEditSetupRow, loadSetupAccess } from "../lib/playbookAccess";
-import { REGIME_KEYS, suggestedLimit } from "../lib/marketRegime/regimes";
+import { REGIME_KEYS, suggestedDayLimit } from "../lib/marketRegime/regimes";
+import { seasonDay } from "../lib/sessionFlow/seasonStore";
 import { regimeEdge } from "../lib/marketRegime/edge";
 import {
   multipliers, reflection, regimeAdj, regimeDay, regimeTrades, saveReflection, setPlaybookRegimes, setRegimeDay,
@@ -48,14 +49,15 @@ router.get("/market-regime/today", route({ query: z.object({ date: YMD.optional(
   if (!req.authUser) throw unauthorized();
   const date = query.date ?? nyDate();
   const actor = await resolveActor(req);
-  const [day, adj, canSet] = await Promise.all([regimeDay(date), regimeAdj(date), can(req, "regime.set")]);
+  const [day, adj, canSet, season] = await Promise.all([regimeDay(date), regimeAdj(date), can(req, "regime.set"), seasonDay(date)]);
   let limit: { base: number | null; suggested: number | null } | null = null;
   if (actor && !actor.guest) {
     const { rows } = await pool.query<{ daily: string | null }>(`SELECT daily_loss_limit AS daily FROM trader_risk_limits WHERE trader = $1`, [actor.name]);
     const base = rows[0]?.daily == null ? null : Number(rows[0].daily);
-    if (base != null && Number.isFinite(base)) limit = { base, suggested: day ? suggestedLimit(base, adj.multiplier) : null };
+    if (base != null && Number.isFinite(base)) limit = { base, suggested: day || season.quiet ? suggestedDayLimit(base, adj) : null };
   }
-  return { date, day, multiplier: adj.multiplier, multipliers: multipliers(), applyLimits: setting("regime.applyLimits") === true, canSet, limit };
+  // season: the calendar context (off-season, prime earnings week, witching / rebalances, quiet day and its factor)
+  return { date, day, multiplier: adj.multiplier, multipliers: multipliers(), applyLimits: setting("regime.applyLimits") === true, canSet, limit, season };
 }));
 
 router.put("/market-regime/day/:date", route({

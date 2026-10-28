@@ -15,6 +15,7 @@ import { logAudit } from "../audit";
 import { setting } from "../settings/registry";
 import { closedSql, netPnlSql, resultSql, signedRSql } from "../tradeMath";
 import { REGIME_KEYS, isRegimeKey, multiplierOf, multiplierSetting, type RegimeKey, type RegimeLimitAdj } from "./regimes";
+import { seasonDay } from "../sessionFlow/seasonStore";
 
 export type SuggestionReason = { code: string; value: number | null };
 export type StoredSuggestion = { regime: RegimeKey; reasons: SuggestionReason[]; asOf: string };
@@ -82,8 +83,11 @@ function cachedRegime(day: string): Promise<RegimeKey | null> {
 
 /** The limit adjustment of a day: its regime, that regime's multiplier and whether applying is switched on. */
 export async function regimeAdj(day: string): Promise<RegimeLimitAdj> {
-  const regime = await cachedRegime(day);
-  return { regime, multiplier: regime ? multipliers()[regime] : 1, apply: setting("regime.applyLimits") === true };
+  const [regime, s] = await Promise.all([cachedRegime(day), seasonDay(day).catch(() => null)]);
+  return {
+    regime, multiplier: regime ? multipliers()[regime] : 1, apply: setting("regime.applyLimits") === true,
+    season: s ? { quiet: s.quiet, factor: s.factor, trim: s.trim } : null,
+  };
 }
 
 export type SetRegimeInput = { day: string; regime: RegimeKey; note: string | null; actor: string; suggestion: StoredSuggestion | null };

@@ -11,7 +11,7 @@ import { nyDate, nyMinutes } from "./tradingDate";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql } from "./tradeMath";
 import { num, round2, type DayRow, type Horizon, type Limits, type LiveSnapshot, type Position } from "./riskMetrics";
 import { BoundedPromiseCache, onTradesPageInvalidate } from "./tradesPageCache";
-import { NO_ADJ, withRegimeLimits } from "./marketRegime/regimes";
+import { NO_ADJ, adjChangesLimits, withRegimeLimits } from "./marketRegime/regimes";
 import { regimeAdj } from "./marketRegime/store";
 
 // ─── constants / helpers ────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ export async function loadLimits(trader: string | null): Promise<Map<string, Lim
  */
 export async function loadEffectiveLimits(trader: string | null, date: string): Promise<Map<string, Limits>> {
   const [map, adj] = await Promise.all([loadLimits(trader), regimeAdj(date).catch(() => NO_ADJ)]);
-  if (!adj.apply || !adj.regime) return map;
+  if (!adjChangesLimits(adj)) return map;
   return new Map([...map].map(([name, l]) => [name, withRegimeLimits(l, adj) ?? l]));
 }
 

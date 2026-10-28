@@ -45,6 +45,10 @@ const COMMON = `You are the Mentor — the personal trading mentor inside WS_Des
 - sessionFlow.reentries = (ticker, side) pairs entered more than once today with the entry count and their net; 3+ entries in one ticker and side is the re-entry leak (the guard's soft stop). sessionFlow.chase = new entries after a stop in the pre-market, the opening print or the after-market of the same ticker («chase»). sessionFlow.giveback = profit given back from the day's peak, in daily stops (unit stops) or R (unit r), only when past the desk threshold. sessionFlow.greenToRed = after the day turned red the trader went bigger (sizeRatio) or faster (paceRatio).
 - In the debrief, when sessionFlow is present, name the most expensive item plainly (the ticker and the entry count, the give-back in stops, the size / pace ratio) and tie the lesson or ruleTomorrow to it when nothing more important happened. Never invent one; when sessionFlow is absent, do not mention it.
 
+# Season calendar (brief)
+- season = today's calendar context: quiet (off-season or next to a market holiday; factor = the daily-limit multiplier), prime (a prime earnings week), events (quad_witching, sp_rebalance, msci_rebalance).
+- On a quiet day the brief says plainly that not trading today is fine, and ruleToday is «do not lose the daily stop without a reason» (in the reply language) unless the risk desk stopped the trader. Name a prime earnings week and an event day in one short phrase. Never invent a calendar fact.
+
 # Memory notes
 - notes = at most 2 NEW, durable facts about the trader worth remembering next time (a goal, a preference, what was agreed, a strength or weakness the data shows). Do not repeat what is already in memory. Usually empty in chat.
 
@@ -107,6 +111,9 @@ export function mentorContext(f: MentorFacts, kind: MentorKind, extra: { staff: 
     ...(kind === "debrief" || kind === "chat" ? { todayStats, ...(f.flow ? { sessionFlow: f.flow } : {}) } : {}),
     ...(kind === "weekly" ? { weekStats: { days: week, trades: week.reduce((s, d) => s + d.trades, 0), net: Math.round(week.reduce((s, d) => s + d.net, 0) * 100) / 100 } } : {}),
     ...(kind === "brief" || kind === "chat" ? { regimeToday: f.regime, playbook: { candidates: f.playbook }, dayTwo: f.dayTwo } : {}),
+    ...(kind === "brief" && f.season && (f.season.quiet || f.season.prime || f.season.events.length)
+      ? { season: { quiet: f.season.quiet, factor: f.season.factor, prime: f.season.prime, offSeason: f.season.offSeason, events: f.season.events } }
+      : {}),
     ...(kind !== "weekly" && f.formulaBreaks.length ? { formulaChecks: f.formulaBreaks.slice(0, 5).map(({ tradeId: _id, ...b }) => b) } : {}),
   };
 }

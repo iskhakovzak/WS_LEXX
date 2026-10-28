@@ -31,6 +31,7 @@ import type { RowActions } from "./WatchlistRow";
 import type { WlRow } from "./WatchlistTable";
 import { CatalystTaps } from "@/components/shared/strategy/catalyst-taps";
 import { AnaloguesButton } from "@/components/shared/analogues/analogues-sheet";
+import { EmLine } from "@/components/shared/expected-move/em-line";
 
 import { personName } from "@/i18n";
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
@@ -342,6 +343,7 @@ export function WatchlistDetailSheet({
                   {!row.earnings && row.upcoming && row.upcoming.date >= today && (
                     <p className="text-sm text-foreground"><Pill tone="purple" className="mr-2">{row.upcoming.callType}</Pill>{t("sheet.earnOn", { date: fmtDate(row.upcoming.date.slice(0, 10), "dayMonthNumeric") })}</p>
                   )}
+                  {(row.earnings || (row.upcoming && row.upcoming.date >= today)) && <EmLine ticker={item.ticker} />}
                   {item.catalyst && <p className="whitespace-pre-wrap text-sm text-foreground"><span className="text-muted-foreground">{t("sheet.catalyst")} </span>{item.catalyst}</p>}
                   {tags.length > 0 && <div className="flex flex-wrap gap-1">{tags.map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}</div>}
                 </div>

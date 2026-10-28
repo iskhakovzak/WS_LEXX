@@ -35,6 +35,13 @@ export type RegimeToday = {
   canSet: boolean;
   /** The viewer's own daily loss limit (null = no limits set). */
   limit: { base: number | null; suggested: number | null } | null;
+  /** The season calendar of the day (api lib/sessionFlow/season); absent on older API builds. */
+  season?: SeasonDay;
+};
+
+export type SeasonEvent = "quad_witching" | "sp_rebalance" | "msci_rebalance";
+export type SeasonDay = {
+  day: string; offSeason: boolean; prime: boolean; events: SeasonEvent[]; holidayEve: boolean; quiet: boolean; factor: number; trim: boolean;
 };
 
 export type Interval = { point: number; lo: number; hi: number };

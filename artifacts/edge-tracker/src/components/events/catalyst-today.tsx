@@ -12,6 +12,7 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { CallTypePill } from "@/components/research/earnings-history";
 import { useEarningsHistory } from "@/components/shared/market/earnings-api";
+import { EmLine } from "@/components/shared/expected-move/em-line";
 import {
   catLabel, categoryOf, earningsEdge, isClosedRow, isShortDayRow, nextTradingDay,
   type CatalystEdge, type CategoryEdge, type MacroRow, type Verdict,
@@ -133,6 +134,7 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
           </span>
           {e.mine !== "traded" && <Pill tone="neutral">{tr("today.watchlist")}</Pill>}
         </span>
+        <EmLine ticker={t} />
       </button>
     </li>
   );

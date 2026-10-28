@@ -37,6 +37,7 @@ import { registerLeakGuardJobs } from "../lib/leakGuard/jobDefs";
 import { registerCapitalJobs } from "../lib/capital/jobDefs";
 import { registerMentorJobs } from "../lib/mentor/jobDefs";
 import { registerDayStateJobs } from "../lib/dayState/jobDefs";
+import { registerExpectedMoveJobs } from "../lib/expectedMove/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -353,4 +354,5 @@ function registerModuleJobs(): void {
   registerCapitalJobs(registerJob); // weekly capital allocation proposals into the scaling queue (lib/capital/jobDefs.ts)
   registerMentorJobs(registerJob); // AI mentor: escalation check, optional scheduled brief / debrief (lib/mentor/jobDefs.ts)
   registerDayStateJobs(registerJob); // silence signal: silent traders / unclosed reviews → their curator (lib/dayState/jobDefs.ts)
+  registerExpectedMoveJobs(registerJob); // expected move: options-implied snapshot before reports (lib/expectedMove/jobDefs.ts)
 }

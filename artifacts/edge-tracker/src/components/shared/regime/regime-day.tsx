@@ -24,6 +24,7 @@ import type { RegimeSuggestion } from "@/components/shared/market/regime-suggest
 import { useRegimeSuggestion, useRegimeToday, useSetRegime, type RegimeToday } from "./api";
 import { REGIME_ICON, REGIME_TONE, multText, reasonText, regimeHint, regimeName } from "./labels";
 import { RegimeSetDialog } from "./regime-set-dialog";
+import { SeasonLine } from "./season-line";
 
 /** tile = compact card body; row = the same as one wide line (an XL tile); strip = a row in its own glass panel. */
 type Variant = "tile" | "row" | "strip";
@@ -147,6 +148,7 @@ export function RegimeDayView({ date, variant, className }: { date?: string; var
         {variant === "tile" && change}
       </div>
       {body}
+      <SeasonLine season={data.season} className={variant !== "tile" ? "sm:basis-full" : undefined} />
       {variant !== "tile" && change}
       {canSet && (
         <RegimeSetDialog

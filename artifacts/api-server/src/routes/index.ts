@@ -80,6 +80,7 @@ import analoguesRouter from "./analogues";
 import podsRouter from "./pods";
 import academyBriefingsRouter from "./academy-briefings";
 import sessionFlowRouter from "./session-flow";
+import expectedMoveRouter from "./expected-move";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -211,6 +212,7 @@ router.use(myEdgeRouter); // «Мой edge и рынок» (analytics)
 router.use(marketRegimeRouter); // desk market regime: day, limit multiplier, playbook tags, edge by regime, reflection
 router.use(catalystsRouter); // catalyst direction × strength: plan / watchlist taps, suggestions, the analytics slice
 router.use(sessionFlowRouter); // session flow: re-entries, chases, give-back from the peak, green-to-red (lib/sessionFlow)
+router.use(expectedMoveRouter); // expected move on earnings: implied snapshot / historical average, levels, EM broken
 router.use(leakGuardRouter); // live leak guard: active pauses, acknowledgement, impact in $, desk, levels
 router.use(capitalRouter); // capital allocation: risk moves to proven edge (lib/capital), proposals in the scaling queue
 router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)

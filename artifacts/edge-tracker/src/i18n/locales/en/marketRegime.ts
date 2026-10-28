@@ -26,6 +26,17 @@ export default {
     applied: "Applied to the stops",
     hintOnly: "Suggestion: the stops use the base limit",
   },
+  season: {
+    aria: "Season calendar",
+    quiet: "Quiet day · limit ×{factor}",
+    quietOff: "Off-season",
+    quietHoliday: "Next to a holiday",
+    quietGoal: "Not trading today is fine. The day's goal: do not lose the daily stop without a reason.",
+    trimmed: "The stops count against the trimmed limit",
+    hintOnly: "The trimmed limit is a suggestion",
+    prime: "Prime earnings week",
+    event: { quad_witching: "Quad witching", sp_rebalance: "S&P rebalance after the close", msci_rebalance: "MSCI rebalance after the close" },
+  },
   suggest: {
     text: "The system suggests: {name}",
     loading: "Reading the market…",

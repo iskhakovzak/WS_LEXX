@@ -26,6 +26,17 @@ export default {
     applied: "Stoplarga qoʻllanadi",
     hintOnly: "Maslahat: stoplar asosiy limitni hisoblaydi",
   },
+  season: {
+    aria: "Mavsum taqvimi",
+    quiet: "Sokin kun · limit ×{factor}",
+    quietOff: "Oʻlik mavsum",
+    quietHoliday: "Bayram yonidagi kun",
+    quietGoal: "Bugun savdo qilmaslik — normal. Kun maqsadi: kunlik stopni sababsiz yoʻqotmaslik.",
+    trimmed: "Stoplar qisqartirilgan limitdan hisoblanadi",
+    hintOnly: "Qisqartirilgan limit — maslahat",
+    prime: "Hisobotlar choʻqqisi haftasi",
+    event: { quad_witching: "Kvad-vitching", sp_rebalance: "Yopilishdan keyin S&P qayta balansi", msci_rebalance: "Yopilishdan keyin MSCI qayta balansi" },
+  },
   suggest: {
     text: "Tizim taklif qiladi: {name}",
     loading: "Bozor boʻyicha taklif hisoblanmoqda…",

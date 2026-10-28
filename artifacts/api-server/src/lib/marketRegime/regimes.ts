@@ -28,9 +28,24 @@ export type RegimeLimitAdj = {
   multiplier: number;
   /** Settings regime.applyLimits: the multiplier changes the effective daily limit, not only the suggestion. */
   apply: boolean;
+  /**
+   * The season calendar (lib/sessionFlow/season): a quiet day multiplies the daily limit by `factor`; `trim` = it changes
+   * the stops (season.trimLimits), else it is a suggestion only. Independent of the regime switch.
+   */
+  season?: { quiet: boolean; factor: number; trim: boolean } | null;
 };
 
-export const NO_ADJ: RegimeLimitAdj = { regime: null, multiplier: 1, apply: false };
+export const NO_ADJ: RegimeLimitAdj = { regime: null, multiplier: 1, apply: false, season: null };
+
+/** Something changes the stops today: the applied regime multiplier or a trimmed quiet day. */
+export const adjChangesLimits = (adj: RegimeLimitAdj): boolean =>
+  (adj.apply && !!adj.regime) || (!!adj.season?.trim && adj.season.factor !== 1);
+
+/** The suggested daily limit of the day: base × the regime multiplier (when a regime is set) × the quiet-day factor. */
+export function suggestedDayLimit(base: number | null | undefined, adj: RegimeLimitAdj): number | null {
+  const s = adj.season?.quiet ? adj.season.factor : 1;
+  return suggestedLimit(base, (adj.regime ? adj.multiplier : 1) * s);
+}
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -50,13 +65,15 @@ export function suggestedLimit(base: number | null | undefined, multiplier: numb
 /** The daily loss limit the stops count against: the suggestion only when applying is on and a regime is set. */
 export function effectiveDailyLimit(base: number | null | undefined, adj: RegimeLimitAdj): number | null {
   const b = base == null || !Number.isFinite(base) ? null : base;
-  if (!adj.apply || !adj.regime) return b;
-  return suggestedLimit(b, adj.multiplier) ?? b;
+  let v = b;
+  if (adj.apply && adj.regime) v = suggestedLimit(v, adj.multiplier) ?? v;
+  if (adj.season?.trim && adj.season.factor !== 1) v = suggestedLimit(v, adj.season.factor) ?? v;
+  return v;
 }
 
 /** Limits with the effective daily loss limit (a copy; the input is never mutated; null stays null). */
 export function withRegimeLimits<L extends { dailyLossLimit: number | null }>(limits: L | null, adj: RegimeLimitAdj): L | null {
-  if (!limits || !adj.apply || !adj.regime) return limits;
+  if (!limits || !adjChangesLimits(adj)) return limits;
   const daily = effectiveDailyLimit(limits.dailyLossLimit, adj);
   return daily === limits.dailyLossLimit ? limits : { ...limits, dailyLossLimit: daily };
 }

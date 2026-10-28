@@ -1503,6 +1503,22 @@ CREATE TABLE public.eod_trade_reviews (
   CONSTRAINT eod_trade_reviews_pkey PRIMARY KEY (trade_id)
 );
 
+CREATE TABLE public.expected_moves (
+  ticker text NOT NULL,
+  report_date text NOT NULL,
+  source text NOT NULL,
+  em_pct numeric(8,4) NOT NULL,
+  prior_close numeric(14,4),
+  expiration text,
+  captured_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT expected_moves_pkey PRIMARY KEY (ticker, report_date),
+  CONSTRAINT expected_moves_em_pct_check CHECK (em_pct > 0::numeric AND em_pct < 1000::numeric),
+  CONSTRAINT expected_moves_expiration_check CHECK (expiration IS NULL OR expiration ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT expected_moves_report_date_check CHECK (report_date ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT expected_moves_source_check CHECK (source = ANY (ARRAY['implied'::text, 'historical'::text])),
+  CONSTRAINT expected_moves_ticker_check CHECK (ticker ~ '^[A-Z][A-Z0-9.-]{0,9}$'::text)
+);
+
 CREATE TABLE public.feed_acks (
   entry_id integer NOT NULL,
   user_name text NOT NULL,
@@ -3870,6 +3886,7 @@ CREATE INDEX emotional_state_log_user_date_idx ON public.emotional_state_log USI
 CREATE UNIQUE INDEX emotional_state_log_user_date_uniq ON public.emotional_state_log USING btree (user_id, date);
 CREATE INDEX emotional_state_log_user_id_idx ON public.emotional_state_log USING btree (user_id);
 CREATE INDEX eod_days_queue_idx ON public.eod_days USING btree (closed_at) WHERE ((closed_at IS NOT NULL) AND (reviewed_at IS NULL));
+CREATE INDEX expected_moves_report_idx ON public.expected_moves USING btree (report_date);
 CREATE INDEX finviz_earnings_date_idx ON public.finviz_earnings USING btree (date) WHERE (superseded_at IS NULL);
 CREATE INDEX finviz_runs_kind_idx ON public.finviz_runs USING btree (kind, preset, status, finished_at DESC);
 CREATE INDEX finviz_screener_rows_run_idx ON public.finviz_screener_rows USING btree (last_run_id, rank);

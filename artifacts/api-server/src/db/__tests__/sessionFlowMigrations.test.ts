@@ -20,6 +20,9 @@ describe.skipIf(!available)("migrations 0277+ — session flow", () => {
       );
       for (const p of ["reentry", "green_to_red", "open_window", "idea_limit"]) await ins(p);
       await expect(ins("bogus")).rejects.toThrow(/leak_guard_events_pattern_check/);
+      // 0278 expected moves: one snapshot per ticker and report, a known source only
+      await q(`INSERT INTO expected_moves (ticker, report_date, source, em_pct, prior_close) VALUES ('NVDA', '2026-11-19', 'implied', 7.25, 140.1)`);
+      await expect(q(`INSERT INTO expected_moves (ticker, report_date, source, em_pct) VALUES ('NVDA', '2026-11-20', 'guess', 5)`)).rejects.toThrow(/expected_moves_source_check/);
       // idempotent: a second run applies nothing
       expect((await runMigrationFiles({ pool: db.pool, logger: silent })).applied).toEqual([]);
     } finally {
