@@ -261,7 +261,7 @@ export const KEPT: Readonly<Record<string, string>> = {
   ...Object.fromEntries([
     "academy_challenges", "academy_cohorts", "academy_stages", "behavior_triggers", "big7_tickers", "cache_versions",
     "desk_groups", "holiday_calendar", "market_themes", "plan_templates", "playbook", "propreports_tick_lease",
-    "propreports_tick_steps", "scaling_tiers", "schema_migrations", "sector_strength_cache", "trading_rules",
+    "propreports_tick_steps", "scaling_tiers", "schema_migrations", "sector_strength_cache", "trading_pods", "trading_rules",
     "user_boards", "user_themes", "whatif_scenarios",
   ].map((t) => [`${t}.name`, "name of a thing (setup, group, tier, cache …), not a person"])),
   // json: operational logs / snapshots of what happened

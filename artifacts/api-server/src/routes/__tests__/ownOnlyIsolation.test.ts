@@ -270,6 +270,7 @@ const WHITELIST: Record<string, Entry> = {
   "GET /events/today": { allow: O, reason: "desk market-event log of the day: author name and market facts" },
   "GET /events/holding": { allow: O, reason: "catalysts (desk market events) next to the caller's own held positions" },
   "GET /events/:id": { allow: O, reason: "one desk market event by id: author name and market facts" },
+  "GET /corp-events": { allow: O, reason: "desk corporate / index event calendar: curator-entered market facts with their author, no trades" },
   "GET /big7levels": { allow: O, reason: "Big-7 levels board: market levels any member posts (author name)" },
   "GET /big7/catalysts": { allow: O, reason: "Big-7 catalysts board: market catalysts with their author" },
   "GET /big7/tickers": { allow: O, reason: "Big-7 ticker cards: shared market notes with their author" },
