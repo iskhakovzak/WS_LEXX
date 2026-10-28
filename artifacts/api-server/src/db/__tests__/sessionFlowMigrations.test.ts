@@ -23,6 +23,9 @@ describe.skipIf(!available)("migrations 0277+ — session flow", () => {
       // 0278 expected moves: one snapshot per ticker and report, a known source only
       await q(`INSERT INTO expected_moves (ticker, report_date, source, em_pct, prior_close) VALUES ('NVDA', '2026-11-19', 'implied', 7.25, 140.1)`);
       await expect(q(`INSERT INTO expected_moves (ticker, report_date, source, em_pct) VALUES ('NVDA', '2026-11-20', 'guess', 5)`)).rejects.toThrow(/expected_moves_source_check/);
+      // 0279 playbook timings: a subset of the known codes
+      const { rows: [pb] } = await q(`INSERT INTO playbook (name, timings) VALUES ('Second day', ARRAY['day', 'moc']) RETURNING id`);
+      await expect(q(`UPDATE playbook SET timings = ARRAY['lunch'] WHERE id = $1`, [pb.id])).rejects.toThrow(/playbook_timings_check/);
       // idempotent: a second run applies nothing
       expect((await runMigrationFiles({ pool: db.pool, logger: silent })).applied).toEqual([]);
     } finally {

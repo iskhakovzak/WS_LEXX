@@ -47,8 +47,10 @@ function Step({ label, tone, last, children }: { label: string; tone: "accent" |
 }
 
 export function StrategyFormulaCard({
-  setupId, formula, canEdit, className, title = true, onSaved,
+  setupId, formula, canEdit, className, title = true, onSaved, footer,
 }: {
+  /** Rendered under the three lines (the playbook card: the setup's timing matrix — the «when» of the trade line). */
+  footer?: React.ReactNode;
   setupId: number;
   formula: StrategyFormula | null | undefined;
   canEdit: boolean;
@@ -112,6 +114,7 @@ export function StrategyFormulaCard({
             <Step label={t("formula.line.trade")} tone="up" last>{formula?.trade || "—"}</Step>
           </ol>
         )}
+        {footer}
       </section>
     );
   }
@@ -173,6 +176,7 @@ export function StrategyFormulaCard({
           />
         </Step>
       </ol>
+      {footer}
     </section>
   );
 }

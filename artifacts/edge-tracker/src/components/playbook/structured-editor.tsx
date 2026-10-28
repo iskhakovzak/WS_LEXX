@@ -28,6 +28,7 @@ import {
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookSetupI18n, type SetupTemplateId } from "@/i18n/ns/playbookSetup";
 import { StrategyFormulaCard } from "@/components/shared/strategy/formula-card";
+import { SetupTimingMatrix } from "@/components/shared/session-flow/timing-matrix";
 
 const st = playbookSetupI18n.t; // called at render / call time only
 
@@ -205,7 +206,8 @@ export function StructuredDescription({
       <div className="contents @[68rem]:flex @[68rem]:min-w-0 @[68rem]:flex-col @[68rem]:gap-[var(--grid-gap)]">
         {/* Strategy formula (catalyst → setup → trade) leads the card; a curator sees a trader's own formula read-only. */}
         {live && (formulaEditable || entry.formula) && (
-          <StrategyFormulaCard setupId={entry.id} formula={entry.formula} canEdit={formulaEditable} className="order-0 glass-panel min-w-0 rounded-2xl p-[var(--panel-p)] @[68rem]:order-none" />
+          <StrategyFormulaCard setupId={entry.id} formula={entry.formula} canEdit={formulaEditable} className="order-0 glass-panel min-w-0 rounded-2xl p-[var(--panel-p)] @[68rem]:order-none"
+            footer={<SetupTimingMatrix setupId={entry.id} timings={entry.timings} canEdit={formulaEditable} className="mt-3 border-t border-border/40 pt-3" />} />
         )}
         <div className="order-1 min-w-0 @[68rem]:order-none">
         {live ? (

@@ -13,12 +13,13 @@ import { analyticsI18n } from "@/i18n/ns/analytics";
 import { comparePersonNames, personName } from "@/i18n";
 import { type AnalyticsFilters, NONE, filtersRange, day, sortChrono } from "./metrics";
 import type { SimTrade } from "./edge-stats";
+import { TIMINGS, timingLabel } from "@/components/shared/session-flow/timing";
 
 /* ─── Types mirrored from api-server/src/routes/edge.ts ─────────────────── */
 
 export const EDGE_DIMENSIONS = [
   "setup", "horizon", "tod", "hold", "catalyst", "cap", "float", "gap", "weekday", "grade", "conviction", "plan",
-  "side", "trader", "account", "source", "month", "ticker",
+  "side", "trader", "account", "source", "month", "ticker", "timing",
 ] as const;
 export type EdgeDimension = (typeof EDGE_DIMENSIONS)[number];
 
@@ -178,6 +179,7 @@ export function edgeKeyLabel(dim: EdgeDimension, key: string, tod: number): stri
     if (key.startsWith("s:")) { const s = key.slice(2); const c = SESSION_CODE[s.toLowerCase()]; return c ? analyticsI18n.t(`bucket.session.${c}`) : s; }
   }
   if (dim === "horizon") return key === "intraday" || key === "overnight" || key === "swing" ? analyticsI18n.t(`horizon.${key}`) : key;
+  if (dim === "timing") return timingLabel(key);
   if (dim === "month" && /^\d{4}-\d{2}$/.test(key)) return fmtDateCustom(`${key}-01`, { month: "short", year: "numeric" });
   // Setup / ticker / account names are user data — only the server's own bucket labels are translated; a trader shows by display name.
   const id = SERVER_KEYS[key];
@@ -203,6 +205,7 @@ export function sortEdgeKeys(dim: EdgeDimension, keys: string[]): string[] {
       : dim === "gap" ? GAP : dim === "horizon" ? HORIZON : dim === "plan" ? PLAN : null;
   const rank = (k: string) => {
     if (dim === "tod") return k.startsWith("m") ? Number(k.slice(1)) : k.startsWith("s:") ? 10_000 : 20_000;
+    if (dim === "timing") { const i = (TIMINGS as readonly string[]).indexOf(k); return i < 0 ? TIMINGS.length : i; }
     if (dim === "conviction") return isEmptyServerKey(k) ? 99 : Number(k.split("/")[0]) || 50;
     if (fixed) { const i = fixed.indexOf(k); return i < 0 ? fixed.length : i; }
     return isEmptyServerKey(k) ? 1 : 0;

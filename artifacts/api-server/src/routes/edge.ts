@@ -28,6 +28,7 @@ import { badRequest, unauthorized } from "../lib/http";
 import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
 import { facetSqlTail } from "../lib/tradeFacetsSql";
 import { priceSql } from "../lib/tradeFacetBuckets";
+import { timingSql } from "../lib/sessionFlow/timing";
 import { feeCoachingFor } from "../lib/feeModelStore";
 import { nyDate } from "../lib/tradingDate";
 
@@ -40,7 +41,7 @@ const NY = "America/New_York";
 
 export const EDGE_DIMENSIONS = [
   "setup", "horizon", "tod", "hold", "catalyst", "cap", "float", "gap", "weekday", "grade", "conviction", "plan",
-  "side", "trader", "account", "source", "month", "ticker",
+  "side", "trader", "account", "source", "month", "ticker", "timing",
 ] as const;
 export type EdgeDimension = (typeof EDGE_DIMENSIONS)[number];
 
@@ -181,6 +182,8 @@ function dimensionSql(dim: EdgeDimension, tod: number, hasJournal: boolean): str
     case "source": return `(CASE WHEN t.source = 'propreports' THEN 'PropReports' ELSE 'Вручную' END)`;
     case "month": return `substring(${closeDateSql("t")} from 1 for 7)`;
     case "ticker": return `upper(COALESCE(NULLIF(trim(t.ticker), ''), '?'))`;
+    // the timing axis (lib/sessionFlow/timing): codes am / opg / open30 / day / moc / pm / opg_day / overnight / swing / none
+    case "timing": return timingSql("t");
   }
 }
 

@@ -46,6 +46,21 @@ export function timingOf(t: { strategy?: string | null; entrySec?: number | null
   return inOpenWindow(sec) ? "open30" : "day";
 }
 
+/**
+ * The same rule in SQL (the edge matrix «timing» axis, routes/edge.ts): `alias.strategy` + `alias.entry_sec`; a trade
+ * without a timing (options, adjustments, no entry time) is 'none'. Keep in step with timingOf above.
+ */
+export function timingSql(alias: string): string {
+  const s = `${alias}.strategy`;
+  const e = `${alias}.entry_sec`;
+  const fromTime = `CASE WHEN ${e} IS NULL THEN 'none' WHEN ${e} < ${RTH_OPEN_SEC} THEN 'am' WHEN ${e} >= ${RTH_CLOSE_SEC} THEN 'pm'
+    WHEN ${e} < ${OPEN_WINDOW_END_SEC} THEN 'open30' ELSE 'day' END`;
+  return `(CASE ${s} WHEN 'OPG' THEN 'am' WHEN 'Print' THEN 'opg' WHEN 'OPGtoDAY' THEN 'opg_day' WHEN 'MOC' THEN 'moc'
+    WHEN 'AfterMarket' THEN 'pm' WHEN 'Overnight' THEN 'overnight' WHEN 'Swing' THEN 'swing' WHEN 'OPT' THEN 'none' WHEN 'Adjust' THEN 'none'
+    WHEN 'Day' THEN (CASE WHEN ${e} >= ${RTH_OPEN_SEC} AND ${e} < ${OPEN_WINDOW_END_SEC} THEN 'open30' ELSE 'day' END)
+    ELSE (${fromTime}) END)`;
+}
+
 /** A setup's allowed timings from any input (unknown codes dropped, display order kept); [] = no restriction. */
 export function normTimings(input: unknown): Timing[] {
   if (!Array.isArray(input)) return [];

@@ -21,6 +21,20 @@ export default {
     greenToRedDay: "{day}: minusga oʻtgandan keyin hajm ×{size}, tezlik ×{pace}",
     toRisk: "Limitlar va himoya — «Mening riskim»",
   },
+  timing: {
+    am: "Premarket (AM)", opg: "OPG (ochilish printi)", open30: "9:30–10:00", day: "Kun", moc: "MOC", pm: "Aftermarket (PM)",
+    opg_day: "OPG → kun", overnight: "Overnayt", swing: "Ikkinchi kun+", none: "Taymingsiz",
+  },
+  matrix: {
+    title: "Setap qachon ruxsat etilgan",
+    hint: "Setap ishlaydigan tayminglarni belgilang. Savdo taymingi ijrolar boʻyicha oʻzi hisoblanadi; matritsadan tashqaridagi kirishni mentor tahlilda belgilaydi.",
+    intraday: "Kun ichida",
+    holds: "Ushlab turish",
+    any: "Cheklanmagan — har qanday tayming mos",
+    count: "Ruxsat: {list}",
+    saveFailed: "Tayminglar saqlanmadi",
+    aria: "{timing}: ruxsat etilgan",
+  },
   robust: {
     col: "Top-3 siz",
     hint: "Uchta eng yaxshi savdosiz sof · mediana {median} · top-3 ulushi {share}",

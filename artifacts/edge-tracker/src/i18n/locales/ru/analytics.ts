@@ -132,7 +132,7 @@ export default {
     setup: "Сетап", horizon: "Горизонт", tod: "Время входа", hold: "Время в сделке", catalyst: "Катализатор",
     cap: "Капитализация", float: "Флоат", gap: "Гэп", weekday: "День недели", grade: "Оценка сетапа",
     conviction: "Уверенность", plan: "По плану", side: "Сторона", trader: "Трейдер", account: "Счёт", source: "Источник",
-    month: "Месяц", ticker: "Тикер",
+    month: "Месяц", ticker: "Тикер", timing: "Тайминг",
   },
   /** Server bucket keys (RU labels or codes from /api/edge/*) → display. */
   edgeKey: {
@@ -274,6 +274,7 @@ export default {
     rows: "Строки",
     cols: "Столбцы",
     rowsAria: "Разрез по строкам",
+    setupTiming: "Сетап × тайминг",
     colsAria: "Разрез по столбцам",
     step: "Шаг времени",
     min15: "15 мин",

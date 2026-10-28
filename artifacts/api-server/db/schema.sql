@@ -2147,9 +2147,11 @@ CREATE TABLE public.playbook (
   schema_key text,
   regimes text[] DEFAULT '{}'::text[] NOT NULL,
   formula jsonb,
+  timings text[],
   CONSTRAINT playbook_pkey PRIMARY KEY (id),
   CONSTRAINT playbook_formula_check CHECK (formula IS NULL OR jsonb_typeof(formula) = 'object'::text),
-  CONSTRAINT playbook_regimes_check CHECK (regimes <@ ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text])
+  CONSTRAINT playbook_regimes_check CHECK (regimes <@ ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text]),
+  CONSTRAINT playbook_timings_check CHECK (timings IS NULL OR timings <@ ARRAY['am'::text, 'opg'::text, 'open30'::text, 'day'::text, 'moc'::text, 'pm'::text, 'opg_day'::text, 'overnight'::text, 'swing'::text])
 );
 
 CREATE TABLE public.playbook_cases (

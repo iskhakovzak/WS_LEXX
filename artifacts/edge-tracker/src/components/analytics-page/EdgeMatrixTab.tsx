@@ -136,6 +136,9 @@ export function EdgeMatrixTab({
           {dimSelect(rows, setRows, t("matrix.rowsAria"))}
           <span className="text-xs text-muted-foreground">{t("matrix.cols")}</span>
           {dimSelect(cols, setCols, t("matrix.colsAria"))}
+          {!(rows === "setup" && cols === "timing") && (
+            <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setRows("setup"); setCols("timing"); }}>{t("matrix.setupTiming")}</Button>
+          )}
           {(rows === "tod" || cols === "tod") && (
             <Segmented<"15" | "30"> ariaLabel={t("matrix.step")} size="sm" options={[{ value: "15", label: t("matrix.min15") }, { value: "30", label: t("matrix.min30") }]} value={String(tod) as "15" | "30"} onChange={(v) => setTod(v === "15" ? 15 : 30)} />
           )}

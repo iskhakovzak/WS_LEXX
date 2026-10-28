@@ -127,7 +127,7 @@ export default {
     setup: "Setup", horizon: "Horizon", tod: "Entry time", hold: "Time in trade", catalyst: "Catalyst",
     cap: "Market cap", float: "Float", gap: "Gap", weekday: "Weekday", grade: "Setup grade",
     conviction: "Conviction", plan: "On plan", side: "Side", trader: "Trader", account: "Account", source: "Source",
-    month: "Month", ticker: "Ticker",
+    month: "Month", ticker: "Ticker", timing: "Timing",
   },
   edgeKey: {
     noDate: "No date",
@@ -268,6 +268,7 @@ export default {
     rows: "Rows",
     cols: "Columns",
     rowsAria: "Row breakdown",
+    setupTiming: "Setup × timing",
     colsAria: "Column breakdown",
     step: "Time step",
     min15: "15 min",

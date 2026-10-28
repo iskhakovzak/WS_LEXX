@@ -21,6 +21,20 @@ export default {
     greenToRedDay: "{day}: size ×{size}, pace ×{pace} after turning red",
     toRisk: "Limits and the guard — «My risk»",
   },
+  timing: {
+    am: "Pre-market (AM)", opg: "OPG (opening print)", open30: "9:30–10:00", day: "Day", moc: "MOC", pm: "After-market (PM)",
+    opg_day: "OPG → day", overnight: "Overnight", swing: "Second day+", none: "No timing",
+  },
+  matrix: {
+    title: "When the setup is allowed",
+    hint: "Tick the timings the setup works in. A trade's timing is counted from its fills; an entry outside the matrix is flagged by the mentor in the debrief.",
+    intraday: "Intraday",
+    holds: "Holds",
+    any: "Not restricted — any timing fits",
+    count: "Allowed: {list}",
+    saveFailed: "The timings were not saved",
+    aria: "{timing}: allowed",
+  },
   robust: {
     col: "Without top 3",
     hint: "Net without the three best trades · median {median} · top-3 share {share}",

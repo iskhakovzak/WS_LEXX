@@ -127,7 +127,7 @@ export default {
     setup: "Setap", horizon: "Gorizont", tod: "Kirish vaqti", hold: "Savdodagi vaqt", catalyst: "Katalizator",
     cap: "Kapitalizatsiya", float: "Float", gap: "Gap", weekday: "Hafta kuni", grade: "Setap bahosi",
     conviction: "Ishonch", plan: "Reja boʻyicha", side: "Yoʻnalish", trader: "Treyder", account: "Hisob", source: "Manba",
-    month: "Oy", ticker: "Tiker",
+    month: "Oy", ticker: "Tiker", timing: "Tayming",
   },
   edgeKey: {
     noDate: "Sanasiz",
@@ -268,6 +268,7 @@ export default {
     rows: "Qatorlar",
     cols: "Ustunlar",
     rowsAria: "Qatorlar kesimi",
+    setupTiming: "Setap × tayming",
     colsAria: "Ustunlar kesimi",
     step: "Vaqt qadami",
     min15: "15 daqiqa",

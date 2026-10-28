@@ -8,7 +8,9 @@ import { loadLimits } from "../riskData";
 import { setting } from "../settings/registry";
 import { chaseIds, dayGiveback, entryNumbers, greenToRed, reentryBuckets, type DayGiveback, type GreenToRed, type GivebackCfg, type GreenToRedCfg, type ReentryRow } from "./flow";
 import { flowTrades, groupBy } from "./load";
+import { normTimings, offTiming, timingOf, type Timing } from "./timing";
 import type { FlowTrade } from "./types";
+import { pool } from "@workspace/db";
 
 export const givebackCfg = (): GivebackCfg => ({ thresholdStops: setting("flow.givebackStops"), nearPeakShare: setting("flow.givebackNearPeakShare") });
 export const greenToRedCfg = (): GreenToRedCfg => ({ sizeRatio: setting("flow.g2rSizeRatio"), paceRatio: setting("flow.g2rPaceRatio"), minAfter: setting("flow.g2rMinAfter") });
@@ -70,12 +72,26 @@ export type DayFlowFacts = {
   giveback: Pick<DayGiveback, "peak" | "close" | "giveback" | "stops" | "r" | "unit"> | null;
   /** Today's green-to-red cross when the size / pace went up after it. */
   greenToRed: Pick<GreenToRed, "peak" | "sizeRatio" | "paceRatio"> & { afterTrades: number } | null;
+  /** Trades taken in a timing their playbook setup does not allow (playbook.timings). */
+  offTiming: { ticker: string; setup: string; timing: Timing; allowed: Timing[] }[];
 };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-/** The facts of one trader-day (pure: the day's trades + the daily limit). */
-export function dayFlowFacts(dayTrades: readonly FlowTrade[], dailyLimit: number | null): DayFlowFacts {
+/** Trades whose timing their setup's matrix does not allow (setup id → allowed timings; a setup without one never flags). */
+export function offTimingTrades(trades: readonly FlowTrade[], allowedBySetup: ReadonlyMap<number, readonly Timing[]>): DayFlowFacts["offTiming"] {
+  const out: DayFlowFacts["offTiming"] = [];
+  for (const t of trades) {
+    if (t.setupId == null) continue;
+    const allowed = allowedBySetup.get(t.setupId) ?? [];
+    const timing = timingOf(t);
+    if (timing && offTiming(timing, allowed)) out.push({ ticker: t.ticker.toUpperCase(), setup: t.setupName ?? String(t.setupId), timing, allowed: [...allowed] });
+  }
+  return out;
+}
+
+/** The facts of one trader-day (pure: the day's trades + the daily limit + the setups' timing matrices). */
+export function dayFlowFacts(dayTrades: readonly FlowTrade[], dailyLimit: number | null, allowedBySetup: ReadonlyMap<number, readonly Timing[]> = new Map()): DayFlowFacts {
   const nums = entryNumbers(dayTrades);
   const pairs = groupBy(dayTrades, (t) => `${t.ticker.toUpperCase()}\u0000${t.side ?? ""}`);
   const reentries: DayFlowFacts["reentries"] = [];
@@ -93,12 +109,21 @@ export function dayFlowFacts(dayTrades: readonly FlowTrade[], dailyLimit: number
     chase: dayTrades.filter((t) => chase.has(t.id)).slice(0, 5).map((t) => ({ ticker: t.ticker.toUpperCase(), net: t.net })),
     giveback: g?.flagged ? { peak: g.peak, close: g.close, giveback: g.giveback, stops: g.stops, r: g.r, unit: g.unit } : null,
     greenToRed: x?.material ? { peak: x.peak, sizeRatio: x.sizeRatio, paceRatio: x.paceRatio, afterTrades: x.after.trades } : null,
+    offTiming: offTimingTrades(dayTrades, allowedBySetup).slice(0, 5),
   };
+}
+
+/** Setup id → its allowed timings (only setups that restrict them). */
+export async function setupTimings(ids: readonly number[]): Promise<Map<number, Timing[]>> {
+  if (!ids.length) return new Map();
+  const { rows } = await pool.query<{ id: number; timings: string[] | null }>(`SELECT id, timings FROM playbook WHERE id = ANY($1::int[]) AND timings IS NOT NULL`, [ids]);
+  return new Map(rows.map((r) => [Number(r.id), normTimings(r.timings)] as const).filter(([, v]) => v.length > 0));
 }
 
 export async function dayFlowFactsOf(trader: string, day: string): Promise<DayFlowFacts> {
   const [trades, limit] = await Promise.all([flowTrades(trader, day, day), dailyLimitOf(trader)]);
-  return dayFlowFacts(trades, limit);
+  const ids = [...new Set(trades.map((t) => t.setupId).filter((x): x is number => x != null))];
+  return dayFlowFacts(trades, limit, await setupTimings(ids));
 }
 
-export const isEmptyDayFlow = (f: DayFlowFacts): boolean => !f.reentries.length && !f.chase.length && !f.giveback && !f.greenToRed;
+export const isEmptyDayFlow = (f: DayFlowFacts): boolean => !f.reentries.length && !f.chase.length && !f.giveback && !f.greenToRed && !f.offTiming.length;

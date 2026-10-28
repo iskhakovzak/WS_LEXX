@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chaseIds, dayGiveback, entryNumbers, greenToRed, reentryBreaches, reentryBuckets, robustEdge } from "../flow";
 import { offTiming, timingOf } from "../timing";
+import { offTimingTrades } from "../stats";
 import { detectRules, type RulesCfg } from "../../leakGuard/rules";
 import type { FlowTrade } from "../types";
 
@@ -106,5 +107,14 @@ describe("timing axis (feature 6)", () => {
     expect(timingOf({ strategy: null, entrySec: 16 * 3600 + 5 * 60 })).toBe("pm");
     expect(offTiming("open30", ["day", "moc"])).toBe(true);
     expect(offTiming("open30", [])).toBe(false);
+  });
+
+  it("flags the trades of a setup taken outside its matrix (setups without one never flag)", () => {
+    const open = tr({ net: -40, in: [9, 40], out: [9, 50], setupId: 7, setupName: "Second Day", ticker: "XYZ" });
+    const later = tr({ net: 30, in: [11, 0], out: [11, 30], setupId: 7, setupName: "Second Day" });
+    const free = tr({ net: 10, in: [9, 35], out: [9, 40], setupId: 8, setupName: "Any" });
+    expect(offTimingTrades([open, later, free], new Map([[7, ["day", "moc"] as const]]))).toEqual([
+      { ticker: "XYZ", setup: "Second Day", timing: "open30", allowed: ["day", "moc"] },
+    ]);
   });
 });
