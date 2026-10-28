@@ -117,8 +117,15 @@ export default {
     month: { title: "Month review ready", body: "AI review of the month from {period}: the result, the month's habits and one focus for the next one." },
   },
   leak_guard: {
-    pattern: { after_loss: "entering right after a loss", first_trade: "the first trade of the day", rule_violation: "trading on after a rule violation", near_stop: "trading near the daily stop" },
+    pattern: {
+      after_loss: "entering right after a loss", first_trade: "the first trade of the day", rule_violation: "trading on after a rule violation", near_stop: "trading near the daily stop",
+      reentry: "repeated re-entries in one ticker", green_to_red: "speeding up after the day turned red", open_window: "the 9:30–10:00 window limit", idea_limit: "the authored / tier-3 idea limit",
+    },
     trader: {
+      reentry: { title: "{ticker}: stop on this ticker for the day", body: "This is entry number {entries} on the same side. No more {ticker} today." },
+      green_to_red: { title: "The day turned red — pause {minutes} min, until {until} (NY)", body: "After the day went red you traded bigger or faster. Pause first, then back to your normal size." },
+      open_window: { title: "9:30–10:00 window limit used — until {until} (NY)", body: "The loss of the first half hour reached the {limit} limit. No new entries before 10:00." },
+      idea_limit: { title: "{ticker}: idea limit — stop on this ticker", body: "An authored or tier-3 idea: at most {limit} of loss and no re-entries. No more {ticker} today." },
       after_loss: { title: "Pause {minutes} min — until {until} (NY)", body: "Entering right after a loss costs you {usd} per trade on average." },
       first_trade: { title: "First trade of the day — at half size", body: "Your first trade of the day costs you {usd} on average. Start with half your usual size." },
       rule_violation: { title: "Rule broken — pause {minutes} min, until {until} (NY)", body: "After a rule violation you lose {usd} per trade on average." },

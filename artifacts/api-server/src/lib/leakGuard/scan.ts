@@ -23,13 +23,15 @@ import { personalProfile, type Trigger } from "./profile";
 import { atRiskTrades, detectLive, dueSteps, inQuietHours, levelFor, settle, type StoredEvent } from "./detect";
 import { existingKeys, insertEvent, loadLevels, markStep, openEvents, saveSettlement, toldCounts, type GuardEventRow } from "./store";
 import { notifyIgnored, notifyRisk, notifyTrader } from "./notify";
-import type { GuardConfig, GuardTrade, PersonalProfile, SilentReason } from "./types";
+import { scopeOf } from "./rules";
+import { ruleDrafts, ruleLevel } from "./ruleScan";
+import type { GuardConfig, GuardDraft, GuardLevel, GuardTrade, LevelChoice, PersonalProfile, SilentReason } from "./types";
 
 /** Minutes after the close before a day counts as over (late fills of the close are in by then). */
 const SETTLE_AFTER_CLOSE_MIN = 30;
 
 export function toGuardTrade(b: BehaviorTrade): GuardTrade {
-  return { id: b.id, date: b.date, result: b.result, net: b.net, qty: b.qty, entry: b.entry, entryAt: b.entryAt, exitAt: b.exitAt, horizon: b.horizon };
+  return { id: b.id, date: b.date, result: b.result, net: b.net, qty: b.qty, entry: b.entry, entryAt: b.entryAt, exitAt: b.exitAt, horizon: b.horizon, ticker: b.ticker, side: b.side };
 }
 
 function group<T>(items: readonly T[], key: (t: T) => string): Map<string, T[]> {
@@ -116,8 +118,41 @@ export function storedOf(e: GuardEventRow): StoredEvent {
   const med = e.stats.medianNotional;
   return {
     pattern: e.pattern, day: e.day, triggeredAt: Date.parse(e.triggeredAt), pauseUntil: ms(e.pauseUntil), late: e.late,
-    costPerTrigger: e.costPerTrigger, medianNotional: typeof med === "number" ? med : null,
+    costPerTrigger: e.costPerTrigger, medianNotional: typeof med === "number" ? med : null, scope: scopeOf(e.stats),
   };
+}
+
+/** Stores the drafts of one trader at `level` (silent when stale / quiet hours / over the daily cap) and tells the trader. */
+async function storeDrafts(
+  trader: string, drafts: readonly GuardDraft[], levelOf: (d: GuardDraft) => GuardLevel | null, told: Map<string, number>,
+  nowMs: number, nowMin: number, cfg: GuardConfig, res: ScanResult,
+): Promise<void> {
+  for (const d of drafts) {
+    const level = levelOf(d);
+    if (!level) continue;
+    const n = told.get(trader) ?? 0;
+    const silent: SilentReason | null = d.stale ? "stale" : inQuietHours(nowMin, cfg.quiet) ? "quiet" : n >= cfg.maxEventsPerDay ? "cap" : null;
+    const row = await insertEvent(d, level, silent, nowMs);
+    if (!row) continue;
+    res.created++;
+    if (silent) continue;
+    told.set(trader, n + 1);
+    await notifyTrader(row, cfg);
+    res.told++;
+  }
+}
+
+/** Desk rule patterns (rules.ts) for every trader with trades today — not gated by the personal profile. */
+async function detectRulePatterns(day: string, now: Date, cfg: GuardConfig, keys: Set<string>, levels: Map<string, LevelChoice>, told: Map<string, number>, res: ScanResult): Promise<void> {
+  const nowMs = now.getTime();
+  const byTrader = await ruleDrafts(day, nowMs, cfg);
+  for (const [trader, all] of byTrader) {
+    const drafts = all.filter((d) => !keys.has(`${d.trader}|${d.pattern}|${d.sourceKey}`));
+    if (!drafts.length) continue;
+    const stage = await viewerStage(trader);
+    const ladder = levelFor(stage, levels.get(trader) ?? null, cfg);
+    await storeDrafts(trader, drafts, (d) => ruleLevel(d.pattern, stage, ladder), told, nowMs, nyMinutes(now), cfg, res);
+  }
 }
 
 async function detectAndStore(day: string, now: Date, today: Map<string, GuardTrade[]>, cfg: GuardConfig, res: ScanResult): Promise<void> {
@@ -138,6 +173,7 @@ async function detectAndStore(day: string, now: Date, today: Map<string, GuardTr
   const [profiles, levels, keys, told] = await Promise.all([profilesFor(traders, day, cfg), loadLevels(), existingKeys(day), toldCounts(day)]);
   const nowMs = now.getTime();
   const nowMin = nyMinutes(now);
+  await detectRulePatterns(day, now, cfg, keys, levels, told, res);
   for (const trader of traders) {
     const profile = profiles.get(trader);
     if (!profile || !Object.values(profile).some((s) => s?.costly)) continue;
@@ -152,18 +188,8 @@ async function detectAndStore(day: string, now: Date, today: Map<string, GuardTr
     if (!drafts.length) continue;
     const level = levelFor(await viewerStage(trader), levels.get(trader) ?? null, cfg);
     if (level === "off") continue;
-    for (const d of drafts) {
-      const n = told.get(trader) ?? 0;
-      const silent: SilentReason | null = d.stale ? "stale" : inQuietHours(nowMin, cfg.quiet) ? "quiet" : n >= cfg.maxEventsPerDay ? "cap" : null;
-      // The first trade has no pause to put the trader «on»: its strongest step is firm (confirm + curator).
-      const row = await insertEvent(d, d.pattern === "first_trade" && level === "hard" ? "firm" : level, silent, nowMs);
-      if (!row) continue;
-      res.created++;
-      if (silent) continue;
-      told.set(trader, n + 1);
-      await notifyTrader(row, cfg);
-      res.told++;
-    }
+    // The first trade has no pause to put the trader «on»: its strongest step is firm (confirm + curator).
+    await storeDrafts(trader, drafts, (d) => (d.pattern === "first_trade" && level === "hard" ? "firm" : level), told, nowMs, nowMin, cfg, res);
   }
 }
 

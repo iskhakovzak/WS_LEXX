@@ -32,9 +32,16 @@ function base(cfg: GuardConfig) {
 
 export async function notifyTrader(e: GuardEventRow, cfg: GuardConfig): Promise<void> {
   const minutes = typeof e.stats.minutes === "number" ? e.stats.minutes : null;
+  const s = e.stats;
+  // Rule patterns (rules.ts) name the ticker / the entries / the limit instead of a personal cost.
+  const rule = {
+    ...(typeof s.ticker === "string" ? { ticker: s.ticker } : {}),
+    ...(typeof s.entries === "number" ? { entries: s.entries } : {}),
+    ...(typeof s.limit === "number" ? { limit: usd(s.limit) } : {}),
+  };
   await notifyUser({
     ...base(cfg), userName: e.trader, entityId: e.id, severity: e.level === "soft" ? "info" : "warn",
-    params: { variant: "trader", patternCode: e.pattern, levelCode: e.level, usd: usd(e.costPerTrade), minutes, until: nyTime(e.pauseUntil) },
+    params: { variant: "trader", patternCode: e.pattern, levelCode: e.level, usd: usd(e.costPerTrade), minutes, until: nyTime(e.pauseUntil), ...rule },
   });
 }
 

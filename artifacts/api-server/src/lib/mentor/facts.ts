@@ -29,6 +29,7 @@ import { dayTwoOf, formulaBreaksOf } from "../catalyst/store";
 import type { DayTwoHint, FormulaBreak } from "../catalyst/model";
 import { normFormula, type StrategyFormula } from "../strategyFormula";
 import { setting } from "../settings/registry";
+import { dayFlowFactsOf, isEmptyDayFlow, type DayFlowFacts } from "../sessionFlow/stats";
 
 /** Calendar days of trades the formula check looks back over (≈ two trading weeks; the debrief names the latest). */
 const FORMULA_LOOKBACK_DAYS = 14;
@@ -67,6 +68,8 @@ export type MentorFacts = {
   dayTwo: DayTwoHint[];
   /** Recent trades entered on a setup whose strategy formula needs a catalyst the plan mark does not show. */
   formulaBreaks: FormulaBreak[];
+  /** Today's session flow from the fills (lib/sessionFlow): re-entries, chases, give-back from the peak, green-to-red. */
+  flow: DayFlowFacts | null;
 };
 
 const LOOKBACK_DAYS = 35;
@@ -174,7 +177,7 @@ async function playbookFacts(trader: string, regime: string | null): Promise<Men
 /** Everything the mentor knows about `trader` today. */
 export async function gatherFacts(trader: string, today: string): Promise<MentorFacts> {
   const from = addDays(today, -LOOKBACK_DAYS);
-  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus, dayTwo, breaks] = await Promise.all([
+  const [stage, hidden, notes, commitments, trades, riskState, checkin, profile, reg, agree, focus, dayTwo, breaks, flow] = await Promise.all([
     safe("stage", () => stageOf(trader), null),
     safe("hidden", () => hiddenFacts(trader), [] as string[]),
     safe("notes", () => listNotes(trader), [] as Note[]),
@@ -188,6 +191,7 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     safe("focus", () => focusFor(trader, today), null),
     safe("dayTwo", async () => (await dayTwoOf(trader, today, setting("mentor.dayTwoMovePct"))).hints, [] as DayTwoHint[]),
     safe("formula", () => formulaBreaksOf(trader, addDays(today, -FORMULA_LOOKBACK_DAYS), today), [] as FormulaBreak[]),
+    safe("flow", async (): Promise<DayFlowFacts | null> => { const f = await dayFlowFactsOf(trader, today); return isEmptyDayFlow(f) ? null : f; }, null),
   ]);
   // Commitments may have started before the lookback: load the older trades only when one needs them.
   const oldest = commitments.active.map((c) => c.startedOn).sort()[0];
@@ -219,6 +223,7 @@ export async function gatherFacts(trader: string, today: string): Promise<Mentor
     focus: focus ? { mistake: focus.mistake, costNet: focus.costNet, count: focus.count, own: focus.ownText ?? null } : null,
     dayTwo: hiddenSet.has("playbook") ? dayTwo.map((h) => ({ ...h, setupId: null, setupName: null })) : dayTwo,
     formulaBreaks: hiddenSet.has("playbook") ? [] : breaks,
+    flow,
   };
 }
 

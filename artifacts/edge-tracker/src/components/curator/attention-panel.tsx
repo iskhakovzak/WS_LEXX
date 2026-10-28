@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtNum, fmtUsd } from "@/lib/format";
 import { mistakeLabel } from "@/components/shared/mistake-labels";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { coachI18n } from "@/i18n/ns/coach";
@@ -58,6 +58,9 @@ function reasonDetail(r: Reason): string {
     else if (k === "from") p[k] = fmtDate(String(v), "dayMonth");
     else if (k === "scope") p[k] = curatorI18n.tryT(`costQueue.scope.${v}`) ?? String(v);
     else p[k] = v;
+  }
+  if (r.kind === "giveback" && typeof raw.stops === "number") {
+    return curatorI18n.t("costQueue.detail.givebackStops", { stops: fmtNum(raw.stops, { decimals: 1 }), peak: p.peak ?? "—", close: p.close ?? "—" });
   }
   if (r.kind === "giveback") {
     return curatorI18n.t("costQueue.detail.giveback", { peak: p.peak ?? "—", close: p.close ?? "—", missed: r.costNet != null ? fmtUsd(Math.abs(r.costNet), { decimals: 0 }) : "—" });

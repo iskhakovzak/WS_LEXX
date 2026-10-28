@@ -100,9 +100,47 @@ function mockReview(turn: string): string {
   return JSON.stringify(review);
 }
 
+/**
+ * The mentor in the demo: a schema-valid answer (lib/mentor/schema) built mechanically from <mentor_context> — the
+ * deterministic lines (session flow, opening window, season, formula checks) are named the way the prompt asks.
+ */
+function mockMentor(turn: string): string {
+  const kind = /<mentor_request kind="(\w+)"/.exec(turn)?.[1] ?? "chat";
+  const lang: Lang = /Reply in English/.test(turn) ? "en" : /Reply in Uzbek/.test(turn) ? "uz" : "ru";
+  const t = assistantT.tFor(lang);
+  let ctx: Record<string, any> = {};
+  try { ctx = JSON.parse(/<mentor_context>\n([\s\S]*?)\n<\/mentor_context>/.exec(turn)?.[1] ?? "{}"); } catch { ctx = {}; }
+  const flow = ctx.sessionFlow ?? null;
+  const lines: string[] = [];
+  const re = flow?.reentries?.find((x: any) => x.entries >= 3);
+  if (re) lines.push(t("mock.mentor.reentry", { ticker: re.ticker, entries: re.entries, net: usd(Number(re.net ?? 0)) }));
+  if (flow?.chase?.length) lines.push(t("mock.mentor.chase", { ticker: flow.chase[0].ticker }));
+  if (flow?.giveback) lines.push(t("mock.mentor.giveback", { amount: usd(flow.giveback.giveback), stops: String(flow.giveback.stops ?? flow.giveback.r ?? "—") }));
+  if (flow?.greenToRed) lines.push(t("mock.mentor.greenToRed", { size: String(flow.greenToRed.sizeRatio ?? "—"), pace: String(flow.greenToRed.paceRatio ?? "—") }));
+  if (flow?.offTiming?.length) lines.push(t("mock.mentor.offTiming", { ticker: flow.offTiming[0].ticker, setup: flow.offTiming[0].setup }));
+  const fb = ctx.formulaChecks?.[0];
+  if (fb) lines.push(t("mock.mentor.formulaBreak", { ticker: fb.ticker, day: fb.day, setup: fb.setupName ?? "—" }));
+  const day = ctx.todayStats;
+  const summary = day ? t("mock.mentor.day", { n: Number(day.trades ?? 0), net: usd(Number(day.net ?? 0)) }) : t("mock.mentor.noDay");
+  const brief: string[] = [];
+  if (ctx.openWindow?.limitUsd != null) brief.push(t(ctx.openWindow.lifted ? "mock.mentor.openLifted" : "mock.mentor.openWindow", { limit: usd(ctx.openWindow.limitUsd) }));
+  if (ctx.season?.quiet) brief.push(t("mock.mentor.quiet"));
+  if (ctx.season?.prime) brief.push(t("mock.mentor.prime"));
+  const demo = t("mock.mentor.demo");
+  const out = kind === "brief"
+    ? { headline: demo, points: brief.slice(0, 3), ruleToday: ctx.season?.quiet ? t("mock.mentor.quietRule") : t("mock.mentor.rule"), setupIds: [] }
+    : kind === "debrief"
+      ? { summary, vsPlan: lines[0] ?? t("mock.mentor.noFlags"), lesson: lines[1] ?? lines[0] ?? t("mock.mentor.noFlags"), praise: null, challenge: lines[0] ?? null, ruleTomorrow: null, notes: [] }
+      : kind === "weekly"
+        ? { summary: demo, commitments: [], nextFocus: t("mock.mentor.rule"), newCommitment: null, notes: [] }
+        : { reply: [demo, ...lines].join(" "), notes: [], commitment: null };
+  return JSON.stringify(out);
+}
+
 function plan(params: StreamParams): Plan {
   const { text, index } = lastUserText(params.messages);
   if (text.startsWith("<review_request")) return { text: mockReview(text), tools: [] };
+  if (text.startsWith("<mentor_request")) return { text: mockMentor(text), tools: [] };
   const lang: Lang = ((l) => (isLang(l) ? l : "ru"))(field(text, "interface language"));
   const t = assistantT.tFor(lang);
   const today = field(text, "today \\(New York\\)") || new Date().toISOString().slice(0, 10);

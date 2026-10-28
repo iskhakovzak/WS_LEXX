@@ -598,6 +598,7 @@ export default {
       focus_brokenDay: "«{mistake}» fokusi buzildi",
       disputedDay: "Treyder «{mistake}» fokusi boʻyicha «xato emas» deb belgiladi — kunni koʻring",
       giveback: "Kun choʻqqisi {peak}, yopildi {close} — {missed} olinmadi (desk zarari emas)",
+      givebackStops: "Choʻqqidan {stops} kunlik stop qaytarildi: choʻqqi {peak}, yopildi {close} — qayerda toʻxtash kerakligini koʻrib chiqing",
       rule: "Qoidabuzarliklar: {count} · «{rule}»",
       ruleMany: "Qoidabuzarliklar: {count} · «{rule}» va yana {more}",
     },

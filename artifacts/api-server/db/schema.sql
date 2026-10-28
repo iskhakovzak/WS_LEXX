@@ -1769,7 +1769,7 @@ CREATE TABLE public.leak_guard_events (
   CONSTRAINT leak_guard_events_once UNIQUE (trader, day, pattern, source_key),
   CONSTRAINT leak_guard_events_level_check CHECK (level = ANY (ARRAY['soft'::text, 'firm'::text, 'hard'::text])),
   CONSTRAINT leak_guard_events_outcome_check CHECK (outcome IS NULL OR (outcome = ANY (ARRAY['complied'::text, 'ignored'::text, 'late'::text, 'no_trades'::text, 'unknown'::text]))),
-  CONSTRAINT leak_guard_events_pattern_check CHECK (pattern = ANY (ARRAY['after_loss'::text, 'first_trade'::text, 'rule_violation'::text, 'near_stop'::text])),
+  CONSTRAINT leak_guard_events_pattern_check CHECK (pattern = ANY (ARRAY['after_loss'::text, 'first_trade'::text, 'rule_violation'::text, 'near_stop'::text, 'reentry'::text, 'green_to_red'::text, 'open_window'::text, 'idea_limit'::text])),
   CONSTRAINT leak_guard_events_released_by_check CHECK (released_by IS NULL OR char_length(released_by) >= 1 AND char_length(released_by) <= 200),
   CONSTRAINT leak_guard_events_silent_reason_check CHECK (silent_reason IS NULL OR (silent_reason = ANY (ARRAY['quiet'::text, 'cap'::text, 'stale'::text]))),
   CONSTRAINT leak_guard_events_source_key_check CHECK (char_length(source_key) >= 1 AND char_length(source_key) <= 80),

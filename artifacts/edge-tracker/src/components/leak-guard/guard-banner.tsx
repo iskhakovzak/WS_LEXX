@@ -37,7 +37,7 @@ function GuardText({ e, left }: { e: GuardEvent; left: number | null }) {
   const usd = fmtUsd(e.costPerTrade, { decimals: 0 });
   return (
     <>
-      <p className="text-sm text-foreground">{t(`banner.body.${e.pattern}`, { usd })}</p>
+      <p className="text-sm text-foreground">{t(`banner.body.${e.pattern}`, { usd, ticker: e.ticker ?? "—", entries: e.entries ?? 0, limit: fmtUsd(e.limitUsd, { decimals: 0 }) })}</p>
       {left != null && e.pauseUntil && (
         <p className="mt-1 text-xs tabular-nums text-muted-foreground" aria-live="off">
           {t("banner.left", { time: fmtCountdown(left) })} · {t("banner.until", { time: fmtTimeNY(e.pauseUntil) })}
@@ -65,7 +65,7 @@ export function GuardBanner() {
 
   if (!e || left === 0) return null;
 
-  const title = t(`banner.title.${e.pattern}`, { minutes: e.minutes ?? 0 });
+  const title = t(`banner.title.${e.pattern}`, { minutes: e.minutes ?? 0, ticker: e.ticker ?? "—" });
   const onAck = () =>
     ack.mutate(e.id, {
       onSuccess: () => toast({ title: t("banner.acked") }),

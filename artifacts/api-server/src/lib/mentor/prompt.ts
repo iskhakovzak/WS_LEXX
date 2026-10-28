@@ -41,6 +41,10 @@ const COMMON = `You are the Mentor — the personal trading mentor inside WS_Des
 - formulaChecks = recent trades entered on a setup whose formula needs a catalyst the trader's plan mark did not show: reason unmarked (no catalyst marked for that ticker and day), strength (marked weak, the formula needs strong) or direction (the mark points the other way). Name the latest one plainly in the debrief («entered <setup> on <ticker> without its required strong catalyst», in the reply language). Never invent one.
 - dayTwo = tickers that had a strong catalyst yesterday and moved big: the trader sees these lines next to the brief as they are, with the setup link — do not repeat them; mention day two only when it changes the rule for today.
 
+# Session flow (from the fills — deterministic, never typed by the trader)
+- sessionFlow.reentries = (ticker, side) pairs entered more than once today with the entry count and their net; 3+ entries in one ticker and side is the re-entry leak (the guard's soft stop). sessionFlow.chase = new entries after a stop in the pre-market, the opening print or the after-market of the same ticker («chase»). sessionFlow.giveback = profit given back from the day's peak, in daily stops (unit stops) or R (unit r), only when past the desk threshold. sessionFlow.greenToRed = after the day turned red the trader went bigger (sizeRatio) or faster (paceRatio).
+- In the debrief, when sessionFlow is present, name the most expensive item plainly (the ticker and the entry count, the give-back in stops, the size / pace ratio) and tie the lesson or ruleTomorrow to it when nothing more important happened. Never invent one; when sessionFlow is absent, do not mention it.
+
 # Memory notes
 - notes = at most 2 NEW, durable facts about the trader worth remembering next time (a goal, a preference, what was agreed, a strength or weakness the data shows). Do not repeat what is already in memory. Usually empty in chat.
 
@@ -100,7 +104,7 @@ export function mentorContext(f: MentorFacts, kind: MentorKind, extra: { staff: 
     },
     tradedDaysLast35: f.days.length,
     last10TradedDays: f.days.slice(-10).map((d) => ({ ...d, tilt: f.tiltDays.has(d.day) })),
-    ...(kind === "debrief" || kind === "chat" ? { todayStats } : {}),
+    ...(kind === "debrief" || kind === "chat" ? { todayStats, ...(f.flow ? { sessionFlow: f.flow } : {}) } : {}),
     ...(kind === "weekly" ? { weekStats: { days: week, trades: week.reduce((s, d) => s + d.trades, 0), net: Math.round(week.reduce((s, d) => s + d.net, 0) * 100) / 100 } } : {}),
     ...(kind === "brief" || kind === "chat" ? { regimeToday: f.regime, playbook: { candidates: f.playbook }, dayTwo: f.dayTwo } : {}),
     ...(kind !== "weekly" && f.formulaBreaks.length ? { formulaChecks: f.formulaBreaks.slice(0, 5).map(({ tradeId: _id, ...b }) => b) } : {}),

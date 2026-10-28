@@ -174,14 +174,25 @@ export function giveback(trades: readonly DayTrade[]): { peak: number; close: nu
   return { peak: r2(peak), close: r2(cum), tradeId: afterPeakWorst?.id ?? null };
 }
 
-export function givebackReason(trades: readonly DayTrade[]): CostReason | null {
+/**
+ * A giveback: the share rule (peak ≥ the minimum, closed ≤ keepShare of it) OR the session-flow rule (lib/sessionFlow
+ * dayGiveback: peak − close ≥ flow.givebackStops daily stops, and the day did not close at / near its peak). With a
+ * daily limit the item carries the give-back in stops («Отдал с пика 1.8 стопа»).
+ */
+export function givebackReason(trades: readonly DayTrade[], dailyLimit: number | null = null, stopsCfg: { thresholdStops: number; nearPeakShare: number } | null = null): CostReason | null {
   const g = giveback(trades);
   const k = dayThresholds();
-  if (g.peak <= 0 || g.peak < k.givebackMinUsd || g.close > g.peak * k.givebackKeepShare) return null;
+  const given = r2(Math.max(0, g.peak - g.close));
+  const stops = dailyLimit != null && dailyLimit > 0 ? r2(given / dailyLimit) : null;
+  const byShare = g.peak > 0 && g.peak >= k.givebackMinUsd && g.close <= g.peak * k.givebackKeepShare;
+  const byStops = stopsCfg != null && stops != null && g.peak > 0 && stops >= stopsCfg.thresholdStops && g.close < g.peak * (1 - stopsCfg.nearPeakShare);
+  if (!byShare && !byStops) return null;
   return {
     kind: "giveback",
     costNet: r2(g.close - g.peak),
-    text: text("giveback", { peak: g.peak, close: g.close }),
+    text: stops != null && byStops
+      ? { key: "costQueue.detail.givebackStops", params: { peak: g.peak, close: g.close, stops } }
+      : text("giveback", { peak: g.peak, close: g.close }),
     ...(g.tradeId != null ? { tradeId: g.tradeId } : {}),
   };
 }
@@ -555,7 +566,7 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
         focusReason(verdicts.get(k)),
         a && traded(t, d) ? feesOf(d, a) : null,
         d === streakDay ? lossStreakReason(history.get(t) ?? [], d) : null,
-        givebackReason(trades),
+        givebackReason(trades, limits.get(t) ?? null, { thresholdStops: setting("flow.givebackStops"), nearPeakShare: setting("flow.givebackNearPeakShare") }),
         rulesReason(violations.get(k) ?? []),
       ], resolved, a?.net ?? null);
       // A carried day stays only when it cost money or needs a look (a breach, a disputed focus).

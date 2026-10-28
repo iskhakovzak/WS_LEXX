@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -396,6 +396,47 @@ export const SETTINGS = {
   "leakGuard.quietFrom": { group: "leakGuard", type: "time", default: "15:50" },
   "leakGuard.quietTo": { group: "leakGuard", type: "time", default: "16:00" },
   "leakGuard.telegram": { group: "leakGuard", type: "boolean", default: false },
+  // Desk rule patterns of the guard (lib/leakGuard/rules.ts): for everyone with trades today, not gated by personal cost.
+  "leakGuard.reentry": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.greenToRed": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.openWindow": { group: "leakGuard", type: "boolean", default: true },
+  "leakGuard.ideaLimits": { group: "leakGuard", type: "boolean", default: true },
+  // Session flow (lib/sessionFlow): re-entries, give-back from the peak, green-to-red, the opening window 09:30–10:00,
+  // the idea tiers of the morning plan and the setup checklist score. Everything is derived from PropReports fills.
+  "flow.maxReentries": { group: "flow", type: "number", default: 2, min: 1, max: 10, step: 1, unit: "count" },
+  "flow.givebackStops": { group: "flow", type: "number", default: 1.5, min: 0.5, max: 10, step: 0.1, unit: "times" },
+  "flow.givebackNearPeakShare": { group: "flow", type: "number", default: 0.1, min: 0, max: 0.5, step: 0.05, unit: "ratio" },
+  "flow.g2rSizeRatio": { group: "flow", type: "number", default: 1.3, min: 1, max: 5, step: 0.05, unit: "times" },
+  "flow.g2rPaceRatio": { group: "flow", type: "number", default: 1.5, min: 1, max: 5, step: 0.1, unit: "times" },
+  "flow.g2rMinAfter": { group: "flow", type: "number", default: 2, min: 1, max: 20, step: 1, unit: "trades" },
+  "flow.g2rPauseMinutes": { group: "flow", type: "number", default: 15, min: 5, max: 120, step: 5, unit: "minutes" },
+  // Opening window 09:30–10:00: its own loss limit as a share of the daily one per stage (lower for juniors), lifted
+  // automatically once the trader has a proven edge there (≥ openLiftMinTrades in openLiftDays, positive robust P&L).
+  "flow.openShareJunior": { group: "flow", type: "number", default: 0.25, min: 0.05, max: 1, step: 0.05, unit: "ratio" },
+  "flow.openShareTrader": { group: "flow", type: "number", default: 0.5, min: 0.05, max: 1, step: 0.05, unit: "ratio" },
+  "flow.openShareSenior": { group: "flow", type: "number", default: 0.5, min: 0.05, max: 1, step: 0.05, unit: "ratio" },
+  "flow.openLiftMinTrades": { group: "flow", type: "number", default: 30, min: 5, max: 500, step: 5, unit: "trades" },
+  "flow.openLiftDays": { group: "flow", type: "number", default: 90, min: 20, max: 365, step: 5, unit: "days" },
+  // Idea tiers (plan): an authored or tier-3 idea may lose at most this share of the daily stop and is never re-entered.
+  "flow.ideaStopShare": { group: "flow", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
+  "flow.missedMovePct": { group: "flow", type: "number", default: 5, min: 1, max: 50, step: 0.5, unit: "pct" },
+  // Setup checklist score below the setup's threshold: the suggested risk per trade × this factor.
+  "flow.checklistRiskFactor": { group: "flow", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
+  // Season calendar of the regime layer (lib/sessionFlow/season): the off-season (MM-DD … MM-DD, New York), prime
+  // earnings weeks, quad witching, S&P and MSCI rebalances. On a quiet day the daily loss limit × quietFactor.
+  "season.enabled": { group: "season", type: "boolean", default: true },
+  "season.offFrom": { group: "season", type: "text", default: "08-15", maxLength: 5 },
+  "season.offTo": { group: "season", type: "text", default: "10-05", maxLength: 5 },
+  "season.quietFactor": { group: "season", type: "number", default: 0.75, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
+  "season.trimLimits": { group: "season", type: "boolean", default: true },
+  "season.holidayEves": { group: "season", type: "boolean", default: true },
+  "season.primeStartDay": { group: "season", type: "number", default: 12, min: 1, max: 28, step: 1, unit: "days" },
+  "season.primeWeeks": { group: "season", type: "number", default: 4, min: 1, max: 8, step: 1, unit: "count" },
+  // Expected move (lib/expectedMove): the options-implied move (ATM straddle of the free chain the desk already reads)
+  // snapshotted before a report, else the historical average earnings move from the candle archive (labelled so).
+  "em.implied": { group: "em", type: "boolean", default: true },
+  "em.maxSnapshots": { group: "em", type: "number", default: 40, min: 0, max: 200, step: 5, unit: "count" },
+  "em.historyQuarters": { group: "em", type: "number", default: 8, min: 2, max: 20, step: 1, unit: "count" },
   // Capital allocation (lib/capital): weekly (Fri 19:30 NY) and on demand, per trader raise / keep / cut of the daily loss
   // limit (BP in the same ratio) from the shrunk edge, the edge in the current regime and discipline. Proposals land in
   // the scaling queue; autoApply (off by default) lets the weekly job apply them itself. Weights are relative shares.

@@ -2,7 +2,7 @@
  * Live leak guard — client model (pure; unit-tested in model.test.ts). Shapes mirror the API
  * (artifacts/api-server/src/routes/leak-guard.ts, lib/leakGuard/types.ts).
  */
-export type GuardPattern = "after_loss" | "first_trade" | "rule_violation" | "near_stop";
+export type GuardPattern = "after_loss" | "first_trade" | "rule_violation" | "near_stop" | "reentry" | "green_to_red" | "open_window" | "idea_limit";
 export type GuardLevel = "soft" | "firm" | "hard";
 export type LevelChoice = "off" | GuardLevel;
 export type GuardOutcome = "complied" | "ignored" | "late" | "no_trades" | "unknown";
@@ -34,6 +34,10 @@ export type GuardEvent = {
   lost: number | null;
   atRiskTradeIds: number[];
   lagSec: number | null;
+  /** Rule patterns: the ticker of a ticker-scoped stop, the entry count, the $ limit (absent on older API builds). */
+  ticker?: string | null;
+  entries?: number | null;
+  limitUsd?: number | null;
 };
 
 export type ImpactTotals = {

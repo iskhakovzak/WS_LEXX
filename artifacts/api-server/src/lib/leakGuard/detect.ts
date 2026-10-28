@@ -8,7 +8,7 @@
  */
 import { byDay, inWindow, notionalOf } from "./profile";
 import type {
-  GuardConfig, GuardDraft, GuardLevel, GuardPattern, GuardSettlement, GuardTrade, LevelChoice, PatternStat, PersonalProfile,
+  GuardConfig, GuardDraft, GuardLevel, GuardPattern, GuardSettlement, GuardTrade, LevelChoice, PatternStat, PersonalPattern, PersonalProfile,
 } from "./types";
 
 const MIN_MS = 60_000;
@@ -59,7 +59,7 @@ export function detectLive(input: LiveInput): GuardDraft[] {
   const { cfg, profile } = input;
   if (!cfg.enabled) return [];
   const out: GuardDraft[] = [];
-  const on = (p: GuardPattern): PatternStat | null => (cfg.patterns[p] && profile[p]?.costly ? profile[p]! : null);
+  const on = (p: PersonalPattern): PatternStat | null => (cfg.patterns[p] && profile[p]?.costly ? profile[p]! : null);
 
   const al = on("after_loss");
   if (al) {
@@ -108,6 +108,8 @@ export type StoredEvent = {
   late: boolean;
   costPerTrigger: number | null;
   medianNotional: number | null;
+  /** Ticker-scoped rule events (reentry, idea_limit): only later entries in this ticker / side are at risk. */
+  scope?: { ticker: string; side: string | null } | null;
 };
 
 /** At-risk trades taken so far (the escalation reads it while the pause still runs). */
@@ -115,7 +117,9 @@ export function atRiskTrades(e: StoredEvent, dayTrades: readonly GuardTrade[]): 
   const sorted = [...dayTrades].filter((t) => t.date === e.day).sort((a, b) => (a.entryAt ?? 0) - (b.entryAt ?? 0) || a.id - b.id);
   if (e.pattern === "first_trade") return sorted.slice(0, 1);
   if (e.pauseUntil == null) return [];
-  return inWindow(sorted, e.triggeredAt, (e.pauseUntil - e.triggeredAt) / MIN_MS);
+  const win = inWindow(sorted, e.triggeredAt, (e.pauseUntil - e.triggeredAt) / MIN_MS);
+  const sc = e.scope;
+  return sc ? win.filter((t) => (t.ticker ?? "").toUpperCase() === sc.ticker && (sc.side == null || t.side === sc.side)) : win;
 }
 
 /**

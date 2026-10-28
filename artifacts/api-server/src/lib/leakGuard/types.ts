@@ -6,13 +6,22 @@
  *             first_trade     the session starts → «first trade at half size» (the «1-я сделка дня» leak)
  *             rule_violation  an auto rule was just broken → «pause W minutes» (trading on after a violation)
  *             near_stop       the day reached the warn share of the daily stop (live, with unrealized) → «pause»
+ *   rule      reentry / green_to_red / open_window / idea_limit — desk rules for everyone (rules.ts), not personal costs
  *   level     soft  banner + notification with a countdown
  *             firm  soft + a required acknowledgement; the curator is told when it is ignored
  *             hard  firm + the trader is shown «на паузе» on the risk desk and the risk manager is told to act
  *             off   no guard for this trader
  */
 
-export const GUARD_PATTERNS = ["after_loss", "first_trade", "rule_violation", "near_stop"] as const;
+import type { RulesCfg } from "./rules";
+
+export const GUARD_PATTERNS = ["after_loss", "first_trade", "rule_violation", "near_stop", "reentry", "green_to_red", "open_window", "idea_limit"] as const;
+/** Desk rule patterns (rules.ts): raised for everyone, not gated by the personal profile. */
+export const RULE_PATTERNS = ["reentry", "green_to_red", "open_window", "idea_limit"] as const;
+export type RulePattern = (typeof RULE_PATTERNS)[number];
+/** Personal patterns (profile.ts): raised only when they cost this trader money. */
+export type PersonalPattern = Exclude<GuardPattern, RulePattern>;
+export const isRulePattern =(p: string): p is RulePattern => (RULE_PATTERNS as readonly string[]).includes(p);
 export type GuardPattern = (typeof GUARD_PATTERNS)[number];
 
 export const GUARD_LEVELS = ["soft", "firm", "hard"] as const;
@@ -39,6 +48,9 @@ export type GuardTrade = {
   entryAt: number | null;
   exitAt: number | null;
   horizon: "intraday" | "overnight" | "swing";
+  /** Ticker / side (ticker-scoped rule events count only later entries in the same ticker). */
+  ticker?: string;
+  side?: "long" | "short" | null;
 };
 
 /** A trader's personal numbers for one pattern (lookback history). */
@@ -68,7 +80,7 @@ export type PersonalProfile = Partial<Record<GuardPattern, PatternStat>>;
 /** Guard settings resolved from the desk registry (lib/leakGuard/config.ts). */
 export type GuardConfig = {
   enabled: boolean;
-  patterns: Record<GuardPattern, boolean>;
+  patterns: Record<PersonalPattern, boolean>;
   pauseMinutes: number;
   violationPauseMinutes: number;
   nearStopPauseMinutes: number;
@@ -85,6 +97,8 @@ export type GuardConfig = {
   levelByStage: Record<"junior" | "trader" | "senior", LevelChoice>;
   quiet: { enabled: boolean; fromMin: number; toMin: number };
   telegram: boolean;
+  /** Desk rule patterns (rules.ts). */
+  rules: RulesCfg;
 };
 
 /** A detected event before it is stored. */

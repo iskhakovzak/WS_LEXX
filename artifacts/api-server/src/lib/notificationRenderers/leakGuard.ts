@@ -22,11 +22,15 @@ const leakGuard: NotificationRenderer = ({ params, lang, tr, variant }) => {
   const usd = str(params.usd) ?? "";
   let title: string | undefined;
   let body: string | undefined;
+  // Rule patterns (reentry, green_to_red, open_window, idea_limit) name a ticker, an entry count or a $ limit.
+  const ticker = str(params.ticker) ?? "";
+  const entries = typeof params.entries === "number" ? params.entries : 0;
+  const limit = str(params.limit) ?? "";
   if (variant === "trader") {
-    title = tr(`leak_guard.trader.${pattern}.title`, { minutes, until: until ?? "" });
+    title = tr(`leak_guard.trader.${pattern}.title`, { minutes, until: until ?? "", ticker, entries, limit });
     const level = str(params.levelCode);
     const tail = level ? tr(`leak_guard.level.${level}`) : undefined;
-    body = [tr(`leak_guard.trader.${pattern}.body`, { usd }), tail].filter(Boolean).join(" ");
+    body = [tr(`leak_guard.trader.${pattern}.body`, { usd, ticker, entries, limit }), tail].filter(Boolean).join(" ");
   } else {
     const trader = str(params.trader);
     if (!trader) return null;

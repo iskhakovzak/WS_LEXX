@@ -117,8 +117,15 @@ export default {
     month: { title: "Oy tahlili tayyor", body: "{period} dan boshlangan oyning AI-tahlili: natija, oy odatlari va keyingisi uchun bitta fokus." },
   },
   leak_guard: {
-    pattern: { after_loss: "zarardan keyin darhol kirish", first_trade: "kunning birinchi savdosi", rule_violation: "qoidabuzarlikdan keyingi savdolar", near_stop: "kunlik stop yonidagi savdolar" },
+    pattern: {
+      after_loss: "zarardan keyin darhol kirish", first_trade: "kunning birinchi savdosi", rule_violation: "qoidabuzarlikdan keyingi savdolar", near_stop: "kunlik stop yonidagi savdolar",
+      reentry: "bitta tikerga takroriy kirishlar", green_to_red: "kun minusga oʻtgandan keyin tezlashish", open_window: "9:30–10:00 oynasi limiti", idea_limit: "mualliflik / 3-darajali gʻoya limiti",
+    },
     trader: {
+      reentry: { title: "{ticker}: kun oxirigacha tiker boʻyicha stop", body: "Bu bir tomonga {entries}-kirish. Bugun {ticker} ga boshqa kirmang." },
+      green_to_red: { title: "Kun minusga oʻtdi — {minutes} daq. pauza, {until} gacha (NY)", body: "Minusga oʻtgandan keyin hajm yoki tezlikni oshirdingiz. Avval pauza, keyin odatdagi hajm." },
+      open_window: { title: "9:30–10:00 oynasi limiti tugadi — {until} gacha (NY)", body: "Birinchi yarim soat zarari {limit} limitga yetdi. 10:00 gacha yangi kirish yoʻq." },
+      idea_limit: { title: "{ticker}: gʻoya limiti — tiker boʻyicha stop", body: "Mualliflik yoki 3-darajali gʻoya: zarar {limit} dan oshmaydi va takroriy kirish yoʻq. Bugun {ticker} ni boshqa savdo qilmang." },
       after_loss: { title: "{minutes} daq. pauza — {until} gacha (NY)", body: "Zarardan keyin darhol kirish sizga har savdoda oʻrtacha {usd} ga tushadi." },
       first_trade: { title: "Kunning birinchi savdosi — yarim hajmda", body: "Kunning birinchi savdosi sizga oʻrtacha {usd} ga tushadi. Odatdagi hajmning yarmidan boshlang." },
       rule_violation: { title: "Qoida buzildi — {minutes} daq. pauza, {until} gacha (NY)", body: "Qoidabuzarlikdan keyin har savdoda oʻrtacha {usd} yoʻqotasiz." },

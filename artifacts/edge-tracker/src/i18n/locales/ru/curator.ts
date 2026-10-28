@@ -601,6 +601,7 @@ export default {
       focus_brokenDay: "Фокус «{mistake}» нарушен",
       disputedDay: "Трейдер отметил «не ошибка» по фокусу «{mistake}» — посмотрите день",
       giveback: "Пик дня {peak}, закрыл {close} — недобрал {missed} (не убыток деска)",
+      givebackStops: "Отдал с пика {stops} дневного стопа: пик {peak}, закрыл {close} — разобрать, где надо было остановиться",
       rule: "Нарушений правил: {count} · «{rule}»",
       ruleMany: "Нарушений правил: {count} · «{rule}» и ещё {more}",
     },

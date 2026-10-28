@@ -42,6 +42,10 @@ function shown(e: GuardEventRow) {
     minutes: typeof e.stats.minutes === "number" ? e.stats.minutes : null, ackedAt: e.ackedAt, escalatedAt: e.escalatedAt,
     riskNotifiedAt: e.riskNotifiedAt, releasedAt: e.releasedAt, releasedBy: e.releasedBy, outcome: e.outcome, outcomeNet: e.outcomeNet,
     saved: e.saved, lost: e.lost, atRiskTradeIds: e.atRiskTradeIds, lagSec: lagOf(e),
+    // Rule patterns (lib/leakGuard/rules.ts): the ticker of a ticker-scoped stop, the entry count, the $ limit.
+    ticker: typeof e.stats.ticker === "string" ? e.stats.ticker : null,
+    entries: typeof e.stats.entries === "number" ? e.stats.entries : null,
+    limitUsd: typeof e.stats.limit === "number" ? e.stats.limit : null,
   };
 }
 

@@ -598,6 +598,7 @@ export default {
       focus_brokenDay: "Focus «{mistake}» broken",
       disputedDay: "The trader marked the focus «{mistake}» as «not a mistake» — take a look at the day",
       giveback: "Day peak {peak}, closed at {close} — {missed} left on the table (not a desk loss)",
+      givebackStops: "Gave back {stops} daily stops from the peak: peak {peak}, closed at {close} — review where to stop",
       rule: "Rule violations: {count} · «{rule}»",
       ruleMany: "Rule violations: {count} · «{rule}» and {more} more",
     },

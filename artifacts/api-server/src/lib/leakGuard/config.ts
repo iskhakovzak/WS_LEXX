@@ -52,6 +52,15 @@ export function guardConfig(read: Read, telegramAllowed: boolean): GuardConfig {
       toMin: hhmmToMin(read("leakGuard.quietTo"), 16 * 60),
     },
     telegram: telegramAllowed && bool(read("leakGuard.telegram"), false),
+    rules: {
+      reentry: bool(read("leakGuard.reentry"), true),
+      greenToRed: bool(read("leakGuard.greenToRed"), true),
+      openWindow: bool(read("leakGuard.openWindow"), true),
+      ideaLimits: bool(read("leakGuard.ideaLimits"), true),
+      maxReentries: num(read("flow.maxReentries"), 2),
+      g2r: { sizeRatio: num(read("flow.g2rSizeRatio"), 1.3), paceRatio: num(read("flow.g2rPaceRatio"), 1.5), minAfter: num(read("flow.g2rMinAfter"), 2) },
+      g2rPauseMinutes: num(read("flow.g2rPauseMinutes"), 15),
+    },
   };
 }
 
