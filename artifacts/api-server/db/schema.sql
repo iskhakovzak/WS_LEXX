@@ -220,6 +220,7 @@ CREATE SEQUENCE public.notification_batch_items_id_seq AS bigint START WITH 1 IN
 CREATE SEQUENCE public.notifications_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.plan_media_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.plan_templates_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.playbook_cases_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.playbook_checklist_runs_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.playbook_examples_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.playbook_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -2109,6 +2110,29 @@ CREATE TABLE public.playbook (
   CONSTRAINT playbook_regimes_check CHECK (regimes <@ ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text])
 );
 
+CREATE TABLE public.playbook_cases (
+  id integer DEFAULT nextval('public.playbook_cases_id_seq'::regclass) NOT NULL,
+  playbook_id integer NOT NULL,
+  ticker text NOT NULL,
+  day text NOT NULL,
+  entry_time text,
+  exit_time text,
+  side text,
+  note text,
+  added_by text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT playbook_cases_pkey PRIMARY KEY (id),
+  CONSTRAINT playbook_cases_added_by_check CHECK (char_length(added_by) >= 1 AND char_length(added_by) <= 200),
+  CONSTRAINT playbook_cases_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT playbook_cases_entry_time_check CHECK (entry_time IS NULL OR entry_time ~ '^([01]\d|2[0-3]):[0-5]\d$'::text),
+  CONSTRAINT playbook_cases_exit_time_check CHECK (exit_time IS NULL OR exit_time ~ '^([01]\d|2[0-3]):[0-5]\d$'::text),
+  CONSTRAINT playbook_cases_note_check CHECK (note IS NULL OR char_length(note) <= 2000),
+  CONSTRAINT playbook_cases_side_check CHECK (side = ANY (ARRAY['long'::text, 'short'::text])),
+  CONSTRAINT playbook_cases_ticker_check CHECK (ticker ~ '^[A-Z0-9][-A-Z0-9.]{0,11}$'::text)
+);
+
 CREATE TABLE public.playbook_checklist_marks (
   playbook_id integer NOT NULL,
   item_id text NOT NULL,
@@ -3623,6 +3647,7 @@ ALTER SEQUENCE public.notification_batch_items_id_seq OWNED BY public.notificati
 ALTER SEQUENCE public.notifications_id_seq OWNED BY public.notifications.id;
 ALTER SEQUENCE public.plan_media_id_seq OWNED BY public.plan_media.id;
 ALTER SEQUENCE public.plan_templates_id_seq OWNED BY public.plan_templates.id;
+ALTER SEQUENCE public.playbook_cases_id_seq OWNED BY public.playbook_cases.id;
 ALTER SEQUENCE public.playbook_checklist_runs_id_seq OWNED BY public.playbook_checklist_runs.id;
 ALTER SEQUENCE public.playbook_examples_id_seq OWNED BY public.playbook_examples.id;
 ALTER SEQUENCE public.playbook_id_seq OWNED BY public.playbook.id;
@@ -3807,6 +3832,8 @@ CREATE INDEX playbook_parent_active_idx ON public.playbook USING btree (parent_i
 CREATE INDEX playbook_setup_type_idx ON public.playbook USING btree (setup_type);
 CREATE INDEX playbook_space_trader_idx ON public.playbook USING btree (space, trader) WHERE (deleted_at IS NULL);
 CREATE INDEX playbook_trader_idx ON public.playbook USING btree (trader);
+CREATE INDEX playbook_cases_setup_idx ON public.playbook_cases USING btree (playbook_id) WHERE (deleted_at IS NULL);
+CREATE INDEX playbook_cases_ticker_day_idx ON public.playbook_cases USING btree (ticker, day) WHERE (deleted_at IS NULL);
 CREATE INDEX playbook_checklist_marks_playbook_idx ON public.playbook_checklist_marks USING btree (playbook_id);
 CREATE INDEX playbook_checklist_runs_playbook_idx ON public.playbook_checklist_runs USING btree (playbook_id);
 CREATE INDEX playbook_checklist_runs_trade_idx ON public.playbook_checklist_runs USING btree (trade_id);
@@ -3951,6 +3978,7 @@ ALTER TABLE public.discussion_votes ADD CONSTRAINT discussion_votes_discussion_i
 ALTER TABLE public.feed_acks ADD CONSTRAINT feed_acks_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES public.daily_feed(id) ON DELETE CASCADE;
 ALTER TABLE public.finviz_screener_rows ADD CONSTRAINT finviz_screener_rows_last_run_id_fkey FOREIGN KEY (last_run_id) REFERENCES public.finviz_runs(id);
 ALTER TABLE public.game_plan_reads ADD CONSTRAINT game_plan_reads_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.game_plans(id) ON DELETE CASCADE;
+ALTER TABLE public.playbook_cases ADD CONSTRAINT playbook_cases_playbook_id_fkey FOREIGN KEY (playbook_id) REFERENCES public.playbook(id) ON DELETE CASCADE;
 ALTER TABLE public.research_pins ADD CONSTRAINT research_pins_research_id_fkey FOREIGN KEY (research_id) REFERENCES public.research(id) ON DELETE CASCADE;
 ALTER TABLE public.reward_grants ADD CONSTRAINT reward_grants_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.reward_items(id);
 ALTER TABLE public.rule_self_checks ADD CONSTRAINT rule_self_checks_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.trading_rules(id) ON DELETE CASCADE;

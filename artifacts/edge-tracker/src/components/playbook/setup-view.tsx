@@ -29,6 +29,7 @@ import { http } from "@/lib/api/http";
 import { ConfidenceMeter, DocSection, redactedAggHint, SetupTypePill, TagChips } from "./setup-bits";
 import { ExamplesBoard } from "./examples-board";
 import { ExamplesSection } from "./examples-section";
+import { PlaybookCasesSection } from "./cases-section";
 import { LinkedTradesSection } from "./linked-trades-section";
 import { SubSetupsSection } from "./sub-setups-section";
 import { RelatedSetupsSection, SetupHighlights } from "./highlights";
@@ -340,6 +341,7 @@ export function SetupView({
               <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">{t("view.boardNotLive")}</p>
             )}
             <ExamplesSection entryId={entry.id} canEdit={access.canEdit} />
+            {live && <PlaybookCasesSection setupId={entry.id} canEdit={access.canEdit} viewerName={viewer.name} />}
           </div>
         )}
         {tab === "stats" && (

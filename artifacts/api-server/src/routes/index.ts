@@ -76,6 +76,7 @@ import marketRegimeRouter from "./market-regime";
 import catalystsRouter from "./catalysts";
 import analystSignalsRouter from "./analyst-signals";
 import corpEventsRouter from "./corp-events";
+import analoguesRouter from "./analogues";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -143,6 +144,7 @@ router.use("/playbook", (req, res, next) => {
   next();
 });
 router.use(playbookTodayRouter); // before playbookRouter: /playbook/today is not a setup id
+router.use(analoguesRouter); // playbook cases, «похожие прошлые случаи», the academy quiz «на что похоже»
 router.use(playbookRouter);
 router.use(playbookSpacesRouter);
 router.use(activityRouter);

@@ -117,6 +117,7 @@ const TEXT: Record<string, readonly string[]> = {
   plan_media: ["owner"],
   plan_templates: ["author"],
   playbook: ["copied_from_author", "created_by", "office_proposed_by", "reviewed_by", "shared_by", "trader"],
+  playbook_cases: ["added_by"],
   playbook_checklist_marks: ["trader"],
   playbook_checklist_runs: ["trader"],
   playbook_examples: ["added_by"],

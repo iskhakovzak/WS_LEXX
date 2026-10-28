@@ -169,6 +169,8 @@ export async function collectTargetRows(): Promise<{ symbol: string; day: string
        FROM playbook_examples e JOIN trades t ON t.id = e.trade_id
       WHERE e.deleted_at IS NULL AND t.date ~ '^\\d{4}-\\d{2}-\\d{2}'`,
     `SELECT ticker, left(idea_date, 10) FROM trade_ideas WHERE deleted_at IS NULL AND idea_date ~ '^\\d{4}-\\d{2}-\\d{2}'`,
+    // Playbook cases (migration 0286: a ticker + day of a setup, not our trade) — the analogue charts and the quiz.
+    `SELECT ticker, day FROM playbook_cases WHERE deleted_at IS NULL`,
   ];
   const { rows: reg } = await pool.query<{ sim: string | null }>(`SELECT to_regclass('public.sim_games')::text AS sim`);
   if (reg[0]?.sim) parts.push(`SELECT ticker, left(day, 10) FROM sim_games WHERE mode = 'intraday' AND day ~ '^\\d{4}-\\d{2}-\\d{2}'`);

@@ -30,6 +30,7 @@ import { fmtCompact, fmtDate, fmtPct, fmtPrice, fmtR, fmtRate, fmtRelative, fmtU
 import type { RowActions } from "./WatchlistRow";
 import type { WlRow } from "./WatchlistTable";
 import { CatalystTaps } from "@/components/shared/strategy/catalyst-taps";
+import { AnaloguesButton } from "@/components/shared/analogues/analogues-sheet";
 
 import { personName } from "@/i18n";
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
@@ -346,6 +347,7 @@ export function WatchlistDetailSheet({
                 </div>
               )}
               {me && <CatalystTaps ticker={item.ticker} date={planDay} source="watchlist" gapPct={row.quote?.gapPct ?? null} className="mb-3" />}
+              {me && <AnaloguesButton ticker={item.ticker} day={planDay} className="mb-3 -ml-2" />}
               <NotesEditor item={item} canEdit={mayModify} onSave={(n) => actions.saveNote(item, n)} />
             </Section>
 

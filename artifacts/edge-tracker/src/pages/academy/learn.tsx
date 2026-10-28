@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { BookOpen, BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler, TrendingUp } from "lucide-react";
+import { BookOpen, BookOpenCheck, Database, GraduationCap, Inbox, Loader2, PencilRuler, Puzzle, TrendingUp } from "lucide-react";
+import { AnalogueQuiz } from "@/components/academy/analogue-quiz";
+import { analoguesI18n } from "@/i18n/ns/analogues";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +29,7 @@ const REVIEW_STATUSES: readonly ReviewStatus[] = ["submitted", "returned", "grad
  * URL: ?program=<id>&tab=catalog|review|progress&user=<ученик> (staff смотрит прогресс глазами ученика).
  */
 
-type Tab = "catalog" | "review" | "progress";
+type Tab = "catalog" | "review" | "progress" | "quiz";
 const SEED_KEYS = ["programs", "modules", "lessons", "quizzes", "assignments"] as const;
 /** «уроков: 6, тестов: 2» from the seed response (unknown keys are shown as is). */
 const seedSummary = (created: Record<string, number>) =>
@@ -51,7 +53,7 @@ export default function AcademyLearn() {
   const staff = isCurator || !!meta.data?.staff;
 
   const tabParam = params.get("tab");
-  const tab: Tab = staff && (tabParam === "review" || tabParam === "progress") ? tabParam : "catalog";
+  const tab: Tab = staff && (tabParam === "review" || tabParam === "progress") ? tabParam : tabParam === "quiz" ? tabParam : "catalog";
   const viewUser = staff ? params.get("user") ?? "" : "";
   const programParam = Number(params.get("program")) || null;
 
@@ -129,18 +131,19 @@ export default function AcademyLearn() {
           </>
         ) : undefined}
       >
-        {staff && (
-          <SectionTabs
-            ariaLabel={t("learn.tabsAria")}
-            value={tab}
-            onChange={(v) => setParams({ tab: v === "catalog" ? null : v })}
-            tabs={[
-              { value: "catalog", label: t("learn.tabCourses"), icon: BookOpenCheck },
+        <SectionTabs
+          ariaLabel={t("learn.tabsAria")}
+          value={tab}
+          onChange={(v) => setParams({ tab: v === "catalog" ? null : v })}
+          tabs={[
+            { value: "catalog", label: t("learn.tabCourses"), icon: BookOpenCheck },
+            { value: "quiz", label: analoguesI18n.t("quiz.tab"), icon: Puzzle },
+            ...(staff ? [
               { value: "review", label: t("learn.tabReview"), icon: Inbox, count: pending || undefined },
               { value: "progress", label: t("learn.tabProgress"), icon: TrendingUp },
-            ]}
-          />
-        )}
+            ] : []),
+          ]}
+        />
       </PageHeader>
 
       {tab === "catalog" && (
@@ -190,6 +193,8 @@ export default function AcademyLearn() {
           )}
         </>
       )}
+
+      {tab === "quiz" && <AnalogueQuiz />}
 
       {tab === "review" && staff && (
         <>
