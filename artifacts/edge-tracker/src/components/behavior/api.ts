@@ -304,29 +304,6 @@ export function useSetupAggregates(trader: string | null, range: Range, withSetu
 }
 
 /** Принять предложение: пишет setup в сделку тем же механизмом, что правка сделки. */
-export function useAcceptSetup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ tradeId, setup }: { tradeId: number; setup?: string }) =>
-      http.post<{ ok: boolean; tradeId: number; setup: string }>(`/api/setups-auto/${tradeId}/accept`, setup ? { setup } : {}),
-    onSuccess: async (_d, v) => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: setupsAutoKeys.all }),
-        qc.invalidateQueries({ queryKey: behaviorKeys.all }),
-        invalidateTradeDependents(qc, { tradeId: v.tradeId }),
-      ]);
-    },
-  });
-}
-
-export function useRejectSetup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ tradeId }: { tradeId: number }) => http.post<{ ok: boolean }>(`/api/setups-auto/${tradeId}/reject`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: setupsAutoKeys.all }),
-  });
-}
-
 export function useRecomputeSetup() {
   const qc = useQueryClient();
   return useMutation({

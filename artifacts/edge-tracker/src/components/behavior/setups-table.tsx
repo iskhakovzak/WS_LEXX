@@ -17,9 +17,10 @@ import { toast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  fmtClock, fmtMinutes, useAcceptBulk, useAcceptSetup, useRecomputeSetup, useRejectSetup,
+  fmtClock, fmtMinutes, useAcceptBulk, useRecomputeSetup,
   type SetupItem, type SuggestionStatus,
 } from "./api";
+import { useAcceptSetup, useRejectSetup } from "./setups-decide";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { behaviorI18n } from "@/i18n/ns/behavior";

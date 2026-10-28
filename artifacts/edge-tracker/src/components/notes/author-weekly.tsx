@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Quote, RefreshCw, Sparkles } from "lucide-react";
 import { Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
@@ -147,13 +148,14 @@ export function AuthorWeeklyCard({
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5 self-start"
+            className="relative gap-1.5 self-start"
             onClick={generate}
             disabled={gen.isPending || written === 0}
             title={written === 0 ? t("author.weekly.noEntries") : undefined}
           >
             {gen.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
             {gen.isPending ? t("author.weekly.analyzing") : summary ? t("author.weekly.rebuild") : t("author.weekly.build")}
+            {gen.isPending && <WaitProgress inButton expectedMs={20000} />}
           </Button>
         )}
       </div>

@@ -9,6 +9,7 @@ import { screenshotUrlsToString } from "@/components/screenshot-fields";
 import type { TradeIdeaFormData } from "@/components/trade-idea-form";
 import { horizonOf, type IdeaComment, type TradeIdea, type TrackingResponse } from "./model";
 import { ideasI18n } from "@/i18n/ns/ideas";
+import { optimistic } from "@/hooks/optimistic";
 
 /** GET /api/trade-ideas — one key for the ideas page, stats, ratings and global search (lib/api/queries). */
 export const IDEAS_KEY = KEYS.tradeIdeas();
@@ -112,26 +113,40 @@ export function useIdeaMutations() {
     onError: fail(() => t("toast.reviewFailed")),
   });
 
+  type ReactVars = { id: number; reaction?: string; remove?: boolean };
+  /** Own reaction flips at click time (optimistic); a failed write rolls back with the same error toast. */
   const react = useMutation({
-    mutationFn: ({ id, reaction, remove: rm }: { id: number; reaction?: string; remove?: boolean }) =>
+    mutationFn: ({ id, reaction, remove: rm }: ReactVars) =>
       rm
         ? http.del(`/api/trade-ideas/${id}/reactions`)
         : http.post(`/api/trade-ideas/${id}/reactions`, { reaction }),
-    onSuccess: invalidate,
-    onError: fail(() => t("toast.reactionFailed")),
+    ...optimistic<ReactVars, TradeIdea[]>(qc, {
+      queryKey: IDEAS_KEY,
+      update: (list, v) => (user?.traderName ? withOwnReaction(list, v, user.traderName) : list),
+      onError: fail(() => t("toast.reactionFailed")),
+    }),
   });
 
-  /** Opening an idea marks its notifications read; refresh the header bell (layout query keys). */
+  /** Opening an idea marks its notifications read; the unread dot goes at once, then the header bell refreshes. */
   const markRead = useMutation({
     mutationFn: (id: number) => http.patch(`/api/notifications/read-idea/${id}`),
-    onSuccess: () => {
-      invalidate();
-      if (user?.traderName) {
-        qc.invalidateQueries({ queryKey: ["notifications-count", user.traderName] });
-        qc.invalidateQueries({ queryKey: ["notifications", user.traderName] });
-      }
-    },
+    ...optimistic<number, TradeIdea[]>(qc, {
+      queryKey: IDEAS_KEY,
+      update: (list, id) => list.map((i) => (i.id === id && i.unreadCount ? { ...i, unreadCount: 0 } : i)),
+      invalidate: () => (user?.traderName ? [["notifications-count", user.traderName], ["notifications", user.traderName]] : []),
+    }),
   });
 
   return { create, update, publish, resubmit, remove, review, react, markRead };
+}
+
+/** Pure: the list after `me` sets / changes / removes the own reaction on one idea (the server keeps one per trader). */
+function withOwnReaction(list: TradeIdea[], v: { id: number; reaction?: string; remove?: boolean }, me: string): TradeIdea[] {
+  return list.map((i) => {
+    if (i.id !== v.id) return i;
+    const others = i.reactions.filter((r) => r.trader !== me);
+    if (v.remove || !v.reaction) return { ...i, reactions: others };
+    const mine = i.reactions.find((r) => r.trader === me);
+    return { ...i, reactions: [...others, { id: mine?.id ?? -Date.now(), tradeIdeaId: i.id, trader: me, reaction: v.reaction, comment: mine?.comment ?? null, createdAt: mine?.createdAt ?? new Date().toISOString() }] };
+  });
 }

@@ -10,6 +10,7 @@ import {
   NOTIF_KEYS, filterParams, notificationsApi,
   type ListFilters, type Notification, type NotificationPage, type Prefs, type UnreadCount,
 } from "./model";
+import { patchQueries, restoreQueries, toastMutationError, type OptimisticSnapshot } from "@/hooks/optimistic";
 
 export const COUNT_POLL_MS = 45_000;
 
@@ -70,61 +71,80 @@ export function useInvalidateNotifications() {
   }, [qc, me]);
 }
 
-/** Optimistically flip `isRead` / `archivedAt` on every cached list page so the UI reacts instantly. */
+type ListCache = { pages: NotificationPage[]; pageParams: unknown[] };
+type Patch = Partial<Notification> | ((n: Notification) => Notification);
+
+/**
+ * Optimistically flip `isRead` / `archivedAt` on every cached list page so the UI reacts instantly; resolves to the
+ * snapshot for the rollback (hooks/optimistic). The unread badge is not guessed: it refetches when the write settles.
+ */
 function usePatchCached() {
   const qc = useQueryClient();
   const me = useMe();
   return useCallback(
-    (ids: Set<number> | "all", patch: Partial<Notification> | ((n: Notification) => Notification), dropArchived = false) => {
-      qc.setQueriesData<{ pages: NotificationPage[]; pageParams: unknown[] }>({ queryKey: ["notifications", me] }, (old) => {
+    (ids: Set<number> | "all", patch: Patch, dropArchived = false, pick: (n: Notification) => boolean = () => true) =>
+      patchQueries<ListCache>(qc, ["notifications", me], (old) => {
         if (!old?.pages) return old;
+        const hit = (n: Notification) => (ids === "all" || ids.has(n.id)) && pick(n);
         return {
           ...old,
           pages: old.pages.map((p) => ({
             ...p,
             items: p.items
-              .map((n) => (ids === "all" || ids.has(n.id) ? (typeof patch === "function" ? patch(n) : { ...n, ...patch }) : n))
-              .filter((n) => !(dropArchived && (ids === "all" || ids.has(n.id)))),
+              .map((n) => (hit(n) ? (typeof patch === "function" ? patch(n) : { ...n, ...patch }) : n))
+              .filter((n) => !(dropArchived && hit(n))),
           })),
         };
-      });
-    },
+      }),
     [qc, me],
   );
 }
 
 export function useNotificationActions() {
+  const qc = useQueryClient();
   const invalidate = useInvalidateNotifications();
   const patch = usePatchCached();
   const now = () => new Date().toISOString();
+  // A failed write puts the cached pages back and shows the app's error toast; the lists refetch either way.
+  const rollback = <V,>(error: Error, _v: V, snapshot: OptimisticSnapshot | undefined) => {
+    restoreQueries(qc, snapshot);
+    toastMutationError(error);
+  };
 
   const readMany = useMutation({
     mutationFn: (ids: number[]) => notificationsApi.readMany(ids),
     onMutate: (ids) => patch(new Set(ids), { isRead: true, readAt: now() }),
+    onError: rollback,
     onSettled: invalidate,
   });
   const unreadMany = useMutation({
     mutationFn: (ids: number[]) => notificationsApi.unreadMany(ids),
     onMutate: (ids) => patch(new Set(ids), { isRead: false, readAt: null }),
+    onError: rollback,
     onSettled: invalidate,
   });
   const readAll = useMutation({
     mutationFn: (type?: string) => notificationsApi.readAll(type),
     onMutate: (type) => patch("all", (n) => (!type || n.type === type ? { ...n, isRead: true, readAt: now() } : n)),
+    onError: rollback,
     onSettled: invalidate,
   });
   const archive = useMutation({
     mutationFn: (ids: number[]) => notificationsApi.archive(ids),
     onMutate: (ids) => patch(new Set(ids), { isRead: true, archivedAt: now() }, true),
+    onError: rollback,
     onSettled: invalidate,
   });
   const archiveRead = useMutation({
     mutationFn: () => notificationsApi.archiveRead(),
+    onMutate: () => patch("all", { archivedAt: now() }, true, (n) => n.isRead && !n.archivedAt),
+    onError: rollback,
     onSettled: invalidate,
   });
   const unarchive = useMutation({
     mutationFn: (ids: number[]) => notificationsApi.unarchive(ids),
     onMutate: (ids) => patch(new Set(ids), { archivedAt: null }, true),
+    onError: rollback,
     onSettled: invalidate,
   });
 

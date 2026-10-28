@@ -6,6 +6,7 @@ import * as React from "react";
 import { Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Textarea } from "@/components/ui/textarea";
 import { Pill } from "@/components/ds";
 import { toast } from "@/hooks/use-toast";
@@ -96,7 +97,7 @@ function PickerBody({ onOpenChange, date, current, note: currentNote, suggestion
         <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} placeholder={t("set.notePlaceholder")} />
       </label>
       <DialogFooter>
-        <Button type="button" onClick={submit} disabled={!picked || save.isPending}>{t("set.save")}</Button>
+        <Button type="button" onClick={submit} disabled={!picked || save.isPending} aria-busy={save.isPending}><PendingIcon pending={save.isPending} />{t("set.save")}</Button>
       </DialogFooter>
     </>
   );

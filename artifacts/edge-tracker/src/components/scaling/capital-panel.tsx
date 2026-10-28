@@ -7,6 +7,7 @@ import * as React from "react";
 import { Check, RefreshCw, Scale } from "lucide-react";
 import { DataTable, EmptyState, Panel, StatCard, StatGrid } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
@@ -98,7 +99,7 @@ export function CapitalPanel({ canDecide, onOpenTrader }: { canDecide: boolean; 
       </Button>
       {pendingIds.length > 0 && (
         <Button size="sm" onClick={runApproveAll} disabled={approveAll.isPending} title={t("approveAllTitle")}>
-          <Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("approveAll", { count: pendingIds.length })}
+          <PendingIcon pending={approveAll.isPending} icon={Check} className="h-3.5 w-3.5" /> {t("approveAll", { count: pendingIds.length })}
         </Button>
       )}
     </div>

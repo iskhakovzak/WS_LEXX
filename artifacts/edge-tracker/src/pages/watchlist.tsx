@@ -474,17 +474,23 @@ export default function Watchlist() {
         toast({ title: wt("toast.restored") });
       } catch (e) { toast({ title: wt("toast.restoreDeletedFailed"), description: errMsg(e), variant: "destructive" }); }
     };
+    // Optimistic (a soft delete with «Отменить»): the rows leave at once; a refused delete puts them back.
+    await qc.cancelQueries({ queryKey: listKey });
+    const prev = qc.getQueryData<WatchlistItem[]>(listKey);
+    qc.setQueryData<WatchlistItem[]>(listKey, (old) => old?.filter((i) => !ids.includes(i.id)));
+    setDeleting(null);
+    setSelected(new Set());
+    if (openId != null && ids.includes(openId)) setOpenId(null);
     try {
       // Soft delete on the server (restorable).
       if (ids.length === 1) await http.del(`/api/watchlist/${ids[0]}`);
       else await bulk({ ids, action: "delete" });
-      void invalidate();
-      setDeleting(null);
-      setSelected(new Set());
-      if (openId != null && ids.includes(openId)) setOpenId(null);
       toast({ title: label, action: <ToastAction altText={wt("toast.undoDelete")} onClick={undo}>{commonI18n.t("actions.undo")}</ToastAction> });
     } catch (e) {
+      if (prev) qc.setQueryData(listKey, prev);
       toast({ title: wt("toast.deleteFailed"), description: errMsg(e), variant: "destructive" });
+    } finally {
+      void invalidate();
     }
   };
 

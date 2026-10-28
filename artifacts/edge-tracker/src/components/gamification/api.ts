@@ -17,7 +17,8 @@ import { http } from "@/lib/api/http";
 import { apiErrorStatus } from "@/lib/api/errors";
 import { KEYS, STALE } from "@/lib/api/keys";
 import { gamificationMeQuery } from "@/lib/api/queries";
-import type { LeagueState, RewardGrant, RewardItem, SeasonState } from "@/lib/gamification/types";
+import type { GamificationMe, LeagueState, RewardGrant, RewardItem, SeasonState } from "@/lib/gamification/types";
+import { optimistic } from "@/hooks/optimistic";
 
 /** `members`: the viewer's own team (curators only). */
 export type LeagueView = LeagueState;
@@ -114,11 +115,17 @@ function useInvalidate() {
   return () => void qc.invalidateQueries({ queryKey: gamificationKeys.all });
 }
 
+/** Optimistic: the own title switches at once (the caller toasts the result). */
 export function useSetTitle() {
-  const invalidate = useInvalidate();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (key: string | null) => http.put<unknown>("/api/gamification/title", { key }),
-    onSuccess: invalidate,
+    ...optimistic<string | null, GamificationMe | null>(qc, {
+      queryKey: [...gamificationKeys.all, "me"],
+      update: (me, key) => (me ? { ...me, activeTitle: key } : me),
+      invalidate: [gamificationKeys.all],
+      onError: () => {},
+    }),
   });
 }
 

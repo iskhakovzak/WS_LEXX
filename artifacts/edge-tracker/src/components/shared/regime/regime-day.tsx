@@ -12,6 +12,7 @@ import * as React from "react";
 import { Gauge } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -63,7 +64,7 @@ function SuggestionBlock({ s, loading, onConfirm, onChange, pending, variant }: 
         )}
       </div>
       <div className="flex shrink-0 flex-wrap gap-1.5">
-        {s && <Button type="button" size="sm" onClick={onConfirm} disabled={pending}>{t("set.confirm")}</Button>}
+        {s && <Button type="button" size="sm" onClick={onConfirm} disabled={pending} aria-busy={pending}><PendingIcon pending={pending} />{t("set.confirm")}</Button>}
         <Button type="button" size="sm" variant={s ? "outline" : "default"} onClick={onChange}>{t(s ? "set.change" : "set.choose")}</Button>
       </div>
     </div>

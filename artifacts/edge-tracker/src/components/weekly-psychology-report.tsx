@@ -9,6 +9,7 @@ import { STALE } from "@/lib/api/keys";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Pill, EmptyState, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
@@ -235,9 +236,10 @@ export function WeeklyPsychologyReport() {
           title={t("psych.emptyTitle")}
           description={t("psych.emptyDesc")}
           action={
-            <Button size="sm" onClick={() => void handleGenerate()} disabled={generating}>
+            <Button size="sm" className="relative" onClick={() => void handleGenerate()} disabled={generating}>
               <RefreshCw className={cn(generating && "motion-safe:animate-spin")} aria-hidden="true" />
               {generating ? t("psych.building") : t("psych.build")}
+              {generating && <WaitProgress inButton expectedMs={25000} />}
             </Button>
           }
           className="py-6"
@@ -254,9 +256,10 @@ export function WeeklyPsychologyReport() {
                 {recalcWeeks && !recalcWeeks.includes(report.weekStart) ? t("psych.staleOnlyRecent") : ""}
               </span>
               {(!recalcWeeks || recalcWeeks.includes(report.weekStart)) && (
-                <Button size="sm" variant="secondary" onClick={() => void handleGenerate(recalcWeeks ? report.weekStart : undefined)} disabled={generating}>
+                <Button size="sm" variant="secondary" className="relative" onClick={() => void handleGenerate(recalcWeeks ? report.weekStart : undefined)} disabled={generating}>
                   <RefreshCw className={cn(generating && "motion-safe:animate-spin")} aria-hidden="true" />
                   {t("psych.recalc")}
+                  {generating && <WaitProgress inButton expectedMs={25000} />}
                 </Button>
               )}
             </div>
@@ -264,9 +267,10 @@ export function WeeklyPsychologyReport() {
           {!report.stale && recalcWeeks && recalcWeeks.includes(report.weekStart) && !isCurrent && (
             <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
               <span>{t("psych.generatedAgo", { ago: relTime(report.generatedAt) })}</span>
-              <Button size="sm" variant="ghost" onClick={() => void handleGenerate(report.weekStart)} disabled={generating}>
+              <Button size="sm" variant="ghost" className="relative" onClick={() => void handleGenerate(report.weekStart)} disabled={generating}>
                 <RefreshCw className={cn(generating && "motion-safe:animate-spin")} aria-hidden="true" />
                 {t("psych.recalcThis")}
+                {generating && <WaitProgress inButton expectedMs={25000} />}
               </Button>
             </div>
           )}

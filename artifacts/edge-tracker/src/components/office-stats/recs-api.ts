@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { addDaysYmd } from "./pulse";
+import { optimistic } from "@/hooks/optimistic";
 
 export type RecKind = "leak" | "rule" | "fees" | "crowding" | "practice" | "attention" | "readiness" | "regime" | "juniorCost";
 export type Interval = { mean: number; lo: number; hi: number };
@@ -58,10 +59,18 @@ export function nextHiddenMap(hidden: readonly HiddenRec[], change: { hide?: str
   return out;
 }
 
+/** Pure: the answer as if the server already applied the hidden map (a hidden card leaves the list at once). */
+function withHidden(data: RecsResponse, map: Record<string, string>): RecsResponse {
+  const kindOf = new Map<string, RecKind>([...data.recs, ...data.hidden].map((r) => [r.id, r.kind]));
+  const hidden = Object.entries(map).flatMap(([id, until]) => { const kind = kindOf.get(id); return kind ? [{ id, until, kind }] : []; });
+  return { ...data, recs: data.recs.filter((r) => !(r.id in map)), hidden };
+}
+
+/** «Скрыть на неделю» / «Показать скрытые»: optimistic (a restored card comes back with the refetch). */
 export function useHideRec() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (map: Record<string, string>) => http.put("/api/users/me/settings", { officeRecsHidden: Object.keys(map).length ? map : null }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    ...optimistic<Record<string, string>, RecsResponse>(qc, { queryKey: KEY, update: withHidden }),
   });
 }

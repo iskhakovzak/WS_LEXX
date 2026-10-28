@@ -15,6 +15,7 @@ import { addDays, nyDate } from "@/lib/trading-date";
 import { personName } from "@/i18n";
 import { questsI18n } from "@/i18n/ns/quests";
 import { useDayTrades, useGiveKudos } from "./api";
+import { useAuth } from "@/contexts/auth-context";
 
 /** The last weekday before `today` (the day a curator usually looks back at). */
 export function lastTradingDay(today: string): string {
@@ -35,18 +36,23 @@ export function KudosDialog({ open, onOpenChange, trader }: { open: boolean; onO
   const [tradeId, setTradeId] = React.useState<string>("");
   const [note, setNote] = React.useState("");
   const trades = useDayTrades(open ? trader : null, day, addDays(day, 1));
-  const give = useGiveKudos();
+  const { user } = useAuth();
+  const give = useGiveKudos(user?.traderName ?? null);
   React.useEffect(() => { setTradeId(""); }, [day]);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Optimistic: close at once (the kudos already shows in the list); a refused one reopens with the note kept.
     give.mutate({ trader, day, tradeId: tradeId ? Number(tradeId) : null, note: note.trim() || undefined }, {
       onSuccess: () => {
         toast({ title: t("kudos.done") });
         setNote("");
-        onOpenChange(false);
       },
-      onError: (err) => toast({ title: t("kudos.failed"), description: humanizeApiError(err), variant: "destructive" }),
+      onError: (err) => {
+        toast({ title: t("kudos.failed"), description: humanizeApiError(err), variant: "destructive" });
+        onOpenChange(true);
+      },
     });
+    onOpenChange(false);
   };
   const fieldId = React.useId();
   return (

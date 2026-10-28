@@ -10,6 +10,7 @@ import * as React from "react";
 import { Link } from "wouter";
 import { AlertTriangle, Check, ChevronDown, Copy, FlaskConical, Loader2, RefreshCw, Target, ThumbsUp, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill, type Tone } from "@/components/ds";
 import { assistantI18n } from "@/i18n/ns/assistant";
@@ -180,9 +181,10 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
             </Button>
           ) : null}
           {period ? null : (
-            <Button type="button" variant={d ? "outline" : "default"} size="sm" onClick={() => run.mutate(!!d)} disabled={busy || loading} data-testid="button-ai-review">
+            <Button type="button" variant={d ? "outline" : "default"} size="sm" onClick={() => run.mutate(!!d)} disabled={busy || loading} className="relative" data-testid="button-ai-review">
               {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : d ? <RefreshCw aria-hidden="true" /> : <WsMark className="h-4 w-4" still />}
               {busy ? t("review.running") : d ? t("review.refresh") : t("review.run")}
+              {busy && d ? <WaitProgress inButton expectedMs={25000} /> : null}
             </Button>
           )}
         </div>
@@ -203,6 +205,7 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
       {(loading || busy) && !d ? (
         <div className="space-y-3" aria-busy="true">
           {busy ? <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t(subject.kind === "trade" ? "review.stepsTrade" : "review.stepsDay")}</p> : null}
+          {busy ? <WaitProgress expectedMs={25000} /> : null}
           <Skeleton className="h-4 w-3/4" />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{[0, 1].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
           <Skeleton className="h-14 rounded-xl" />

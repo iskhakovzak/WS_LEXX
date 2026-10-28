@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { OctagonPause, ShieldCheck } from "lucide-react";
 import { Panel, Pill, QueryState, TableScroll } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { fmtRate, fmtTimeNY, fmtUsd } from "@/lib/format";
@@ -41,11 +42,12 @@ function ActivePauses({ d, canEdit }: { d: GuardDesk; canEdit: boolean }) {
             <Pill tone={needsAck(e) ? "warn" : "up"}>{needsAck(e) ? t("desk.notAcked") : t("desk.acked")}</Pill>
             {e.riskNotifiedAt && <Pill>{t("desk.riskTold")}</Pill>}
             {canEdit && (
-              <Button size="sm" variant="outline" disabled={release.isPending}
+              <Button size="sm" variant="outline" disabled={release.isPending} aria-busy={release.isPending && release.variables === e.id}
                 onClick={() => release.mutate(e.id, {
                   onSuccess: () => toast({ title: t("desk.released"), description: personName(e.trader) }),
                   onError: () => toast({ title: t("desk.releaseFailed"), variant: "destructive" }),
                 })}>
+                <PendingIcon pending={release.isPending && release.variables === e.id} />
                 {t("desk.release")}
               </Button>
             )}

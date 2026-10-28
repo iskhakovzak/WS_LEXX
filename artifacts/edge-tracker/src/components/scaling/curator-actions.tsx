@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ArrowUpRight, ArrowDownRight, Flag, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +31,7 @@ export function ProposeButton({ row, size = "sm" }: { row: TraderEval; size?: "s
   };
   return (
     <Button size={size} variant={a === "promote" ? "default" : "outline"} onClick={submit} disabled={create.isPending} aria-label={t("curator.actionAria", { action: actionVerb(a), trader: personName(row.trader) })}>
-      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <PendingIcon pending={create.isPending} icon={Icon} className="h-3.5 w-3.5" />
       {actionVerb(a)}
     </Button>
   );

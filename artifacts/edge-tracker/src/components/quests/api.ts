@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { apiErrorStatus } from "@/lib/api/errors";
 import { KEYS, POLL, STALE } from "@/lib/api/keys";
+import { optimistic } from "@/hooks/optimistic";
 import type { AchievementCatalogEntry, AssignQuestBody, Quest, QuestsMe, TextItem } from "@/lib/quests/types";
 
 export const questKeys = {
@@ -112,12 +113,17 @@ export function useAssignQuest() {
   });
 }
 
-/** The curator marks a manual quest (curator_task) done. */
+/** The curator marks a manual quest (curator_task) done — optimistic on the profile; the caller toasts the result. */
 export function useCompleteQuest() {
-  const invalidate = useInvalidateQuests();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => http.post<unknown>(`/api/quests/${id}/complete`, {}),
-    onSuccess: invalidate,
+    ...optimistic<number, QuestsMe | null>(qc, {
+      queryKey: ["quests", "trader"],
+      update: (me, id) => (me ? { ...me, quests: me.quests.map((x) => (x.id === id && x.status === "active" ? { ...x, status: "done", completedAt: new Date().toISOString() } : x)) } : me),
+      invalidate: [questKeys.all, ["curator"]],
+      onError: () => {},
+    }),
   });
 }
 
@@ -179,14 +185,19 @@ export function useKudos(trader: string | null) {
   });
 }
 
-export function useGiveKudos() {
+type KudosBody = { trader: string; day: string; tradeId?: number | null; note?: string };
+
+/** Optimistic: the kudos tops the trader's list at once (temporary negative id until the refetch). The caller toasts. */
+export function useGiveKudos(author: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { trader: string; day: string; tradeId?: number | null; note?: string }) => http.post<{ ok: boolean; kudos: Kudos }>("/api/quests/kudos", body),
-    onSuccess: (_r, body) => {
-      void qc.invalidateQueries({ queryKey: ["quests", "kudos", body.trader] });
-      void qc.invalidateQueries({ queryKey: questKeys.trader(body.trader) });
-    },
+    mutationFn: (body: KudosBody) => http.post<{ ok: boolean; kudos: Kudos }>("/api/quests/kudos", body),
+    ...optimistic<KudosBody, { kudos: Kudos[] } | null>(qc, {
+      queryKey: (body) => ["quests", "kudos", body.trader],
+      update: (cur, b) => (cur && author ? { ...cur, kudos: [{ id: -Date.now(), trader: b.trader, author, day: b.day, tradeId: b.tradeId ?? null, note: b.note ?? null, createdAt: new Date().toISOString() }, ...cur.kudos] } : cur),
+      invalidate: (body) => [questKeys.trader(body.trader)],
+      onError: () => {},
+    }),
   });
 }
 

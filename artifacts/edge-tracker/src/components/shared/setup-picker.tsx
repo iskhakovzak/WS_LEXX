@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { http } from "@/lib/api/http";
 import { invalidateTradeDependents } from "@/lib/query-keys";
+import { optimistic } from "@/hooks/optimistic";
 import { cn } from "@/lib/utils";
 import { tradesI18n } from "@/i18n/ns/trades";
 
@@ -102,9 +103,14 @@ export function useSetupSuggestion(trade: TradeLike, enabled = true) {
 
 export function useAcceptSuggestion() {
   const qc = useQueryClient();
+  type Vars = { tradeId: number; playbookId?: number };
+  // Optimistic: the chip leaves at click time; a refused accept brings it back with the error toast.
+  const o = optimistic<Vars, unknown>(qc, { queryKey: (v) => [SUGG_KEY, v.tradeId], update: () => null });
   return useMutation({
-    mutationFn: (v: { tradeId: number; playbookId?: number }) =>
+    mutationFn: (v: Vars) =>
       http.post<{ playbookId: number | null; setup: string }>(`/api/setups-auto/${v.tradeId}/accept`, v.playbookId ? { playbookId: v.playbookId } : {}),
+    onMutate: o.onMutate,
+    onError: o.onError,
     onSuccess: (_d, v) => {
       qc.setQueryData([SUGG_KEY, v.tradeId], null);
       void invalidateTradeDependents(qc, { tradeId: v.tradeId });

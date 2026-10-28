@@ -6,6 +6,7 @@ import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Pill, Segmented } from "@/components/ds";
 import { commonI18n } from "@/i18n/ns/common";
@@ -107,10 +108,12 @@ export function PlaybookGenerateChecklistButton({
         onClick={() => mut.mutate()}
         disabled={mut.isPending || !playbookId}
         title={playbookId ? t("gen.buttonTitle") : t("gen.buttonTitleDisabled")}
-        className="min-h-8 px-3"
+        className="relative min-h-8 px-3"
+        aria-busy={mut.isPending}
       >
         <Sparkles className={cn("text-[hsl(var(--chart-5))]", mut.isPending && "motion-safe:animate-pulse")} aria-hidden="true" />
         {mut.isPending ? t("gen.generating") : t("gen.button")}
+        {mut.isPending && <WaitProgress inButton expectedMs={12000} />}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -175,8 +178,9 @@ export function PlaybookGenerateChecklistButton({
           </p>
 
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => mut.mutate()} disabled={mut.isPending} className="sm:mr-auto">
+            <Button type="button" variant="ghost" size="sm" onClick={() => mut.mutate()} disabled={mut.isPending} className="relative sm:mr-auto">
               <RefreshCw className={cn(mut.isPending && "motion-safe:animate-spin")} aria-hidden="true" /> {t("gen.regenerate")}
+              {mut.isPending && <WaitProgress inButton expectedMs={12000} />}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>{commonI18n.t("actions.cancel")}</Button>
             <Button type="button" size="sm" onClick={apply} disabled={result.length === 0} title="Ctrl+Enter">

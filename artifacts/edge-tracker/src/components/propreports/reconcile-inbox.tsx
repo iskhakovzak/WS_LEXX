@@ -96,10 +96,10 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
             {merge.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <GitMerge className="mr-1.5 h-4 w-4" />}{tt("inbox.merge", { id: selected ?? "—" })}
           </Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => keep.mutateAsync(p.id), tt("inbox.kept"))}>
-            <Split className="mr-1.5 h-4 w-4" />{tt("inbox.keep")}
+            {keep.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Split className="mr-1.5 h-4 w-4" />}{tt("inbox.keep")}
           </Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => dismiss.mutateAsync(p.id), tt("inbox.removed"))} aria-label={tt("inbox.removeAria")}>
-            <Trash2 className="mr-1.5 h-4 w-4" />{tt("inbox.skip")}
+            {dismiss.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}{tt("inbox.skip")}
           </Button>
           <span className="text-2xs text-muted-foreground">{tt("inbox.feesInNet", { fees: fmtUsd(t.totalFees) })}</span>
         </div>

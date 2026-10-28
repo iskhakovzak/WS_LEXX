@@ -3,6 +3,7 @@ import * as React from "react";
 import { Undo2 } from "lucide-react";
 import { Pill, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtUsd } from "@/lib/format";
@@ -93,7 +94,7 @@ export function CapitalHistory({ items, canDecide }: { items: CapitalChange[]; c
             <Pill tone="neutral">{t("reverted")}</Pill>
           ) : canDecide ? (
             <Button size="sm" variant="ghost" className="h-7" onClick={() => run(h)} disabled={revert.isPending}>
-              <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> {t("revert")}
+              <PendingIcon pending={revert.isPending && revert.variables === h.id} icon={Undo2} className="h-3.5 w-3.5" /> {t("revert")}
             </Button>
           ) : null}
         </li>

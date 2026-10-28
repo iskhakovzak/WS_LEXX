@@ -61,15 +61,21 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
   async function toggleLike() {
     if (!traderName || likePending) return;
     setLikePending(true);
+    // Optimistic: the like flips at click time (the POST toggles it); the server list replaces it, a failure restores it.
+    const prev = reactions;
+    setReactions(hasLiked ? prev.filter((r) => r.trader !== traderName) : [...prev, { id: -Date.now(), tradeId, trader: traderName, reactionType: "like" }]);
     try {
       await http.post(`/api/trades/${tradeId}/reactions`, { trader: traderName, reactionType: "like" });
-      const updated = await http.get<Reaction[]>(`/api/trades/${tradeId}/reactions`);
-      if (Array.isArray(updated)) setReactions(updated);
     } catch (e) {
-      toast({ title: tradesI18n.t("social.likeFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
-    } finally {
+      setReactions(prev);
       setLikePending(false);
+      toast({ title: tradesI18n.t("social.likeFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      return;
     }
+    // The write landed: the server list replaces the guess (a failed re-read keeps the guess).
+    const updated = await http.get<Reaction[]>(`/api/trades/${tradeId}/reactions`).catch(() => null);
+    if (Array.isArray(updated)) setReactions(updated);
+    setLikePending(false);
   }
 
   async function submitReview() {

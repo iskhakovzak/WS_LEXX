@@ -121,7 +121,7 @@ export function TemplateMenu({
                     disabled={remove.isPending}
                     onClick={() => remove.mutate(t.id)}
                   >
-                    <Trash2 aria-hidden="true" />
+                    {remove.isPending && remove.variables === t.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                   </Button>
                 )}
               </li>

@@ -165,7 +165,7 @@ export function AccountsEditor({ accounts, staff, apiConfigured, loading = false
                   <td>{staff ? <Input value={r.notes} onChange={(e) => update(i, { notes: e.target.value })} className="h-8 w-48 text-xs" placeholder={t("accounts.notePlaceholder")} /> : <span className="text-xs text-muted-foreground">{r.notes || "—"}</span>}</td>
                   {staff && (
                     <td>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(r, i)} disabled={del.isPending} aria-label={t("accounts.deleteAria")}><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(r, i)} disabled={del.isPending} aria-label={t("accounts.deleteAria")}>{del.isPending && del.variables === r.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}</Button>
                     </td>
                   )}
                 </tr>

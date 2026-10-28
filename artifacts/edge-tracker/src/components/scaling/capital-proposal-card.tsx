@@ -2,6 +2,7 @@
 import { Check, X } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtUsd } from "@/lib/format";
@@ -52,10 +53,10 @@ export function CapitalProposalCard({ proposal, canDecide, onOpenTrader, classNa
         {pending && canDecide && (
           <div className="flex items-center gap-1.5">
             <Button size="sm" variant="outline" onClick={() => run("reject")} disabled={decide.isPending}>
-              <X className="h-3.5 w-3.5" aria-hidden="true" /> {t("card.reject")}
+              <PendingIcon pending={decide.isPending && decide.variables?.decision === "reject"} icon={X} className="h-3.5 w-3.5" /> {t("card.reject")}
             </Button>
             <Button size="sm" onClick={() => run("approve")} disabled={decide.isPending}>
-              <Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("card.approve")}
+              <PendingIcon pending={decide.isPending && decide.variables?.decision === "approve"} icon={Check} className="h-3.5 w-3.5" /> {t("card.approve")}
             </Button>
           </div>
         )}

@@ -12,7 +12,8 @@ import { http } from "@/lib/api/http";
 import { KEYS } from "@/lib/api/keys";
 import { fmtDate } from "@/lib/format";
 import { askCuratorI18n } from "@/i18n/ns/askCurator";
-import type { Quest } from "@/lib/quests/types";
+import type { Quest, QuestsMe } from "@/lib/quests/types";
+import { optimistic } from "@/hooks/optimistic";
 
 export type TaskDoneAnswer = { ok: true; reportedOn: string; points: number; already: boolean };
 
@@ -25,14 +26,18 @@ export function TaskDoneButton({ q }: { q: Pick<Quest, "id" | "template" | "stat
   const { t } = askCuratorI18n.useT();
   const { toast } = useToast();
   const qc = useQueryClient();
+  // Optimistic: the row reads «Отмечено …» at click time; a refused report rolls back with the error toast.
   const send = useMutation({
     mutationFn: () => http.post<TaskDoneAnswer>(`/api/curator/tasks/${q.id}/done`, {}),
+    ...optimistic<void, QuestsMe | null>(qc, {
+      queryKey: KEYS.questsMe(),
+      update: (me) => (me ? { ...me, quests: me.quests.map((x) => (x.id === q.id && !x.reportedOn ? { ...x, reportedOn: me.today } : x)) } : me),
+      invalidate: [["gamification"]],
+      onError: (e) => toast({ title: t("taskDone.failed"), description: (e as Error).message, variant: "destructive" }),
+    }),
     onSuccess: (r) => {
       toast({ title: t("taskDone.sent"), description: r.points > 0 ? t("taskDone.points", { points: r.points }) : undefined });
-      void qc.invalidateQueries({ queryKey: KEYS.questsMe() });
-      void qc.invalidateQueries({ queryKey: ["gamification"] });
     },
-    onError: (e) => toast({ title: t("taskDone.failed"), description: (e as Error).message, variant: "destructive" }),
   });
   if (q.template !== "curator_task" || q.status !== "active") return null;
   const on = q.reportedOn ?? (send.data?.reportedOn ?? null);

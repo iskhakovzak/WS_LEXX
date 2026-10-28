@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, Copy, RefreshCw, AlertTriangle, Wrench, Ban, HelpCircle, CheckCircle2, FileText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -177,6 +178,7 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
             {mut.isPending ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">{t("critique.waiting")}</p>
+                <WaitProgress expectedMs={20000} />
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="space-y-2 rounded-xl border border-[var(--glass-border)] p-3">
                     <Skeleton className="h-4 w-40" />

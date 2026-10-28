@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Lock, NotebookPen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { EmptyState, Panel, Pill, RowActions, Segmented, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,8 @@ import { useTextDraft } from "@/hooks/use-text-draft";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { UndoToast } from "@/components/undo-toast";
-import { curatorApi, useCuratorMutation, type CuratorNote, type NoteKind } from "./api";
+import { curatorApi, curatorKeys, useCuratorMutation, type CuratorNote, type NoteKind, type ProfilePayload } from "./api";
+import { optimistic } from "@/hooks/optimistic";
 import { NOTE_KIND_LABEL, NOTE_KIND_TONE } from "./curator-math";
 import { fmtDeskDateTime } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
@@ -29,7 +31,16 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
   const [kind, setKind] = React.useState<NoteKind>("note");
   const [filter, setFilter] = usePersistentState<NoteKind | "all">("curator.notes.filter", "all");
   const add = useCuratorMutation((v: { body: string; kind: NoteKind }) => curatorApi.addNote({ trader, ...v }));
-  const patch = useCuratorMutation((v: { id: number; pinned: boolean }) => curatorApi.patchNote(v.id, { pinned: v.pinned }));
+  const qc = useQueryClient();
+  // Pin / unpin: optimistic on the profile's notes (the cabinet refetches when it settles).
+  const patch = useMutation({
+    mutationFn: (v: { id: number; pinned: boolean }) => curatorApi.patchNote(v.id, { pinned: v.pinned }),
+    ...optimistic<{ id: number; pinned: boolean }, ProfilePayload>(qc, {
+      queryKey: curatorKeys.profile(trader),
+      update: (p, v) => (p?.notes ? { ...p, notes: p.notes.map((n) => (n.id === v.id ? { ...n, pinned: v.pinned } : n)) } : p),
+      invalidate: [curatorKeys.all],
+    }),
+  });
   const archive = useCuratorMutation((id: number) => curatorApi.archiveNote(id));
   const restore = useCuratorMutation((id: number) => curatorApi.restoreNote(id));
   const edit = useCuratorMutation((v: { id: number; body: string }) => curatorApi.patchNote(v.id, { body: v.body }));

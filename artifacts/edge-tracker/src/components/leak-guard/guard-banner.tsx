@@ -12,6 +12,7 @@
 import * as React from "react";
 import { Hourglass, OctagonPause, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -71,7 +72,8 @@ export function GuardBanner() {
       onError: () => toast({ title: t("banner.ackFailed"), variant: "destructive" }),
     });
   const ackButton = (
-    <Button size="sm" onClick={onAck} disabled={ack.isPending}>
+    <Button size="sm" onClick={onAck} disabled={ack.isPending} aria-busy={ack.isPending}>
+      <PendingIcon pending={ack.isPending} />
       {t("banner.ack")}
     </Button>
   );

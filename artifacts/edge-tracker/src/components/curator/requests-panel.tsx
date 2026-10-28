@@ -18,6 +18,7 @@ import { personName } from "@/i18n";
 import { askCuratorI18n } from "@/i18n/ns/askCurator";
 import { askCuratorKeys, type CuratorRequest, type RequestKind } from "@/components/shared/ask-curator";
 import type { Scope } from "./api";
+import { optimistic } from "@/hooks/optimistic";
 
 const KIND_TONE: Record<RequestKind, Tone> = { limits: "warn", group: "accent", stage: "purple", plan: "neutral", other: "neutral", review: "accent" };
 
@@ -54,13 +55,16 @@ function RequestRow({ r, onOpenTrader }: { r: CuratorRequest; onOpenTrader: (tra
   const { toast } = useToast();
   const qc = useQueryClient();
   const [note, setNote] = React.useState("");
+  // Optimistic: the row leaves the open lists at click time; a refused write puts it back with the error toast.
   const resolve = useMutation({
     mutationFn: (status: "done" | "dismissed") => http.patch<{ request: CuratorRequest }>(`/api/curator-requests/${r.id}`, { status, note: note.trim() || null }),
-    onSuccess: () => {
-      toast({ title: t("panel.resolved") });
-      void qc.invalidateQueries({ queryKey: askCuratorKeys.all });
-    },
-    onError: (e) => toast({ title: t("panel.failed"), description: (e as Error).message, variant: "destructive" }),
+    ...optimistic<"done" | "dismissed", CuratorRequest[]>(qc, {
+      queryKey: [...askCuratorKeys.all, "staff"],
+      update: (list) => (Array.isArray(list) ? list.filter((x) => x.id !== r.id) : list),
+      invalidate: [askCuratorKeys.all],
+      onError: (e) => toast({ title: t("panel.failed"), description: (e as Error).message, variant: "destructive" }),
+    }),
+    onSuccess: () => toast({ title: t("panel.resolved") }),
   });
   const tab = r.kind === "limits" ? "risk" : undefined;
   return (

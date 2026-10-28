@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { CandlestickChart, Check, CheckCheck, ChevronDown, ListChecks, RefreshCw, Search, Sparkles, Users, X } from "lucide-react";
 import { EmptyState, FilterChip, Panel, Pill, Segmented, Toolbar, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { ActiveFilters, FilterSection, FiltersButton, ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -354,12 +355,13 @@ export function AuthorFeed({
               <Button variant="ghost" size="sm" onClick={() => { setSelecting(false); setSelected(new Set()); }}>{tc("actions.cancel")}</Button>
               <Button
                 size="sm"
-                className="gap-1.5"
+                className="relative gap-1.5"
                 disabled={selected.size === 0 || teamSummary.isPending}
                 onClick={() => teamSummary.mutate(Array.from(selected))}
               >
                 {teamSummary.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
                 {teamSummary.isPending ? t("analyzing") : t("author.feed.teamSummaryCount", { count: selected.size })}
+                {teamSummary.isPending && <WaitProgress inButton expectedMs={20000} />}
               </Button>
             </>
           ) : (

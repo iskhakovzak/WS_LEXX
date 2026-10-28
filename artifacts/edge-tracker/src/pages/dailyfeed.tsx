@@ -15,6 +15,7 @@ import {
   Page, PageHeader, Panel, Segmented, Toolbar, EmptyState, SkeletonBlock, UpdatedAgo, Pill, toneOf, toneText, usePersistentState,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
 import { DayStepper, useClosedDays } from "@/components/shared/day-stepper";
 import { ToolbarSearch } from "@/components/shared/filters/filter-toolbar";
 import {
@@ -458,8 +459,9 @@ export default function DailyFeedPage() {
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" aria-label={commonI18n.t("actions.moreActions")} title={commonI18n.t("actions.more")}>
-                {eodLoading || regenLoading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <MoreHorizontal aria-hidden="true" />}
+              <Button variant="outline" size="icon" className="relative" aria-label={commonI18n.t("actions.moreActions")} title={commonI18n.t("actions.more")} aria-busy={eodLoading || regenLoading}>
+                {eodLoading || regenLoading ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <MoreHorizontal aria-hidden="true" />}
+                {(eodLoading || regenLoading) && <WaitProgress inButton expectedMs={30000} className="inset-x-2" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">

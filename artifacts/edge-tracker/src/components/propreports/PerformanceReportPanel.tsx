@@ -9,6 +9,7 @@ import * as React from "react";
 import { BarChart3, Trash2 } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, Segmented, usePersistentState, useTableSort, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -282,7 +283,7 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
                 catch (e) { toast({ title: commonI18n.t("states.deleteFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }); }
               }}
             >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              <PendingIcon pending={del.isPending} icon={Trash2} className="h-4 w-4" />
             </Button>
           )}
         </>

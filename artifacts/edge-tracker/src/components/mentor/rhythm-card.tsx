@@ -8,6 +8,8 @@ import { Link } from "wouter";
 import { CalendarCheck2, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { Panel, Pill, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { WaitProgress } from "@/components/ui/wait-progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { mentorI18n } from "@/i18n/ns/mentor";
 import { useRhythm, type BriefContent, type DebriefContent, type Digest, type MentorState, type RhythmKind, type WeeklyContent } from "./api";
 import { CheckinStrip } from "./checkin";
@@ -112,7 +114,13 @@ export function RhythmCard({ state, initial }: { state: MentorState; initial: Rh
       <div className="flex flex-col gap-4">
         {tab === "brief" && <CheckinStrip state={state} onSaved={() => { if (can && state.digests.brief) gen.mutate({ kind: "brief", force: true }); }} />}
         {busy ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t("rhythm.generating")}</p>
+          <div className="flex flex-col gap-2.5" aria-busy="true">
+            <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("rhythm.generating")}</p>
+            <WaitProgress expectedMs={20000} />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-5/6" />
+          </div>
         ) : digest ? (
           <>
             <DigestBody kind={tab} digest={digest} />

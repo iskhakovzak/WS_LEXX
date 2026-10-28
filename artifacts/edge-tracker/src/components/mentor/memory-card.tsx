@@ -7,6 +7,7 @@ import * as React from "react";
 import { Brain, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { PendingIcon } from "@/components/ui/pending-icon";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate } from "@/lib/format";
 import { personName } from "@/i18n";
@@ -42,7 +43,7 @@ function NoteRow({ n, editable }: { n: Note; editable: boolean }) {
       {editable && (
         <span className="flex shrink-0 gap-0.5">
           <Button size="sm" variant="ghost" aria-label={t("memory.edit")} onClick={() => setEdit(true)}><Pencil aria-hidden="true" /></Button>
-          <Button size="sm" variant="ghost" aria-label={t("memory.delete")} disabled={del.isPending} onClick={() => del.mutate(n.id)}><Trash2 aria-hidden="true" /></Button>
+          <Button size="sm" variant="ghost" aria-label={t("memory.delete")} disabled={del.isPending} onClick={() => del.mutate(n.id)}><PendingIcon pending={del.isPending && del.variables === n.id} icon={Trash2} /></Button>
         </span>
       )}
     </li>

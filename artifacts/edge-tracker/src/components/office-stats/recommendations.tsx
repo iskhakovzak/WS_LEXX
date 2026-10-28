@@ -122,15 +122,15 @@ function RecCard({ rec, data }: { rec: OfficeRec; data: RecsResponse }) {
   const onHide = () => {
     const today = nyDate();
     const map = nextHiddenMap(data.hidden, { hide: rec.id }, today);
-    hide.mutate(map, {
-      onSuccess: () => toast({
-        title: t("hiddenToast", { date: fmtDeskDate(map[rec.id]) }),
-        action: (
-          <ToastAction altText={t("undo")} onClick={() => hide.mutate(nextHiddenMap([...data.hidden, { id: rec.id, until: map[rec.id], kind: rec.kind }], { show: rec.id }, today))}>
-            {t("undo")}
-          </ToastAction>
-        ),
-      }),
+    // Optimistic: the card leaves at once (this row unmounts), so the undo toast is shown now, not on success.
+    hide.mutate(map);
+    toast({
+      title: t("hiddenToast", { date: fmtDeskDate(map[rec.id]) }),
+      action: (
+        <ToastAction altText={t("undo")} onClick={() => hide.mutate(nextHiddenMap([...data.hidden, { id: rec.id, until: map[rec.id], kind: rec.kind }], { show: rec.id }, today))}>
+          {t("undo")}
+        </ToastAction>
+      ),
     });
   };
   return (
