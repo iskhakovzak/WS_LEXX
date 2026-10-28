@@ -86,7 +86,7 @@ describe("PUT /risk/limits/:trader — buying power", () => {
     const ok = await put({ dailyLossLimit: 300, buyingPower: 250_000 });
     expect(ok.status).toBe(200);
     expect(ok.json.buyingPower).toBe(250_000);
-    expect(upserts[0]!.slice(14)).toEqual([250_000, true]);
+    expect(upserts[0]!.slice(14, 16)).toEqual([250_000, true]);
     for (const bp of [900_000, 10_000]) {
       const bad = await put({ dailyLossLimit: 300, buyingPower: bp });
       expect([bad.status, bad.json.code]).toEqual([400, "BUYING_POWER_RANGE"]);
@@ -105,9 +105,9 @@ describe("PUT /risk/limits/:trader — buying power", () => {
 
   it("an editor without the field keeps the stored BP; null clears it", async () => {
     expect((await put({ dailyLossLimit: 300 })).status).toBe(200);
-    expect(upserts.at(-1)!.slice(14)).toEqual([null, false]);
+    expect(upserts.at(-1)!.slice(14, 16)).toEqual([null, false]);
     expect((await put({ buyingPower: null })).status).toBe(200);
-    expect(upserts.at(-1)!.slice(14)).toEqual([null, true]);
+    expect(upserts.at(-1)!.slice(14, 16)).toEqual([null, true]);
   });
 
   it("GET returns buyingPower (number)", async () => {

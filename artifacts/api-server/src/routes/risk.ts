@@ -64,6 +64,7 @@ import { buyingPowerProblem } from "../lib/people/stageLimits";
 import { normalizeStageKey, stageOf } from "../lib/people/stage";
 import { logInterventionSafe } from "../lib/interventions/log";
 import { riskStateOf } from "../lib/coreMetrics/risk";
+import { openWindowStateOf } from "../lib/sessionFlow/gates";
 
 export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
 export type { Alert, DayRow, Horizon, Limits, LiveRisk, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
@@ -136,7 +137,10 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const { limits, live, metrics: m } = await riskStateOf(me, today, langOf(req));
   void recordStopAlerts(m, limits, today);
   const book = live && live.openPositions > 0 ? await loadLivePositions(me, today) : null;
+  // The opening window 09:30–10:00 as its own zone (lib/sessionFlow/openWindow): limit, source, lifted by a proven edge.
+  const openWindow = await openWindowStateOf(me, today).catch(() => null);
   res.json({
+    openWindow,
     ...m,
     limits,
     /** Broker open positions behind `live` (symbol, qty, avg, close, unrealized per account). */
@@ -278,6 +282,8 @@ const LimitsBody = z.object({
   allowSwing: z.boolean().optional(),
   /** Buying power; absent = keep the stored value, null = clear. */
   buyingPower: money,
+  /** Own loss limit of the 09:30–10:00 window; absent = keep, null = back to the stage share of the daily limit. */
+  openWindowLossLimit: money,
   tier: z.string().trim().max(40).nullable().optional().transform((v) => (v ? v : null)),
   notes: z.string().max(2000).nullable().optional().transform((v) => (v && v.trim() ? v.trim() : null)),
   /** Why the limits changed — stored in the change log (not in trader_risk_limits). */
@@ -305,8 +311,8 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
     `INSERT INTO trader_risk_limits AS l (
        trader, account_size, daily_loss_limit, weekly_loss_limit, max_drawdown, max_risk_per_trade,
        max_position_usd, max_overnight_exposure, max_open_positions, allow_overnight, allow_swing,
-       tier, notes, updated_by, updated_at, buying_power)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10, TRUE),COALESCE($11, TRUE),$12,$13,$14,NOW(),$15)
+       tier, notes, updated_by, updated_at, buying_power, open_window_loss_limit)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10, TRUE),COALESCE($11, TRUE),$12,$13,$14,NOW(),$15,$17)
      ON CONFLICT (trader) DO UPDATE SET
        account_size = EXCLUDED.account_size,
        daily_loss_limit = EXCLUDED.daily_loss_limit,
@@ -321,6 +327,7 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
        tier = EXCLUDED.tier,
        notes = EXCLUDED.notes,
        buying_power = CASE WHEN $16::boolean THEN EXCLUDED.buying_power ELSE l.buying_power END,
+       open_window_loss_limit = CASE WHEN $18::boolean THEN EXCLUDED.open_window_loss_limit ELSE l.open_window_loss_limit END,
        updated_by = EXCLUDED.updated_by,
        updated_at = NOW()
      RETURNING *`,
@@ -341,6 +348,8 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
       req.authUser!.name,
       b.buyingPower ?? null,
       hasBp,
+      b.openWindowLossLimit ?? null,
+      b.openWindowLossLimit !== undefined,
     ],
   );
   const after = toLimits(rows[0]);

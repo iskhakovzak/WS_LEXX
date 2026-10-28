@@ -6,7 +6,8 @@
 import { etWallIsoToMs } from "../../routes/behavior";
 import { flowTrades, groupBy } from "../sessionFlow/load";
 import type { FlowTrade } from "../sessionFlow/types";
-import { detectRules } from "./rules";
+import { gateBreaches } from "../sessionFlow/gates";
+import { detectRules, type RuleBreach } from "./rules";
 import type { GuardConfig, GuardDraft, GuardLevel, LevelChoice } from "./types";
 
 /** The level a rule event is told at: re-entry is a soft stop; the opening window is hard for juniors, soft otherwise. */
@@ -26,8 +27,11 @@ export async function ruleDrafts(day: string, now: number, cfg: GuardConfig): Pr
   if (!trades.length) return out;
   const by = groupBy(trades, (t: FlowTrade) => t.trader);
   const closeAt = etWallIsoToMs(`${day}T16:00:00`) ?? now;
+  const breaches = r.openWindow || r.ideaLimits
+    ? await gateBreaches(day, by, { openWindow: r.openWindow, ideaLimits: r.ideaLimits, closeAt })
+    : new Map<string, RuleBreach[]>();
   for (const [trader, today] of by) {
-    const drafts = detectRules({ trader, day, now, closeAt, today, cfg: r, breaches: [] });
+    const drafts = detectRules({ trader, day, now, closeAt, today, cfg: r, breaches: breaches.get(trader) ?? [] });
     if (drafts.length) out.set(trader, drafts);
   }
   return out;

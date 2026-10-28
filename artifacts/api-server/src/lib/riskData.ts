@@ -75,6 +75,7 @@ export function toLimits(r: any): Limits {
     allowOvernight: r.allow_overnight !== false,
     allowSwing: r.allow_swing !== false,
     buyingPower: num(r.buying_power),
+    openWindowLossLimit: num(r.open_window_loss_limit),
     tier: r.tier ?? null,
     notes: r.notes ?? null,
     updatedBy: r.updated_by ?? null,

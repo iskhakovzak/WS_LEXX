@@ -192,6 +192,8 @@ export default {
       ideaStopShare: { label: "Mualliflik / 3-daraja gʻoya: stop ulushi", help: "Bunday tikerdagi eng katta zarar kunlik stopning ulushi sifatida." },
       missedMovePct: { label: "Oʻtkazib yuborilgan gʻoya: harakat", help: "Rejadagi 1–2-daraja tikeri savdosiz shuncha foizdan koʻp harakatlansa — «oʻtkazib yuborilgan gʻoya»." },
       checklistRiskFactor: { label: "Chek-list chegaradan past: risk", help: "Setap chek-listi bali chegaradan past boʻlsa, savdoga taklif qilingan risk shu koeffitsiyentga koʻpaytiriladi." },
+      autoGapPct: { label: "Chek-list: avtobelgi uchun gep", help: "Tiker gepi shuncha foizdan kam boʻlmasa, «gep» bandi oʻzi belgilanadi." },
+      autoRvol: { label: "Chek-list: avtobelgi uchun hajm", help: "Tikerning nisbiy hajmi shundan kam boʻlmasa, «hajm» bandi oʻzi belgilanadi." },
     },
     season: {
       enabled: { label: "Mavsum taqvimi", help: "Oʻchiq — brif va limitlar mavsumni hisobga olmaydi." },

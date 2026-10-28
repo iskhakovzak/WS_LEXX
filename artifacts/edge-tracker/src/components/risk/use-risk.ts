@@ -25,6 +25,8 @@ export type RiskLimits = {
   allowSwing: boolean;
   /** Buying power set per trader (Волна 1 п. 1.21); absent on older API builds. */
   buyingPower?: number | null;
+  /** Own loss limit of the 09:30–10:00 window (null = the stage share of the daily limit; api lib/sessionFlow/openWindow). */
+  openWindowLossLimit?: number | null;
   tier: string | null;
   notes: string | null;
   updatedBy: string | null;

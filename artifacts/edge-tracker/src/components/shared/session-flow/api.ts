@@ -26,7 +26,28 @@ export function useSaveTimings(setupId: number) {
 
 export const sessionFlowKeys = {
   stats: (trader: string | null, from: string | null, to: string | null) => ["trades", "session-flow", trader || "me", from, to] as const,
+  openWindow: (trader: string | null) => ["risk", "open-window", trader || "me"] as const,
 };
+
+export type OpenWindowState = {
+  trader: string;
+  limitUsd: number | null;
+  source: "own" | "stage" | null;
+  share: number | null;
+  lifted: boolean;
+  stageLimitUsd: number | null;
+  edge: { n: number; net: number; netExTop3: number; outliers: boolean };
+  liftMinTrades: number;
+};
+
+/** The 09:30–10:00 window of a trader today (null trader = own). Starts with ["risk"]: a limits save refreshes it. */
+export function openWindowQuery(trader: string | null) {
+  return queryOptions({
+    queryKey: sessionFlowKeys.openWindow(trader),
+    queryFn: ({ signal }) => http.get<OpenWindowState>("/api/session-flow/open-window", { query: { trader: trader || undefined }, signal }),
+    staleTime: STALE.long,
+  });
+}
 
 /** `trader` null = the viewer's own book; from / to = the analytics window (null = the api's default 90 days). */
 export function flowStatsQuery(trader: string | null, from: string | null, to: string | null) {

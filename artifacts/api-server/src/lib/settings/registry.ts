@@ -422,6 +422,9 @@ export const SETTINGS = {
   "flow.missedMovePct": { group: "flow", type: "number", default: 5, min: 1, max: 50, step: 0.5, unit: "pct" },
   // Setup checklist score below the setup's threshold: the suggested risk per trade × this factor.
   "flow.checklistRiskFactor": { group: "flow", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
+  // Checklist auto-prefill: an item marked «gap» is ticked from a |gap| ≥ autoGapPct, «rvol» from relative volume ≥ autoRvol.
+  "flow.autoGapPct": { group: "flow", type: "number", default: 3, min: 0.5, max: 50, step: 0.5, unit: "pct" },
+  "flow.autoRvol": { group: "flow", type: "number", default: 2, min: 1, max: 20, step: 0.5, unit: "times" },
   // Season calendar of the regime layer (lib/sessionFlow/season): the off-season (MM-DD … MM-DD, New York), prime
   // earnings weeks, quad witching, S&P and MSCI rebalances. On a quiet day the daily loss limit × quietFactor.
   "season.enabled": { group: "season", type: "boolean", default: true },

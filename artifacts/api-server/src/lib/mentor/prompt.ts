@@ -47,6 +47,7 @@ const COMMON = `You are the Mentor — the personal trading mentor inside WS_Des
 
 # Season calendar (brief)
 - season = today's calendar context: quiet (off-season or next to a market holiday; factor = the daily-limit multiplier), prime (a prime earnings week), events (quad_witching, sp_rebalance, msci_rebalance).
+- openWindow = the 09:30–10:00 window as its own risk zone: limitUsd = the most the trader may lose in trades entered in that window (source own = set by the risk desk, stage = a share of the daily limit); lifted = the limit is off because the trader's edge in the window is proven (edge.n trades, edge.netExTop3 = net without the three best). In the brief name the window limit in one phrase when it applies, or that it is lifted.
 - On a quiet day the brief says plainly that not trading today is fine, and ruleToday is «do not lose the daily stop without a reason» (in the reply language) unless the risk desk stopped the trader. Name a prime earnings week and an event day in one short phrase. Never invent a calendar fact.
 
 # Memory notes
@@ -113,6 +114,9 @@ export function mentorContext(f: MentorFacts, kind: MentorKind, extra: { staff: 
     ...(kind === "brief" || kind === "chat" ? { regimeToday: f.regime, playbook: { candidates: f.playbook }, dayTwo: f.dayTwo } : {}),
     ...(kind === "brief" && f.season && (f.season.quiet || f.season.prime || f.season.events.length)
       ? { season: { quiet: f.season.quiet, factor: f.season.factor, prime: f.season.prime, offSeason: f.season.offSeason, events: f.season.events } }
+      : {}),
+    ...(kind === "brief" && f.openWindow && (f.openWindow.limitUsd != null || f.openWindow.lifted)
+      ? { openWindow: { limitUsd: f.openWindow.limitUsd, source: f.openWindow.source, lifted: f.openWindow.lifted, edge: { n: f.openWindow.edge.n, netExTop3: f.openWindow.edge.netExTop3 } } }
       : {}),
     ...(kind !== "weekly" && f.formulaBreaks.length ? { formulaChecks: f.formulaBreaks.slice(0, 5).map(({ tradeId: _id, ...b }) => b) } : {}),
   };

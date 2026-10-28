@@ -10,6 +10,7 @@ import type { DeskRow, LimitEvent, RiskPosition } from "./use-risk";
 import { useLimitsHistory, useTraderDay } from "./use-risk";
 import { HistoryCharts } from "./history-charts";
 import { LimitsForm } from "./limits-form";
+import { OpenWindowLine } from "@/components/shared/session-flow/open-window-line";
 import { PositionsTable } from "./positions-table";
 import { AlertList } from "./usage";
 import { LevelBadge, TierPill, tierLabel } from "./primitives";
@@ -56,7 +57,7 @@ function TradesTab({ trader }: { trader: string }) {
 
 const LIMIT_FIELDS = [
   "tier", "accountSize", "dailyLossLimit", "weeklyLossLimit", "maxDrawdown", "maxRiskPerTrade",
-  "maxPositionUsd", "maxOvernightExposure", "maxOpenPositions", "allowOvernight", "allowSwing", "notes",
+  "maxPositionUsd", "maxOvernightExposure", "maxOpenPositions", "openWindowLossLimit", "allowOvernight", "allowSwing", "notes",
 ] as const;
 
 function fmtVal(k: string, v: unknown): string {
@@ -244,7 +245,10 @@ export function TraderSheet({
             {tab === "limits" && (
               // Wide sheet: the form and its change history side by side.
               <div className="grid grid-cols-1 gap-section @5xl/sheet:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @5xl/sheet:items-start">
-                <LimitsForm trader={row.trader} limits={row.limits} />
+                <div className="flex min-w-0 flex-col gap-3">
+                  <OpenWindowLine trader={row.trader} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2" />
+                  <LimitsForm trader={row.trader} limits={row.limits} />
+                </div>
                 <section aria-label={t("sheet.limitsHistory")}>
                   <h3 className="micro-label mb-2 flex items-center gap-1"><History className="h-3 w-3" aria-hidden="true" />{t("sheet.limitsHistoryTitle")}</h3>
                   <LimitsHistory trader={row.trader} />

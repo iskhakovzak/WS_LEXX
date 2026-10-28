@@ -25,6 +25,7 @@ import { langOf } from "../i18n";
 import { winRateOf } from "../lib/coreMetrics/kpi";
 import { normFormula } from "../lib/strategyFormula";
 import { normTimings } from "../lib/sessionFlow/timing";
+import { normItems } from "../lib/sessionFlow/checklist";
 
 /**
  * Playbook (setups) + per-setup edge.
@@ -47,7 +48,8 @@ import { normTimings } from "../lib/sessionFlow/timing";
 const router: IRouter = Router();
 router.use("/playbook/:id", setupLockGuard);
 
-type ChecklistItem = { id: string; text: string };
+/** A checklist item; weight (1–5) and auto (prefill code) are the scoring of lib/sessionFlow/checklist.ts. */
+type ChecklistItem = { id: string; text: string; weight?: number; auto?: string };
 type Screenshot = { url: string; notes?: string; addedBy?: string | null; addedAt?: string };
 
 function itemIdFromText(text: string): string {
@@ -63,7 +65,9 @@ function normChecklistItems(input: unknown): ChecklistItem[] | null {
     const text = String((it as any).text ?? "").trim();
     if (!text) continue;
     const id = String((it as any).id ?? "").trim() || itemIdFromText(text);
-    out.push({ id, text });
+    // keep the scoring fields through the one validator (weight 1 is the default and is not stored)
+    const scored = normItems([{ ...(it as object), id, text }])?.[0];
+    out.push({ id, text, ...(scored?.weight ? { weight: scored.weight } : {}), ...(scored?.auto ? { auto: scored.auto } : {}) });
   }
   return out;
 }
@@ -158,6 +162,7 @@ const PLAYBOOK_SELECT_FIELDS = `
   media,
   formula,
   timings,
+  checklist_threshold::float8 AS "checklistThreshold",
   updated_at        AS "updatedAt"
 `;
 
@@ -919,6 +924,11 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (body.timings !== undefined) {
     const tm = normTimings(body.timings); // allowed timings of the setup (lib/sessionFlow/timing); [] = no restriction
     fields.push(`timings = $${i++}::text[]`); vals.push(tm.length ? tm : null);
+  }
+  if (body.checklistThreshold !== undefined) {
+    // the score the setup's checklist needs (Σ weights of the ticked items); null = every item
+    const thr = Number(body.checklistThreshold);
+    fields.push(`checklist_threshold = $${i++}`); vals.push(body.checklistThreshold != null && Number.isFinite(thr) && thr > 0 && thr <= 100 ? thr : null);
   }
   if (ticker !== undefined) { fields.push(`ticker = $${i++}`); vals.push(ticker ? String(ticker).toUpperCase() : null); }
   if (marketCap !== undefined) { fields.push(`market_cap = $${i++}`); vals.push(marketCap ? String(marketCap) : null); }

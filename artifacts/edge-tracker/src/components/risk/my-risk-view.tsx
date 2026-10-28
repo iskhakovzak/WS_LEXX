@@ -13,6 +13,7 @@ import { AlertList } from "./usage";
 import { PositionsTable } from "./positions-table";
 import { HistoryCharts } from "./history-charts";
 import { LimitsForm } from "./limits-form";
+import { OpenWindowLine } from "@/components/shared/session-flow/open-window-line";
 import { StopRemaining } from "./remaining";
 import { TraderDayBlock } from "./intraday";
 import { BreachHistory } from "./breaches";
@@ -177,6 +178,8 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
               <Allowed ok={L.allowOvernight} label={c("trading.overnight")} />
               <Allowed ok={L.allowSwing} label={c("trading.swing")} />
             </div>
+            <OpenWindowLine trader={null} />
+
             {nextTier && (
               <p className="text-xs text-muted-foreground">
                 {t("me.nextTier", { tier: nextTier.label, hint: nextTier.hint })}{" "}

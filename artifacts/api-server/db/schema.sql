@@ -2059,6 +2059,31 @@ CREATE TABLE public.office_capital (
   CONSTRAINT office_capital_pkey PRIMARY KEY (year)
 );
 
+CREATE TABLE public.plan_idea_marks (
+  trader text NOT NULL,
+  day text NOT NULL,
+  ticker text NOT NULL,
+  side text,
+  tier smallint,
+  authored boolean DEFAULT false NOT NULL,
+  setup_id integer,
+  checks jsonb DEFAULT '{}'::jsonb NOT NULL,
+  score numeric(6,2),
+  max_score numeric(6,2),
+  threshold numeric(6,2),
+  source text DEFAULT 'plan'::text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT plan_idea_marks_pkey PRIMARY KEY (trader, day, ticker),
+  CONSTRAINT plan_idea_marks_checks_check CHECK (jsonb_typeof(checks) = 'object'::text),
+  CONSTRAINT plan_idea_marks_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT plan_idea_marks_side_check CHECK (side = ANY (ARRAY['long'::text, 'short'::text])),
+  CONSTRAINT plan_idea_marks_source_check CHECK (source = ANY (ARRAY['plan'::text, 'watchlist'::text])),
+  CONSTRAINT plan_idea_marks_ticker_check CHECK (ticker ~ '^[A-Z0-9][-A-Z0-9.]{0,11}$'::text),
+  CONSTRAINT plan_idea_marks_tier_check CHECK (tier >= 1 AND tier <= 3),
+  CONSTRAINT plan_idea_marks_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
 CREATE TABLE public.plan_media (
   id integer DEFAULT nextval('public.plan_media_id_seq'::regclass) NOT NULL,
   context text NOT NULL,
@@ -2148,7 +2173,9 @@ CREATE TABLE public.playbook (
   regimes text[] DEFAULT '{}'::text[] NOT NULL,
   formula jsonb,
   timings text[],
+  checklist_threshold numeric(6,2),
   CONSTRAINT playbook_pkey PRIMARY KEY (id),
+  CONSTRAINT playbook_checklist_threshold_check CHECK (checklist_threshold IS NULL OR checklist_threshold > 0::numeric AND checklist_threshold <= 100::numeric),
   CONSTRAINT playbook_formula_check CHECK (formula IS NULL OR jsonb_typeof(formula) = 'object'::text),
   CONSTRAINT playbook_regimes_check CHECK (regimes <@ ARRAY['theme_bull'::text, 'macro'::text, 'range'::text, 'panic'::text, 'idiosyncratic'::text, 'euphoria'::text]),
   CONSTRAINT playbook_timings_check CHECK (timings IS NULL OR timings <@ ARRAY['am'::text, 'opg'::text, 'open30'::text, 'day'::text, 'moc'::text, 'pm'::text, 'opg_day'::text, 'overnight'::text, 'swing'::text])
@@ -3211,8 +3238,10 @@ CREATE TABLE public.trader_risk_limits (
   updated_by text,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   buying_power numeric,
+  open_window_loss_limit numeric(12,2),
   CONSTRAINT trader_risk_limits_pkey PRIMARY KEY (trader),
-  CONSTRAINT trader_risk_limits_buying_power_check CHECK (buying_power IS NULL OR buying_power >= 0::numeric)
+  CONSTRAINT trader_risk_limits_buying_power_check CHECK (buying_power IS NULL OR buying_power >= 0::numeric),
+  CONSTRAINT trader_risk_limits_open_window_check CHECK (open_window_loss_limit IS NULL OR open_window_loss_limit >= 0::numeric)
 );
 
 CREATE TABLE public.trades (
@@ -3915,6 +3944,7 @@ CREATE INDEX news_cache_ticker_idx ON public.news_cache USING btree (ticker);
 CREATE INDEX notification_batch_items_pending_idx ON public.notification_batch_items USING btree (user_name) WHERE (flushed_at IS NULL);
 CREATE INDEX notifications_user_created_idx ON public.notifications USING btree (user_name, created_at DESC, id DESC);
 CREATE INDEX notifications_user_unread_idx ON public.notifications USING btree (user_name, is_read);
+CREATE INDEX plan_idea_marks_trader_day_idx ON public.plan_idea_marks USING btree (trader, day);
 CREATE INDEX plan_media_date_idx ON public.plan_media USING btree (plan_date, context);
 CREATE INDEX plan_media_owner_created_idx ON public.plan_media USING btree (owner, created_at);
 CREATE INDEX playbook_parent_active_idx ON public.playbook USING btree (parent_id) WHERE (deleted_at IS NULL);

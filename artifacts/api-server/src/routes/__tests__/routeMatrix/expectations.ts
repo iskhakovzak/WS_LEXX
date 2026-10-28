@@ -280,6 +280,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /academy/briefings": owner("academy mentors (journal.review) and seniors by ladder stage (checked after the stage loads)"),
   "PATCH /academy/briefings/:lessonId": owner("academy mentors (journal.review) and seniors by ladder stage (checked after the stage loads)"),
   "POST /academy/briefings/media": owner("academy mentors (journal.review) and seniors by ladder stage (checked before the upload is read)"),
+  "PUT /ideas/mark": member("the own idea of a planned ticker: tier, authored, setup and its checklist ticks (plans are manual input)"),
   "PUT /chart/drawings": member("the own chart drawings"),
   "PUT /daily/focus/:trader/:date": cap("journal.review", "curator sets a trader's focus (checked after the body is validated)"),
   "PUT /eod/day/:date": member("the own end-of-day record"),

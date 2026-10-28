@@ -15,6 +15,7 @@ import { Field } from "./plan-editor-parts";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { EarningsBadge } from "@/components/shared/finviz/earnings";
 import { CatalystTaps } from "@/components/shared/strategy/catalyst-taps";
+import { IdeaTaps } from "@/components/shared/session-flow/idea-taps";
 
 /** One ticker card of the «Тикеры» block: header row (ticker, bias, grade, horizon) + collapsible body. */
 export function TickerEditor({
@@ -129,6 +130,8 @@ export function TickerEditor({
         {e("ticker") && <p className="basis-full text-xs text-destructive">{e("ticker")}</p>}
         {/* Catalyst direction × strength: two taps per own-plan ticker (shared/strategy), prefilled from the direction above. */}
         {mode === "personal" && <CatalystTaps ticker={t.ticker} date={date} source="plan" planBias={t.bias} className="basis-full" />}
+        {/* Idea tier + «authored» + the setup checklist score (shared/session-flow) — the trade links to it by ticker and side. */}
+        {mode === "personal" && <IdeaTaps ticker={t.ticker} date={date} planBias={t.bias} className="basis-full" />}
         {!open && (
           <button type="button" onClick={onToggle} className="basis-full truncate text-left text-xs text-muted-foreground hover:text-foreground">
             {summary || tr("editor.emptyCard")}

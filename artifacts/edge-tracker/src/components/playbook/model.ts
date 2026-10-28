@@ -46,6 +46,8 @@ export type PlaybookEntry = {
   formula?: StrategyFormula | null;
   /** Allowed timings of the setup (components/shared/session-flow timing codes); null / [] = not restricted. */
   timings?: string[] | null;
+  /** Score the checklist needs (Σ weights of ticked items; null = every item) — shared/session-flow checklist scoring. */
+  checklistThreshold?: number | null;
   /** Above the viewer's tier (DEV-06): the API sent no card (rules, checklist, notes, media) — show the lock instead. */
   locked?: boolean;
   unlock?: { key: string; params?: Record<string, string | number | null> } | null;

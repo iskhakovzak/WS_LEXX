@@ -115,6 +115,7 @@ const TEXT: Record<string, readonly string[]> = {
   notifications: ["actor", "user_name"],
   telegram_push_log: ["user_name"],
   office_capital: ["updated_by"],
+  plan_idea_marks: ["trader"],
   plan_media: ["owner"],
   plan_templates: ["author"],
   playbook: ["copied_from_author", "created_by", "office_proposed_by", "reviewed_by", "shared_by", "trader"],
@@ -291,6 +292,7 @@ export const KEPT: Readonly<Record<string, string>> = {
   "mentor_digests.content": "model-written mentor brief / debrief / weekly (validated JSON), no structured person fields",
   "mentor_escalations.params": "escalation numbers (days, counts, $, %) — no names",
   "mentor_profile.hidden_facts": "keys of data facts the trader hid from the mentor (stage, leak:<slice> …), not names",
+  "playbook.timings": "timing codes a setup allows (am, opg, open30 … lib/sessionFlow/timing), not names",
   "ai_batches.created_by": "who started the batch: «system» (the nightly job) or «manual» (the admin's run), never a person name",
   // json: market data, caches, content without people
   ...Object.fromEntries([
@@ -298,7 +300,7 @@ export const KEPT: Readonly<Record<string, string>> = {
     "academy_quizzes.questions", "academy_submissions.scores", "academy_challenges.rules", "ai_trade_reviews.sections",
     "analyst_bars_cache.bars", "candles_cache.ohlcv", "chart_drawings.drawings", "game_plans.in_play", "game_plans.key_levels",
     "game_plans.macro", "game_plans.media", "game_plans.tv_links", "journal_days.tags", "market_open_brief_cache.data",
-    "offering_ticker_cache.payload", "playbook.checklist_items", "playbook.media", "playbook.screenshots",
+    "offering_ticker_cache.payload", "plan_idea_marks.checks", "playbook.checklist_items", "playbook.media", "playbook.screenshots",
     "playbook_checklist_runs.checked_items", "playbook_examples.checklist_marks", "propreports_cursors.value",
     "propreports_live_positions.positions", "propreports_performance_reports.data", "propreports_settings.value",
     "sim_games.bars", "sim_games.events", "sim_games.params", "sim_games.result", "ticker_data_cache.raw",

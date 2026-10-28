@@ -192,6 +192,8 @@ export default {
       ideaStopShare: { label: "Authored / tier-3 idea: stop share", help: "The largest loss on such a ticker as a share of the daily stop." },
       missedMovePct: { label: "Missed idea: move", help: "A tier 1–2 ticker of the plan without a trade that moved more than this many percent is a «missed idea»." },
       checklistRiskFactor: { label: "Checklist below threshold: risk", help: "When the setup checklist score is below its threshold, the suggested risk per trade is multiplied by this factor." },
+      autoGapPct: { label: "Checklist: gap for the auto tick", help: "A «gap» item ticks itself when the ticker's gap is at least this many percent." },
+      autoRvol: { label: "Checklist: volume for the auto tick", help: "A «volume» item ticks itself when the ticker's relative volume is at least this." },
     },
     season: {
       enabled: { label: "Season calendar", help: "Off — the brief and the limits ignore the season." },

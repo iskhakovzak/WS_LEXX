@@ -50,6 +50,7 @@ function buildSchema() {
       maxOvernightExposure: moneyStr,
       maxOpenPositions: intStr,
       buyingPower: moneyStr,
+      openWindowLossLimit: moneyStr,
       allowOvernight: z.boolean(),
       allowSwing: z.boolean(),
       notes: z.string().max(2000, t("form.errMax", { max: 2000 })),
@@ -83,6 +84,7 @@ function toForm(l: RiskLimits | null): FormValues {
     maxOvernightExposure: s(l?.maxOvernightExposure),
     maxOpenPositions: s(l?.maxOpenPositions),
     buyingPower: s(l?.buyingPower),
+    openWindowLossLimit: s(l?.openWindowLossLimit),
     allowOvernight: l?.allowOvernight ?? true,
     allowSwing: l?.allowSwing ?? true,
     notes: l?.notes ?? "",
@@ -90,8 +92,8 @@ function toForm(l: RiskLimits | null): FormValues {
   };
 }
 
-type MoneyField = "accountSize" | "maxPositionUsd" | "dailyLossLimit" | "weeklyLossLimit" | "maxDrawdown" | "maxRiskPerTrade" | "maxOvernightExposure";
-const MONEY_FIELDS: { name: MoneyField; hint?: "accountSize" | "dailyLossLimit" | "maxRiskPerTrade" | "maxOvernightExposure" }[] = [
+type MoneyField = "accountSize" | "maxPositionUsd" | "dailyLossLimit" | "weeklyLossLimit" | "maxDrawdown" | "maxRiskPerTrade" | "maxOvernightExposure" | "openWindowLossLimit";
+const MONEY_FIELDS: { name: MoneyField; hint?: "accountSize" | "dailyLossLimit" | "maxRiskPerTrade" | "maxOvernightExposure" | "openWindowLossLimit" }[] = [
   { name: "accountSize", hint: "accountSize" },
   { name: "maxPositionUsd" },
   { name: "dailyLossLimit", hint: "dailyLossLimit" },
@@ -99,8 +101,10 @@ const MONEY_FIELDS: { name: MoneyField; hint?: "accountSize" | "dailyLossLimit" 
   { name: "maxDrawdown" },
   { name: "maxRiskPerTrade", hint: "maxRiskPerTrade" },
   { name: "maxOvernightExposure", hint: "maxOvernightExposure" },
+  { name: "openWindowLossLimit", hint: "openWindowLossLimit" },
 ];
-const NUMBER_FIELDS: (MoneyField | "maxOpenPositions")[] = [...MONEY_FIELDS.map((f) => f.name), "maxOpenPositions"];
+// The opening-window limit is optional (empty = the stage share): it never counts toward «the form is empty».
+const NUMBER_FIELDS: (MoneyField | "maxOpenPositions")[] = [...MONEY_FIELDS.map((f) => f.name).filter((n) => n !== "openWindowLossLimit"), "maxOpenPositions"];
 
 export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits: RiskLimits | null; onSaved?: () => void }) {
   const { toast } = useToast();
@@ -140,6 +144,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
   };
 
   const placeholderFor = (name: MoneyField | "maxOpenPositions") => {
+    if (name === "openWindowLossLimit") return t("form.byStageShare");
     const v = preset?.[name];
     if (v == null) return t("form.notSet");
     return t("form.byTier", { value: name === "maxOpenPositions" ? String(v) : fmtUsd(v as number, { decimals: 0 }) });
@@ -157,6 +162,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
       maxOvernightExposure: toNum(v.maxOvernightExposure),
       maxOpenPositions: toNum(v.maxOpenPositions),
       buyingPower: toNum(v.buyingPower),
+      openWindowLossLimit: toNum(v.openWindowLossLimit),
       allowOvernight: v.allowOvernight,
       allowSwing: v.allowSwing,
       notes: v.notes.trim() || null,

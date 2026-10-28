@@ -12,6 +12,7 @@ import { personalTrader } from "../lib/auth";
 import { route } from "../lib/http";
 import { addDays, nyDate } from "../lib/tradingDate";
 import { flowStats } from "../lib/sessionFlow/stats";
+import { openWindowStateOf } from "../lib/sessionFlow/gates";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,14 @@ router.get("/session-flow/stats", route({
   const floor = addDays(to, -MAX_DAYS);
   const from = !query.from ? addDays(to, -DEFAULT_DAYS) : query.from > floor ? query.from : floor;
   return flowStats(trader, from, to);
+}));
+
+// The opening window 09:30–10:00 of a trader-day (own, or staff with trades.read.team: the risk desk's trader sheet).
+router.get("/session-flow/open-window", route({
+  query: z.object({ trader: z.string().trim().max(120).optional(), date: YMD.optional() }),
+}, async ({ req, query }) => {
+  const trader = await personalTrader(req, query.trader, "trades.read.team");
+  return { trader, ...(await openWindowStateOf(trader, query.date ?? nyDate())) };
 }));
 
 export default router;

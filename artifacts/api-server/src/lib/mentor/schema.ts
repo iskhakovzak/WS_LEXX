@@ -14,7 +14,7 @@ import { z } from "zod";
 import { COMMITMENT_KINDS } from "./commitments";
 import { extractJson } from "../assistant/review/schema";
 
-export const MENTOR_VERSION = 6; // 6: sessionFlow.offTiming (setup timing matrix); 5: season in the brief; 4: sessionFlow in the debrief
+export const MENTOR_VERSION = 7; // 7: openWindow in the brief; 6: sessionFlow.offTiming; 5: season in the brief; 4: sessionFlow in the debrief
 
 const MENTOR_KINDS = ["brief", "debrief", "weekly", "chat"] as const;
 export type MentorKind = (typeof MENTOR_KINDS)[number];

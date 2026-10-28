@@ -47,6 +47,8 @@ export type Limits = {
   allowSwing: boolean;
   /** Buying power set per trader by the curator (Волна 1 п. 1.21): junior 25 000 – 800 000 $, above junior no cap. */
   buyingPower?: number | null;
+  /** Own loss limit of the opening window 09:30–10:00 (null = the stage share of the daily limit, lib/sessionFlow/openWindow). */
+  openWindowLossLimit?: number | null;
   tier: string | null;
   notes: string | null;
   updatedBy: string | null;
