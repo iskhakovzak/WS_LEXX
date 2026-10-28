@@ -77,6 +77,7 @@ import catalystsRouter from "./catalysts";
 import analystSignalsRouter from "./analyst-signals";
 import corpEventsRouter from "./corp-events";
 import analoguesRouter from "./analogues";
+import podsRouter from "./pods";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -229,6 +230,7 @@ router.use(adminConsoleRouter);
 router.use(curatorRouter);
 router.use(curatorRequestsRouter);
 router.use(deskGroupsRouter);
+router.use(podsRouter); // trading pods inside a curator's group: shared stats, feed, weekly review
 router.use(trainingRouter);
 router.use(simRouter);
 router.use(trainerRouter);

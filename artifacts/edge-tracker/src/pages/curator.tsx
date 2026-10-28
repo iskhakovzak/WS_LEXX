@@ -25,6 +25,7 @@ import { curatorI18n } from "@/i18n/ns/curator";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtDate } from "@/lib/format";
+import { PodsManager } from "@/components/pods/pods-manager";
 
 type View = "today" | "traders" | "risk";
 const VIEWS: readonly View[] = ["today", "traders", "risk"];
@@ -156,7 +157,7 @@ function CuratorCabinet() {
           <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} mentor={<MentorCuratorPanel trader={trader} />} />
         ) : (
           <QueryState query={traders} skeleton={<GroupSkeleton />} errorTitle={t("page.tradersFailed")}>
-            {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}
+            {(data) => <><GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} /><PodsManager /></>}
           </QueryState>
         )
       ) : (

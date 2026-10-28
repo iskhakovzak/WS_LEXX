@@ -28,6 +28,7 @@ import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personName } from "@/i18n";
+import { PodPanel } from "@/components/pods/pod-panel";
 
 type View = "trader" | "curator" | "partners";
 const VIEWS: View[] = ["trader", "curator", "partners"];
@@ -235,6 +236,7 @@ export default function WeeklyReviewPage() {
             </p>
             {/* The nightly AI week review (Fridays, when the desk turned it on); nothing shows until one exists. */}
             <AiReviewCard subject={{ kind: "week", date: doc.week.start, trader: doc.trader }} className="mb-[var(--grid-gap)]" />
+            {effectiveView !== "curator" && <PodPanel weekStart={doc.week.start} weekEnd={doc.week.end} className="mb-[var(--grid-gap)]" />}
             {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} next={next} onWeek={setWeek} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} onWeek={setWeek} />}
           </div>
         )}

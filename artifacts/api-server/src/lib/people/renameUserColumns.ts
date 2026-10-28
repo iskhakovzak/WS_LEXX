@@ -170,6 +170,8 @@ const TEXT: Record<string, readonly string[]> = {
   trades: ["trader"],
   trading_errors: ["trader"],
   trading_errors_archive: ["archived_by", "trader"],
+  trading_pod_posts: ["author", "updated_by"],
+  trading_pods: ["created_by"],
   trading_rules: ["created_by", "trader"],
   trainer_drill_attempts: ["trader"],
   trainer_drills: ["trader"],

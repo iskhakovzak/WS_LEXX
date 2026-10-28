@@ -268,6 +268,8 @@ CREATE SEQUENCE public.trader_risk_limit_events_id_seq AS integer START WITH 1 I
 CREATE SEQUENCE public.trades_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trading_errors_archive_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trading_errors_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.trading_pod_posts_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.trading_pods_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trading_rules_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trainer_drill_attempts_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trainer_drills_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -3268,6 +3270,46 @@ CREATE TABLE public.trading_errors_archive (
   CONSTRAINT trading_errors_archive_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE public.trading_pod_members (
+  pod_id integer NOT NULL,
+  user_id integer NOT NULL,
+  added_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT trading_pod_members_pkey PRIMARY KEY (pod_id, user_id)
+);
+
+CREATE TABLE public.trading_pod_posts (
+  id integer DEFAULT nextval('public.trading_pod_posts_id_seq'::regclass) NOT NULL,
+  pod_id integer NOT NULL,
+  kind text DEFAULT 'post'::text NOT NULL,
+  week text,
+  body text NOT NULL,
+  author text NOT NULL,
+  updated_by text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT trading_pod_posts_pkey PRIMARY KEY (id),
+  CONSTRAINT trading_pod_posts_author_check CHECK (char_length(author) >= 1 AND char_length(author) <= 200),
+  CONSTRAINT trading_pod_posts_body_check CHECK (char_length(body) >= 1 AND char_length(body) <= 4000),
+  CONSTRAINT trading_pod_posts_check CHECK ((kind = 'review'::text) = (week IS NOT NULL)),
+  CONSTRAINT trading_pod_posts_kind_check CHECK (kind = ANY (ARRAY['post'::text, 'review'::text])),
+  CONSTRAINT trading_pod_posts_updated_by_check CHECK (updated_by IS NULL OR char_length(updated_by) >= 1 AND char_length(updated_by) <= 200),
+  CONSTRAINT trading_pod_posts_week_check CHECK (week IS NULL OR week ~ '^\d{4}-\d{2}-\d{2}$'::text)
+);
+
+CREATE TABLE public.trading_pods (
+  id integer DEFAULT nextval('public.trading_pods_id_seq'::regclass) NOT NULL,
+  group_id integer NOT NULL,
+  "name" text NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  archived_at timestamp with time zone,
+  CONSTRAINT trading_pods_pkey PRIMARY KEY (id),
+  CONSTRAINT trading_pods_created_by_check CHECK (char_length(created_by) >= 1 AND char_length(created_by) <= 200),
+  CONSTRAINT trading_pods_name_check CHECK (char_length(name) >= 1 AND char_length(name) <= 60)
+);
+
 CREATE TABLE public.trading_rules (
   id integer DEFAULT nextval('public.trading_rules_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,
@@ -3695,6 +3737,8 @@ ALTER SEQUENCE public.trader_risk_limit_events_id_seq OWNED BY public.trader_ris
 ALTER SEQUENCE public.trades_id_seq OWNED BY public.trades.id;
 ALTER SEQUENCE public.trading_errors_archive_id_seq OWNED BY public.trading_errors_archive.id;
 ALTER SEQUENCE public.trading_errors_id_seq OWNED BY public.trading_errors.id;
+ALTER SEQUENCE public.trading_pod_posts_id_seq OWNED BY public.trading_pod_posts.id;
+ALTER SEQUENCE public.trading_pods_id_seq OWNED BY public.trading_pods.id;
 ALTER SEQUENCE public.trading_rules_id_seq OWNED BY public.trading_rules.id;
 ALTER SEQUENCE public.trainer_drill_attempts_id_seq OWNED BY public.trainer_drill_attempts.id;
 ALTER SEQUENCE public.trainer_drills_id_seq OWNED BY public.trainer_drills.id;
@@ -3926,6 +3970,10 @@ CREATE INDEX trades_strategy_sig_idx ON public.trades USING btree (strategy_sig)
 CREATE INDEX trades_trader_day_idx ON public.trades USING btree (COALESCE(trader, ''::text), "left"(date, 10));
 CREATE INDEX trading_errors_trade_code_idx ON public.trading_errors USING btree (trade_id, code);
 CREATE INDEX trading_errors_archive_trader_idx ON public.trading_errors_archive USING btree (trader);
+CREATE UNIQUE INDEX trading_pod_members_one_pod ON public.trading_pod_members USING btree (user_id);
+CREATE INDEX trading_pod_posts_feed_idx ON public.trading_pod_posts USING btree (pod_id, created_at DESC) WHERE (deleted_at IS NULL);
+CREATE UNIQUE INDEX trading_pod_posts_review_once ON public.trading_pod_posts USING btree (pod_id, week) WHERE ((kind = 'review'::text) AND (deleted_at IS NULL));
+CREATE INDEX trading_pods_group_idx ON public.trading_pods USING btree (group_id) WHERE (archived_at IS NULL);
 CREATE UNIQUE INDEX trading_rules_template_key_uidx ON public.trading_rules USING btree (template_key) WHERE (template_key IS NOT NULL);
 CREATE INDEX trading_rules_trader_idx ON public.trading_rules USING btree (trader);
 CREATE INDEX trainer_daily_challenges_key_idx ON public.trainer_daily_challenges USING btree (ticker, bars_day);
@@ -3988,6 +4036,10 @@ ALTER TABLE public.sim_games ADD CONSTRAINT sim_games_user_id_fkey FOREIGN KEY (
 ALTER TABLE public.sim_prefs ADD CONSTRAINT sim_prefs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE public.sim_series ADD CONSTRAINT sim_series_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE public.trade_executions ADD CONSTRAINT trade_executions_trade_id_fkey FOREIGN KEY (trade_id) REFERENCES public.trades(id) ON DELETE CASCADE;
+ALTER TABLE public.trading_pod_members ADD CONSTRAINT trading_pod_members_pod_id_fkey FOREIGN KEY (pod_id) REFERENCES public.trading_pods(id) ON DELETE CASCADE;
+ALTER TABLE public.trading_pod_members ADD CONSTRAINT trading_pod_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE public.trading_pod_posts ADD CONSTRAINT trading_pod_posts_pod_id_fkey FOREIGN KEY (pod_id) REFERENCES public.trading_pods(id) ON DELETE CASCADE;
+ALTER TABLE public.trading_pods ADD CONSTRAINT trading_pods_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.desk_groups(id);
 ALTER TABLE public.trainer_drill_attempts ADD CONSTRAINT trainer_drill_attempts_drill_id_fkey FOREIGN KEY (drill_id) REFERENCES public.trainer_drills(id) ON DELETE CASCADE;
 ALTER TABLE public.trainer_drill_attempts ADD CONSTRAINT trainer_drill_attempts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE public.usage_events ADD CONSTRAINT usage_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
