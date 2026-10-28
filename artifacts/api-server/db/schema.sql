@@ -251,6 +251,7 @@ CREATE SEQUENCE public.rule_violations_id_seq AS integer START WITH 1 INCREMENT 
 CREATE SEQUENCE public.scaling_history_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.scaling_proposals_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.scaling_rules_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.season_reports_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.telegram_link_tokens_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.telegram_pending_actions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.telegram_push_log_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
@@ -2855,6 +2856,22 @@ CREATE TABLE public.schema_migrations (
   CONSTRAINT schema_migrations_pkey PRIMARY KEY (version)
 );
 
+CREATE TABLE public.season_reports (
+  id integer DEFAULT nextval('public.season_reports_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  from_day text NOT NULL,
+  to_day text NOT NULL,
+  playbook_id integer,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT season_reports_pkey PRIMARY KEY (id),
+  CONSTRAINT season_reports_trader_from_day_to_day_key UNIQUE (trader, from_day, to_day),
+  CONSTRAINT season_reports_check CHECK (from_day <= to_day),
+  CONSTRAINT season_reports_from_day_check CHECK (from_day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT season_reports_to_day_check CHECK (to_day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT season_reports_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
 CREATE TABLE public.sector_strength_cache (
   symbol text NOT NULL,
   "name" text,
@@ -3805,6 +3822,7 @@ ALTER SEQUENCE public.rule_violations_id_seq OWNED BY public.rule_violations.id;
 ALTER SEQUENCE public.scaling_history_id_seq OWNED BY public.scaling_history.id;
 ALTER SEQUENCE public.scaling_proposals_id_seq OWNED BY public.scaling_proposals.id;
 ALTER SEQUENCE public.scaling_rules_id_seq OWNED BY public.scaling_rules.id;
+ALTER SEQUENCE public.season_reports_id_seq OWNED BY public.season_reports.id;
 ALTER SEQUENCE public.telegram_link_tokens_id_seq OWNED BY public.telegram_link_tokens.id;
 ALTER SEQUENCE public.telegram_pending_actions_id_seq OWNED BY public.telegram_pending_actions.id;
 ALTER SEQUENCE public.telegram_push_log_id_seq OWNED BY public.telegram_push_log.id;
@@ -4122,6 +4140,7 @@ ALTER TABLE public.research_pins ADD CONSTRAINT research_pins_research_id_fkey F
 ALTER TABLE public.reward_grants ADD CONSTRAINT reward_grants_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.reward_items(id);
 ALTER TABLE public.rule_self_checks ADD CONSTRAINT rule_self_checks_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.trading_rules(id) ON DELETE CASCADE;
 ALTER TABLE public.rule_violations ADD CONSTRAINT rule_violations_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.trading_rules(id) ON DELETE CASCADE;
+ALTER TABLE public.season_reports ADD CONSTRAINT season_reports_playbook_id_fkey FOREIGN KEY (playbook_id) REFERENCES public.playbook(id) ON DELETE SET NULL;
 ALTER TABLE public.sim_games ADD CONSTRAINT sim_games_series_id_fkey FOREIGN KEY (series_id) REFERENCES public.sim_series(id) ON DELETE SET NULL;
 ALTER TABLE public.sim_games ADD CONSTRAINT sim_games_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE public.sim_prefs ADD CONSTRAINT sim_prefs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;

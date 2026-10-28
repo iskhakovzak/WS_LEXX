@@ -69,6 +69,7 @@ const GamePlan = lazy(L["/game-plan"]);
 const Integrations = lazy(L["/integrations"]);
 const Scaling = lazy(L["/scaling"]);
 const WeeklyReview = lazy(L["/weekly-review"]);
+const SeasonReport = lazy(L["/season-report"]);
 const Notifications = lazy(L["/notifications"]);
 const Simulator = lazy(L["/simulator"]);
 const Trainer = lazy(L["/trainer"]);
@@ -208,6 +209,7 @@ function Router() {
           <Route path="/integrations" component={Integrations} />
           <Route path="/scaling" component={Scaling} />
           <Route path="/weekly-review" component={WeeklyReview} />
+          <Route path="/season-report" component={SeasonReport} />
           <Route path="/my-review" component={MyReview} />
           <Route path="/coach" component={Coach} />
           <Route path="/notifications" component={Notifications} />

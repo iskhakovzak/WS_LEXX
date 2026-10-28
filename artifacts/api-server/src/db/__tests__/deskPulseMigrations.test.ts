@@ -10,7 +10,7 @@ const available = await pgAvailable();
 const silent = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 describe.skipIf(!available)("migrations 0289+ — desk pulse", () => {
-  it("stores one plan note per author, day and ticker", async () => {
+  it("stores one plan note per author, day and ticker and one season row per trader and period", async () => {
     const db = await createScratchDb("pulse");
     try {
       await runMigrationFiles({ pool: db.pool, logger: silent });
@@ -21,6 +21,13 @@ describe.skipIf(!available)("migrations 0289+ — desk pulse", () => {
       await expect(q(`INSERT INTO easy_money_notes (author, day, ticker, note) VALUES ('senior', '27.10.2026', 'AMD', 'x')`)).rejects.toThrow(/easy_money_notes_day_check/);
       await expect(q(`INSERT INTO easy_money_notes (author, day, ticker, note) VALUES ('senior', '2026-10-27', 'amd', 'x')`)).rejects.toThrow(/easy_money_notes_ticker_check/);
       await expect(q(`INSERT INTO easy_money_notes (author, day, ticker, note) VALUES ('senior', '2026-10-27', 'AMD', '')`)).rejects.toThrow(/easy_money_notes_note_check/);
+      // 0290 season reports: one row per trader and period, linked to the Playbook note (a deleted entry unlinks)
+      const { rows: [pb] } = await q(`INSERT INTO playbook (name, notes, trader, source_type) VALUES ('Season 2026-Q4', 'conclusions', 't', 'season_report') RETURNING id`);
+      const { rows: [sr] } = await q(`INSERT INTO season_reports (trader, from_day, to_day, playbook_id) VALUES ('t', '2026-10-12', '2027-01-11', $1) RETURNING id`, [pb.id]);
+      await expect(q(`INSERT INTO season_reports (trader, from_day, to_day) VALUES ('t', '2026-10-12', '2027-01-11')`)).rejects.toThrow(/season_reports_trader_from_day_to_day_key/);
+      await expect(q(`INSERT INTO season_reports (trader, from_day, to_day) VALUES ('t', '2026-10-12', '2026-10-01')`)).rejects.toThrow(/season_reports_check/);
+      await q(`DELETE FROM playbook WHERE id = $1`, [pb.id]);
+      expect((await q(`SELECT playbook_id FROM season_reports WHERE id = $1`, [sr.id])).rows[0].playbook_id).toBeNull();
       // idempotent: a second run applies nothing
       expect((await runMigrationFiles({ pool: db.pool, logger: silent })).applied).toEqual([]);
     } finally {

@@ -32,6 +32,7 @@ export default {
     event: "Event",
     watchlist: "Watchlist",
     trade_idea: "Idea",
+    season_report: "Season report",
   },
   setupGroupOther: "Other",
   swatch: {

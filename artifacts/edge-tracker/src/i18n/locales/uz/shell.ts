@@ -11,6 +11,7 @@ export default {
     calculator: "Opsion kalkulyatori",
     analytics: "Analitika",
     weeklyReview: "Haftalik hisobot",
+    seasonReport: "Mavsum hisoboti",
     dayReport: "Kun tahlili",
     myReview: "Mening tahlilim",
     coach: "Mentor",

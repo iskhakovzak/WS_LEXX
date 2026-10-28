@@ -64,7 +64,7 @@ describe("nav groups", () => {
   it("every analysis tool sits under «Аналитика»; the old «Инструменты» grab-bag is gone", () => {
     const kids = (href: string) => ALL_NAV_ITEMS.find((i) => i.href === href)!.children!.map((c) => c.href);
     expect(kids("/analytics")).toEqual(["/stats", "/behavior", "/what-if", "/chart-lab", "/ask"]);
-    expect(kids("/journal")).toEqual(["/day-report", "/weekly-review", "/my-review", "/coach"]);
+    expect(kids("/journal")).toEqual(["/day-report", "/weekly-review", "/season-report", "/my-review", "/coach"]);
     expect(kids("/ratings")).toEqual(["/benchmark", "/top-results", "/trade-idea-stats", "/office"]);
     expect(kids("/watchlist")).toEqual(["/big7", "/indicators", "/calculator"]);
     expect(kids("/curator")).toEqual(["/academy/mentor", "/scaling"]);

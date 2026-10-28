@@ -68,7 +68,7 @@ function MoveCard({ m, note, date }: { m: BoardMove; note: string; date: string 
         <span className="font-semibold">{m.ticker}</span>
         <span className={cn("font-medium tabular-nums", toneText(m.side === "long" ? "up" : "down"))}>{moveText(m)}</span>
         <span className="text-sm text-foreground">{setupText(m)}</span>
-        <span className="text-xs text-muted-foreground">{t(`easy.kind.${m.kind}`)} · {fmtRate(m.clean)}</span>
+        <span className="text-xs text-muted-foreground">{t(`easy.kind.${m.kind}`)} · {t("easy.clean", { value: fmtRate(m.clean) })}</span>
         <span className="flex flex-wrap gap-1">{m.sources.map((s) => <Pill key={s} tone={s === "em_break" ? "warn" : "neutral"}>{t(`easy.source.${s}`)}</Pill>)}</span>
       </div>
       <People label={t("easy.group.took")} rows={took} result />

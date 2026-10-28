@@ -12,6 +12,7 @@ export default {
     calculator: "Опционный калькулятор",
     analytics: "Аналитика",
     weeklyReview: "Отчёт недели",
+    seasonReport: "Отчёт за сезон",
     dayReport: "Разбор дня",
     myReview: "Мой разбор",
     coach: "Ментор",

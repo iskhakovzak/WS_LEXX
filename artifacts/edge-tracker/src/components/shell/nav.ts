@@ -20,7 +20,7 @@ import {
   LayoutDashboard, Crosshair, ShieldAlert, CandlestickChart, NotebookPen, Calculator,
   LineChart, BarChart3, ListChecks, BookMarked, Eye, Radar, CalendarClock, BookOpen, Newspaper,
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
-  Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, TextSearch,
+  Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, CalendarRange, Bell, FlaskConical, Brain, FileText, TextSearch,
   GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Gamepad2, Shapes, ScanSearch,
   ChartSpline, Scale, IdCard, Compass,
 } from "lucide-react";
@@ -117,6 +117,8 @@ export const NAV_GROUPS: NavGroup[] = [
     nav("journal", { href: "/journal", icon: NotebookPen, keywords: "journal журнал дневник разбор дня eod закрытие дня вечер сводка итог дня junior notes", goKey: "j", children: [
       nav("dayReport", { href: "/day-report", icon: FileText, keywords: "day report разбор дня итоги дня отчёт план на завтра" }),
       nav("weeklyReview", { href: "/weekly-review", icon: ClipboardCheck, keywords: "weekly review неделя итоги недели отчёт" }),
+      // The season level of the weekly review: generated from trades, the trader writes only the conclusions (→ Playbook).
+      nav("seasonReport", { href: "/season-report", icon: CalendarRange, keywords: "season report сезон отчёт за сезон итоги сезона квартал выводы" }),
       // Волна 2 п. 2.9: the trader's own 30-day answer (where I earn / lose, one rule for tomorrow); staff keep /analytics.
       nav("myReview", { href: "/my-review", icon: ScanSearch, keywords: "my review мой разбор где зарабатываю где теряю правило на завтра итоги месяца" }),
       // The personal AI mentor (brief before the session, debrief after it, commitments): its entry in the day is the

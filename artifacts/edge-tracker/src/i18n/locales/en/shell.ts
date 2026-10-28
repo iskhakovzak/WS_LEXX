@@ -11,6 +11,7 @@ export default {
     calculator: "Options calculator",
     analytics: "Analytics",
     weeklyReview: "Weekly report",
+    seasonReport: "Season report",
     dayReport: "Day review",
     myReview: "My review",
     coach: "Mentor",

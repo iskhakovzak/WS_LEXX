@@ -32,6 +32,7 @@ export default {
     event: "Voqea",
     watchlist: "Kuzatuv roʻyxati",
     trade_idea: "Gʻoya",
+    season_report: "Mavsum hisoboti",
   },
   setupGroupOther: "Boshqa",
   swatch: {

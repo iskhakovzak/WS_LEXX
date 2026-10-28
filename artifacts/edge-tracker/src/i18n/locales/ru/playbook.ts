@@ -39,6 +39,7 @@ export default {
     event: "Событие",
     watchlist: "Вотчлист",
     trade_idea: "Идея",
+    season_report: "Отчёт за сезон",
   },
   setupGroupOther: "Прочее",
   /** Folder colour names (colour picker). */

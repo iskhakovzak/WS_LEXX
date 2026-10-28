@@ -47,6 +47,7 @@ const PAGE_IMPORTS = {
   "/integrations": () => import("@/pages/integrations"),
   "/scaling": () => import("@/pages/scaling"),
   "/weekly-review": () => import("@/pages/weekly-review"),
+  "/season-report": () => import("@/pages/season-report"),
   "/notifications": () => import("@/pages/notifications"),
   "/simulator": () => import("@/pages/simulator"),
   "/trainer": () => import("@/pages/trainer"),

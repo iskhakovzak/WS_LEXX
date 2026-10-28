@@ -347,7 +347,7 @@ export const SETUP_GROUPS: { readonly label: string; items: string[] }[] = [
   { get label() { return playbookI18n.t("setupGroupOther"); }, items: ["other"] },
 ];
 
-const SOURCE_KEYS: SetupSourceKey[] = ["trade", "research", "dailyfeed", "event", "watchlist", "trade_idea"];
+const SOURCE_KEYS: SetupSourceKey[] = ["trade", "research", "dailyfeed", "event", "watchlist", "trade_idea", "season_report"];
 /** source_type code → label (getters: current UI language). Unknown codes are absent (callers fall back to the code). */
 export const SOURCE_LABELS: Record<string, string> = Object.defineProperties(
   {} as Record<string, string>,

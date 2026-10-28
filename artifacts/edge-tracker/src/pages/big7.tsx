@@ -305,8 +305,6 @@ export default function Big7() {
             <MyStatsPanel stats={myShown} period={statsPeriod} onOpen={setOpenSym} />
           )}
 
-          <DeskPulsePanel />
-
           {board.length > 0 && (
             <CatalystWeek
               merged={merged}
@@ -320,6 +318,9 @@ export default function Big7() {
           )}
         </>
       )}
+
+      {/* Desk-level, not tied to the board: shown even before the board has tickers. */}
+      <DeskPulsePanel />
 
       <DetailSheet
         row={openRow}

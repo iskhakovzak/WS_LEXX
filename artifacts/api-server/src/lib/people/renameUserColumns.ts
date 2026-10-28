@@ -155,6 +155,7 @@ const TEXT: Record<string, readonly string[]> = {
   scaling_proposals: ["created_by", "decided_by", "trader"],
   scaling_rules: ["updated_by"],
   scaling_tiers: ["updated_by"],
+  season_reports: ["trader"],
   setup_mastery: ["trader"],
   telegram_link_tokens: ["user_name"],
   trade_idea_comments: ["author_name"],
