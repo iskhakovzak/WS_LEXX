@@ -187,6 +187,7 @@ CREATE SEQUENCE public.big7_tickers_id_seq AS integer START WITH 1 INCREMENT BY 
 CREATE SEQUENCE public.candles_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.comments_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.content_reports_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.corp_events_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.curator_interventions_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.curator_notes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.curator_requests_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -1149,6 +1150,36 @@ CREATE TABLE public.content_reports (
   resolution text,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT content_reports_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.corp_event_type_setups (
+  "type" text NOT NULL,
+  playbook_id integer NOT NULL,
+  updated_by text NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT corp_event_type_setups_pkey PRIMARY KEY (type),
+  CONSTRAINT corp_event_type_setups_type_check CHECK (type = ANY (ARRAY['lockup_expiry'::text, 'sp_add'::text, 'sp_remove'::text, 'index_rebalance'::text, 'quad_witching'::text, 'spinoff'::text, 'pricing'::text, 'offering'::text, 'ipo'::text])),
+  CONSTRAINT corp_event_type_setups_updated_by_check CHECK (char_length(updated_by) >= 1 AND char_length(updated_by) <= 200)
+);
+
+CREATE TABLE public.corp_events (
+  id integer DEFAULT nextval('public.corp_events_id_seq'::regclass) NOT NULL,
+  day text NOT NULL,
+  "type" text NOT NULL,
+  ticker text,
+  index_code text,
+  note text,
+  created_by text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT corp_events_pkey PRIMARY KEY (id),
+  CONSTRAINT corp_events_created_by_check CHECK (char_length(created_by) >= 1 AND char_length(created_by) <= 200),
+  CONSTRAINT corp_events_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT corp_events_index_code_check CHECK (index_code = ANY (ARRAY['sp500'::text, 'sp400'::text, 'sp600'::text, 'msci'::text, 'russell'::text, 'nasdaq100'::text, 'other'::text])),
+  CONSTRAINT corp_events_note_check CHECK (note IS NULL OR char_length(note) <= 500),
+  CONSTRAINT corp_events_ticker_check CHECK (ticker IS NULL OR ticker ~ '^[A-Z0-9][-A-Z0-9.]{0,11}$'::text),
+  CONSTRAINT corp_events_type_check CHECK (type = ANY (ARRAY['lockup_expiry'::text, 'sp_add'::text, 'sp_remove'::text, 'index_rebalance'::text, 'quad_witching'::text, 'spinoff'::text, 'pricing'::text, 'offering'::text, 'ipo'::text]))
 );
 
 CREATE TABLE public.curator_interventions (
@@ -3559,6 +3590,7 @@ ALTER SEQUENCE public.big7_tickers_id_seq OWNED BY public.big7_tickers.id;
 ALTER SEQUENCE public.candles_cache_id_seq OWNED BY public.candles_cache.id;
 ALTER SEQUENCE public.comments_id_seq OWNED BY public.comments.id;
 ALTER SEQUENCE public.content_reports_id_seq OWNED BY public.content_reports.id;
+ALTER SEQUENCE public.corp_events_id_seq OWNED BY public.corp_events.id;
 ALTER SEQUENCE public.curator_interventions_id_seq OWNED BY public.curator_interventions.id;
 ALTER SEQUENCE public.curator_notes_id_seq OWNED BY public.curator_notes.id;
 ALTER SEQUENCE public.curator_requests_id_seq OWNED BY public.curator_requests.id;
@@ -3717,6 +3749,7 @@ CREATE INDEX comments_discussion_id_idx ON public.comments USING btree (discussi
 CREATE INDEX content_reports_created_at_idx ON public.content_reports USING btree (created_at);
 CREATE INDEX content_reports_status_idx ON public.content_reports USING btree (status);
 CREATE INDEX content_reports_target_idx ON public.content_reports USING btree (target_type, target_id);
+CREATE INDEX corp_events_day_idx ON public.corp_events USING btree (day) WHERE (deleted_at IS NULL);
 CREATE INDEX curator_interventions_kind_idx ON public.curator_interventions USING btree (kind, started_on);
 CREATE INDEX curator_interventions_trader_idx ON public.curator_interventions USING btree (trader, started_on DESC, id DESC);
 CREATE INDEX curator_notes_trader_idx ON public.curator_notes USING btree (trader, created_at DESC) WHERE (archived_at IS NULL);
@@ -3909,6 +3942,7 @@ ALTER TABLE public.ai_batch_items ADD CONSTRAINT ai_batch_items_batch_id_fkey FO
 ALTER TABLE public.app_error_occurrences ADD CONSTRAINT app_error_occurrences_error_id_fkey FOREIGN KEY (error_id) REFERENCES public.app_errors(id) ON DELETE CASCADE;
 ALTER TABLE public.author_note_reads ADD CONSTRAINT author_note_reads_note_id_fkey FOREIGN KEY (note_id) REFERENCES public.author_notes(id) ON DELETE CASCADE;
 ALTER TABLE public.chart_drawings ADD CONSTRAINT chart_drawings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE public.corp_event_type_setups ADD CONSTRAINT corp_event_type_setups_playbook_id_fkey FOREIGN KEY (playbook_id) REFERENCES public.playbook(id) ON DELETE CASCADE;
 ALTER TABLE public.curator_requests ADD CONSTRAINT curator_requests_resolved_by_id_fkey FOREIGN KEY (resolved_by_id) REFERENCES public.users(id);
 ALTER TABLE public.curator_requests ADD CONSTRAINT curator_requests_trader_id_fkey FOREIGN KEY (trader_id) REFERENCES public.users(id);
 ALTER TABLE public.desk_groups ADD CONSTRAINT desk_groups_curator_id_fkey FOREIGN KEY (curator_id) REFERENCES public.users(id);

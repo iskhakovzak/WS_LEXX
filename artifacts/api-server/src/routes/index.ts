@@ -75,6 +75,7 @@ import myEdgeRouter from "./my-edge";
 import marketRegimeRouter from "./market-regime";
 import catalystsRouter from "./catalysts";
 import analystSignalsRouter from "./analyst-signals";
+import corpEventsRouter from "./corp-events";
 import leakGuardRouter from "./leak-guard";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
@@ -129,6 +130,7 @@ router.use(sectionAccessMiddleware);
 router.use(tradeQualityRouter);
 router.use(tradesRouter);
 router.use(eventsRouter);
+router.use(corpEventsRouter); // corporate and index events: desk entries, rule dates, offerings feed, S&P headlines
 router.use(researchRouter);
 router.use(dailyfeedRouter);
 router.use(discussionsRouter);

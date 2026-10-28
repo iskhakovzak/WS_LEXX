@@ -71,6 +71,8 @@ const TEXT: Record<string, readonly string[]> = {
   catalyst_marks: ["trader"],
   comments: ["trader"],
   content_reports: ["reporter", "resolved_by"],
+  corp_event_type_setups: ["updated_by"],
+  corp_events: ["created_by"],
   curator_interventions: ["author", "trader"],
   curator_notes: ["archived_by", "author", "trader"],
   curator_queue_acks: ["acked_by", "trader"],

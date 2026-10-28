@@ -28,6 +28,7 @@ import { useCatalysts, type MyEarnings } from "@/components/events/use-catalysts
 import { DayBrief, MyTickerEarnings } from "@/components/events/catalyst-today";
 import { WeekGrid } from "@/components/events/catalyst-week";
 import { EdgeView } from "@/components/events/catalyst-edge";
+import { CorpEventsPanel } from "@/components/events/corp-events";
 import { nextTradingDay, prevTradingDay } from "@/components/events/catalyst-math";
 import { PersonSelect } from "@/components/people/person-select";
 import { EarningsBlock } from "@/components/shared/finviz/earnings";
@@ -306,6 +307,7 @@ export default function Events() {
       )}
 
       {view === "edge" && <EdgeView data={data} onOpenTicker={openTicker} />}
+      {view !== "edge" && <CorpEventsPanel from={view === "week" ? weekStart : data.today} defaultDay={selected} myTickers={data.myTickers} onOpenTicker={(ticker) => openTicker({ ticker })} />}
       {view !== "edge" && <EarningsBlock mine={data.myTickers} onOpenTicker={(ticker) => openTicker({ ticker })} />}
 
       <EarningsHistorySheet
