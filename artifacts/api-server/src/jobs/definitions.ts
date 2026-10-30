@@ -34,6 +34,7 @@ import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
 import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
 import { registerLeakGuardJobs } from "../lib/leakGuard/jobDefs";
+import { registerRiskSignalJobs } from "../lib/riskSignals/jobDefs";
 import { registerCapitalJobs } from "../lib/capital/jobDefs";
 import { registerMentorJobs } from "../lib/mentor/jobDefs";
 import { registerDayStateJobs } from "../lib/dayState/jobDefs";
@@ -351,6 +352,7 @@ function registerModuleJobs(): void {
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
   registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
   registerLeakGuardJobs(registerJob); // live leak guard: detect / ladder / settle after each sync (lib/leakGuard/jobDefs.ts)
+  registerRiskSignalJobs(registerJob); // live risk signals: stop / streak / revenge / off-plan / news window (lib/riskSignals/jobDefs.ts)
   registerCapitalJobs(registerJob); // weekly capital allocation proposals into the scaling queue (lib/capital/jobDefs.ts)
   registerMentorJobs(registerJob); // AI mentor: escalation check, optional scheduled brief / debrief (lib/mentor/jobDefs.ts)
   registerDayStateJobs(registerJob); // silence signal: silent traders / unclosed reviews → their curator (lib/dayState/jobDefs.ts)

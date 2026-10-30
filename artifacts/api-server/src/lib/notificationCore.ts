@@ -82,6 +82,7 @@ const TYPE_DEFS: readonly NotificationTypeDef[] = [
   { type: "limit_change", group: "risk", severity: "info" },
   { type: "rule_violation", group: "risk", severity: "warn" },
   { type: "leak_guard", group: "risk", severity: "warn" },
+  { type: "risk_signal", group: "risk", severity: "critical" },
   // scaling
   { type: "scaling_proposal", group: "scaling", severity: "info" },
   { type: "scaling_decision", group: "scaling", severity: "info" },

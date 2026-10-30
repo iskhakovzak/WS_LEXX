@@ -181,6 +181,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /junior-notes/reminders/:id/dismiss": retired("junior summaries retired (wave 1, item 1.5): every write answers 410"),
   "POST /junior-notes/team-summary": retired("junior summaries retired (wave 1, item 1.5): every write answers 410"),
   "POST /leak-guard/events/:id/ack": owner("the trader acknowledges the own leak guard event (checked on the row: 404 otherwise)"),
+  "POST /risk-signals/:id/seen": owner("the trader closes the own risk alert in the dashboard strip (checked on the row: 404 otherwise)"),
   "POST /notifications/archive": member("the own notifications"),
   "POST /notifications/read-many": member("the own notifications"),
   "POST /notifications/unarchive": member("the own notifications"),

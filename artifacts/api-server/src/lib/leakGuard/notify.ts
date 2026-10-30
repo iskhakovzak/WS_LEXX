@@ -46,7 +46,7 @@ export async function notifyTrader(e: GuardEventRow, cfg: GuardConfig): Promise<
 }
 
 /** Assigned curator / mentor first (their own people), else every active curator / admin. */
-async function curatorsOf(trader: string): Promise<string[]> {
+export async function curatorsOf(trader: string): Promise<string[]> {
   const { rows } = await pool.query<{ c: string | null; m: string | null }>(
     `SELECT assigned_curator AS c, assigned_mentor AS m FROM users WHERE name = $1 LIMIT 1`, [trader],
   ).catch(() => ({ rows: [] as { c: string | null; m: string | null }[] }));
@@ -55,7 +55,7 @@ async function curatorsOf(trader: string): Promise<string[]> {
 }
 
 /** The assigned risk manager, else the trader's staff / every curator and admin. */
-async function riskManagersOf(trader: string): Promise<string[]> {
+export async function riskManagersOf(trader: string): Promise<string[]> {
   const { rows } = await pool.query<{ r: string | null }>(`SELECT assigned_risk_manager AS r FROM users WHERE name = $1 LIMIT 1`, [trader])
     .catch(() => ({ rows: [] as { r: string | null }[] }));
   const rm = rows[0]?.r;

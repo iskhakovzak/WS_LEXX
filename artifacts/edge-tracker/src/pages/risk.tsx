@@ -24,6 +24,8 @@ import { HelpButton, PageHint } from "@/components/shared/page-hint";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { GuardDeskPanel } from "@/components/leak-guard/guard-desk";
 import { GuardImpactPanel } from "@/components/leak-guard/guard-impact";
+import { RiskSignalsDeskPanel } from "@/components/risk-signals/desk-panel";
+import { RiskSignalStrip } from "@/components/risk-signals/signal-strip";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
@@ -106,6 +108,8 @@ export default function RiskPage() {
       ) : view === "desk" && isCurator ? (
         <>
           {/* Live leak guard: who is on pause now (firm / hard), levels, saved / lost (components/leak-guard). */}
+          {/* Live risk alerts of the session across the desk + «desk saved» vs the traders' history (components/risk-signals). */}
+          <RiskSignalsDeskPanel />
           <GuardDeskPanel canEdit={isCurator} />
           <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
         </>
@@ -113,6 +117,7 @@ export default function RiskPage() {
         <OvernightView trader={me} isCurator={isCurator} onUpdatedAt={setUpdatedAt} />
       ) : me ? (
         <>
+          <RiskSignalStrip trader={null} enabled />
           <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
           <GuardImpactPanel trader={me} />
         </>

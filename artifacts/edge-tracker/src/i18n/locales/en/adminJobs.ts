@@ -63,6 +63,7 @@ export default {
     "news-channel": { premarket: "WS_NEWS channel: premarket", open: "WS_NEWS channel: from the open", close: "WS_NEWS channel: day recap" },
     edgemap: { nightly: "«Where I earn / lose» map: nightly run" },
     leakguard: { scan: "Leak guard: check after each sync" },
+    risksignals: { scan: "Session risk alerts: after each sync and every minute in the session" },
     em: { snapshot: "Expected move: options snapshot before reports" },
     capital: { weekly: "Capital allocation: weekly run" },
     whatif: { honesty: "Honest check of the “What if” suggestions" },

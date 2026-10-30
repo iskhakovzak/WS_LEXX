@@ -139,6 +139,24 @@ export default {
       body: "Leak guard: {pattern}, {usd} per trade on average. Restrict trading in the broker's platform — the site cannot block orders.",
     },
   },
+  risk_signal: {
+    title: {
+      stop_proximity: "{trader}: {pct}% of the daily stop used",
+      revenge: "{trader}: trading on harder right after a loss",
+      loss_streak: "{trader}: {losses} losing trades in a row",
+      off_plan: "{trader}: a trade outside today's plan ({ticker})",
+      banned_window: "{trader}: an entry in the {time} news window",
+    },
+    body: {
+      stop_proximity: "Day loss {loss} of the {limit} daily limit.",
+      revenge_size: "Right after a {loss} loss: a position {ratio}× their usual size (median {median}).",
+      revenge_pace: "Right after a {loss} loss: {entries} entries in {minutes} min (usually about {usual}).",
+      loss_streak: "Losing streak today: {loss} in total.",
+      off_plan: "{ticker} is not in the trader's plan for today.",
+      banned_window: "Entry in {ticker} inside the window around {event} ({time} NY).",
+    },
+    tail: "Talk to the trader; limits are set in the broker's platform — the site cannot block orders.",
+  },
   types: {
     trader_silence: { label: "Trader gone quiet", description: "A trader has had no trades for several trading days or keeps unclosed reviews — one notice to the curator, with «Write»" },
     curator_message: { label: "Curator's message", description: "A short personal message from your curator" },
@@ -165,6 +183,7 @@ export default {
     limit_change: { label: "Limit change", description: "The curator changed your risk limits or tier" },
     rule_violation: { label: "Rule violation", description: "The scanner found a discipline rule violation or a curator ruled on it" },
     leak_guard: { label: "Leak guard", description: "Pause after a loss, the first trade of the day, trading after a rule violation or near the stop — from your own numbers" },
+    risk_signal: { label: "Live risk alert", description: "A trader is at 90% of the daily stop or trading harder right after a loss — the curator and the risk manager are told at once" },
     scaling_proposal: { label: "Scaling proposal", description: "A proposal to raise / lower the tier was created" },
     scaling_decision: { label: "Scaling decision", description: "The proposal was approved or rejected" },
     academy_promotion_ready: { label: "Ready for promotion", description: "Promotion criteria for the next stage are met" },

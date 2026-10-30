@@ -39,6 +39,7 @@ import { backlogItem } from "@/components/dashboard/attention-model";
 import { freshDay, teamStatesQuery, traderStateQuery, type TraderState } from "@/lib/day-state";
 import { dayStateI18n } from "@/i18n/ns/dayState";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
+import { RiskSignalStrip } from "@/components/risk-signals/signal-strip";
 import { useDashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { addItem, TILE_SPECS, type BoardSection, type TileVariant } from "@/components/dashboard/layout-model";
 import { DayLine, DayProgress } from "@/components/daily/day-line";
@@ -360,6 +361,8 @@ export default function Dashboard() {
         stopLead={sl.state === "stopped"}
       />
       <StateLead state={m.dayState} risk={riskQ.data} quietDay={quietDay} />
+      {/* Live risk alerts of the session (components/risk-signals): stop 70 / 90 %, streak, revenge, off plan, news window. */}
+      {m.authed && scope === "me" && <RiskSignalStrip trader={null} enabled={m.authed} />}
       {m.authed && <FirstSteps />}
       {m.dailyOn && !sl.quietHero && <WrappedDashLine />}
       {m.authed && !sl.quietHero && <Suspense fallback={null}><TodayEdgeLine /></Suspense>}

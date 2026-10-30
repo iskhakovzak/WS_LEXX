@@ -139,6 +139,24 @@ export default {
       body: "Sizib chiqish himoyasi: {pattern}, har savdoda oʻrtacha {usd}. Savdoni broker platformasida cheklang — sayt orderlarni bloklay olmaydi.",
     },
   },
+  risk_signal: {
+    title: {
+      stop_proximity: "{trader}: kunlik stopning {pct}% ishlatildi",
+      revenge: "{trader}: zarardan keyin darhol tezlashmoqda",
+      loss_streak: "{trader}: ketma-ket {losses} ta zararli savdo",
+      off_plan: "{trader}: kun rejasidan tashqari savdo ({ticker})",
+      banned_window: "{trader}: {time} yangiliklar oynasida kirish",
+    },
+    body: {
+      stop_proximity: "Kun zarari {loss}, kunlik limit {limit}.",
+      revenge_size: "{loss} zarardan darhol keyin: pozitsiya odatdagidan {ratio}× katta (mediana {median}).",
+      revenge_pace: "{loss} zarardan darhol keyin: {minutes} daqiqada {entries} ta kirish (odatda taxminan {usual}).",
+      loss_streak: "Bugungi zararlar seriyasi: jami {loss}.",
+      off_plan: "{ticker} treyderning bugungi rejasida yoʻq.",
+      banned_window: "{ticker} boʻyicha {event} atrofidagi oynada kirish ({time} NY).",
+    },
+    tail: "Treyder bilan gaplashing; cheklovlar broker platformasida qoʻyiladi — sayt orderlarni bloklay olmaydi.",
+  },
   types: {
     trader_silence: { label: "Treyder jim", description: "Treyder bir necha savdo kuni savdosiz yoki yopilmagan tahlillar toʻplanmoqda — kuratorga bitta xabar, «Yozish» tugmasi bilan" },
     curator_message: { label: "Kurator xabari", description: "Kuratoringizdan qisqa shaxsiy xabar" },
@@ -165,6 +183,7 @@ export default {
     limit_change: { label: "Limitlar oʻzgarishi", description: "Kurator risk limitlaringiz yoki darajangizni oʻzgartirdi" },
     rule_violation: { label: "Qoidabuzarlik", description: "Skaner intizom qoidasi buzilishini topdi yoki kurator u boʻyicha qaror chiqardi" },
     leak_guard: { label: "Sizib chiqish himoyasi", description: "Zarardan keyingi pauza, kunning birinchi savdosi, qoidabuzarlikdan keyin yoki stop yonidagi savdolar — shaxsiy statistikangiz boʻyicha" },
+    risk_signal: { label: "Sessiyadagi risk signali", description: "Treyder kunlik stopning 90% ida yoki zarardan keyin darhol tezlashmoqda — kurator va risk-menejerga darhol" },
     scaling_proposal: { label: "Masshtablash taklifi", description: "Darajani oshirish / pasaytirish taklifi yaratildi" },
     scaling_decision: { label: "Masshtablash boʻyicha qaror", description: "Taklif maʼqullandi yoki rad etildi" },
     academy_promotion_ready: { label: "Koʻtarilishga tayyor", description: "Keyingi bosqichga koʻtarilish mezonlari bajarildi" },

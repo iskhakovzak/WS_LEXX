@@ -63,6 +63,7 @@ export default {
     "news-channel": { premarket: "WS_NEWS kanali: premarket", open: "WS_NEWS kanali: ochilishdan beri", close: "WS_NEWS kanali: kun yakuni" },
     edgemap: { nightly: "«Qayerda topaman / yoʻqotaman» xaritasi: tungi hisob" },
     leakguard: { scan: "Sizib chiqish himoyasi: sinxronlashdan keyingi tekshiruv" },
+    risksignals: { scan: "Sessiya risk signallari: har sinxronlashdan keyin va sessiyada har daqiqa" },
     em: { snapshot: "Kutilgan harakat: hisobotlardan oldin opsionlar snapshoti" },
     capital: { weekly: "Risk taqsimoti: haftalik hisob" },
     whatif: { honesty: "«Agar shunday boʻlsa» maslahatlarini halol tekshirish" },

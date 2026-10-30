@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em" | "pulse" | "sync";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em" | "pulse" | "sync" | "riskSignals";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens" | "seconds";
 
 /**
@@ -533,6 +533,24 @@ export const SETTINGS = {
   // as fast as its request budget allows (≥ 2 s); liveMinIntervalSec only caps the speed (2 = the fastest).
   "sync.liveEnabled": { group: "sync", type: "boolean", default: true },
   "sync.liveMinIntervalSec": { group: "sync", type: "number", default: 2, min: 2, max: 60, step: 1, unit: "seconds" },
+  // Live in-session risk signals (lib/riskSignals): stop proximity (two % of the daily loss limit, the higher one
+  // critical), a loss streak, revenge after a loss (size / pace vs the trader's own normal), off-plan trades and entries
+  // in a restricted window around high-impact events. The critical ones (top stop level, revenge) also go to the
+  // curator and the risk manager; Telegram only on a production API with a bot token. «Desk saved» = the rest of the
+  // session after an alert vs the trader's own past days without one; hidden below savedMinSample past cases.
+  "riskSignals.enabled": { group: "riskSignals", type: "boolean", default: true },
+  "riskSignals.stopWarnPct": { group: "riskSignals", type: "number", default: 70, min: 30, max: 99, step: 5, unit: "pct" },
+  "riskSignals.stopCriticalPct": { group: "riskSignals", type: "number", default: 90, min: 50, max: 100, step: 5, unit: "pct" },
+  "riskSignals.streakLosses": { group: "riskSignals", type: "number", default: 3, min: 2, max: 10, step: 1, unit: "trades" },
+  "riskSignals.revengeWindowMin": { group: "riskSignals", type: "number", default: 10, min: 1, max: 60, step: 1, unit: "minutes" },
+  "riskSignals.revengeSizeRatio": { group: "riskSignals", type: "number", default: 1.5, min: 1.1, max: 5, step: 0.1, unit: "times" },
+  "riskSignals.revengePaceRatio": { group: "riskSignals", type: "number", default: 2, min: 1.2, max: 5, step: 0.1, unit: "times" },
+  "riskSignals.offPlan": { group: "riskSignals", type: "boolean", default: true },
+  "riskSignals.newsBeforeMin": { group: "riskSignals", type: "number", default: 5, min: 0, max: 60, step: 1, unit: "minutes" },
+  "riskSignals.newsAfterMin": { group: "riskSignals", type: "number", default: 5, min: 0, max: 120, step: 1, unit: "minutes" },
+  "riskSignals.lookbackDays": { group: "riskSignals", type: "number", default: 90, min: 20, max: 365, step: 5, unit: "days" },
+  "riskSignals.savedMinSample": { group: "riskSignals", type: "number", default: 5, min: 3, max: 50, step: 1, unit: "count" },
+  "riskSignals.telegram": { group: "riskSignals", type: "boolean", default: true },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

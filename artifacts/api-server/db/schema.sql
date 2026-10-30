@@ -246,6 +246,7 @@ CREATE SEQUENCE public.reward_items_id_seq AS integer START WITH 1 INCREMENT BY 
 CREATE SEQUENCE public.risk_alert_log_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.risk_breach_reviews_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.risk_live_alerts_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.risk_signal_alerts_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.rule_self_checks_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.rule_violations_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.scaling_history_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -2724,6 +2725,35 @@ CREATE TABLE public.risk_live_alerts (
   CONSTRAINT risk_live_alerts_trader_date_threshold_key UNIQUE (trader, date, threshold)
 );
 
+CREATE TABLE public.risk_signal_alerts (
+  id bigint DEFAULT nextval('public.risk_signal_alerts_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  day text NOT NULL,
+  signal text NOT NULL,
+  "level" text NOT NULL,
+  severity text NOT NULL,
+  trade_id integer,
+  triggered_at timestamp with time zone NOT NULL,
+  detected_at timestamp with time zone DEFAULT now() NOT NULL,
+  pnl_at numeric(12,2),
+  stats jsonb DEFAULT '{}'::jsonb NOT NULL,
+  staff_notified_at timestamp with time zone,
+  seen_at timestamp with time zone,
+  rest_net numeric(12,2),
+  baseline_rest numeric(12,2),
+  baseline_n integer,
+  saved_usd numeric(12,2),
+  settled_at timestamp with time zone,
+  CONSTRAINT risk_signal_alerts_pkey PRIMARY KEY (id),
+  CONSTRAINT risk_signal_alerts_once UNIQUE (trader, day, signal, level),
+  CONSTRAINT risk_signal_alerts_baseline_n_check CHECK (baseline_n IS NULL OR baseline_n >= 0),
+  CONSTRAINT risk_signal_alerts_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT risk_signal_alerts_level_check CHECK (char_length(level) >= 1 AND char_length(level) <= 40),
+  CONSTRAINT risk_signal_alerts_severity_check CHECK (severity = ANY (ARRAY['warn'::text, 'critical'::text])),
+  CONSTRAINT risk_signal_alerts_signal_check CHECK (signal = ANY (ARRAY['stop_proximity'::text, 'loss_streak'::text, 'revenge'::text, 'off_plan'::text, 'banned_window'::text])),
+  CONSTRAINT risk_signal_alerts_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
 CREATE TABLE public.role_permissions (
   role text NOT NULL,
   capability text NOT NULL,
@@ -3817,6 +3847,7 @@ ALTER SEQUENCE public.reward_items_id_seq OWNED BY public.reward_items.id;
 ALTER SEQUENCE public.risk_alert_log_id_seq OWNED BY public.risk_alert_log.id;
 ALTER SEQUENCE public.risk_breach_reviews_id_seq OWNED BY public.risk_breach_reviews.id;
 ALTER SEQUENCE public.risk_live_alerts_id_seq OWNED BY public.risk_live_alerts.id;
+ALTER SEQUENCE public.risk_signal_alerts_id_seq OWNED BY public.risk_signal_alerts.id;
 ALTER SEQUENCE public.rule_self_checks_id_seq OWNED BY public.rule_self_checks.id;
 ALTER SEQUENCE public.rule_violations_id_seq OWNED BY public.rule_violations.id;
 ALTER SEQUENCE public.scaling_history_id_seq OWNED BY public.scaling_history.id;
@@ -4025,6 +4056,8 @@ CREATE INDEX research_ticker_upper_idx ON public.research USING btree (upper(tic
 CREATE INDEX reward_grants_status_idx ON public.reward_grants USING btree (status, updated_at);
 CREATE INDEX reward_grants_trader_idx ON public.reward_grants USING btree (trader);
 CREATE INDEX risk_breach_reviews_trader_idx ON public.risk_breach_reviews USING btree (trader, date DESC);
+CREATE INDEX risk_signal_alerts_day_idx ON public.risk_signal_alerts USING btree (day, trader);
+CREATE INDEX risk_signal_alerts_open_idx ON public.risk_signal_alerts USING btree (day) WHERE (settled_at IS NULL);
 CREATE INDEX rule_self_checks_trader_day_idx ON public.rule_self_checks USING btree (trader, day);
 CREATE INDEX rule_violations_active_trader_idx ON public.rule_violations USING btree (trader) WHERE (archived_at IS NULL);
 CREATE INDEX rule_violations_occurred_idx ON public.rule_violations USING btree (occurred_at);

@@ -86,6 +86,7 @@ import deskPulseRouter from "./desk-pulse";
 import easyMoneyRouter from "./easy-money";
 import seasonReportRouter from "./season-report";
 import leakGuardRouter from "./leak-guard";
+import riskSignalsRouter from "./risk-signals";
 import capitalRouter from "./capital";
 import profileRouter from "./profile";
 import juniorCostRouter from "./junior-cost";
@@ -221,6 +222,7 @@ router.use(ideasRouter); // plan idea tiers + setup checklist scores: marks, pre
 router.use(deskPulseRouter); // desk pulse: setup family × timing of the desk window, desk aggregates only (lib/deskPulse)
 router.use(easyMoneyRouter); // easy money of the day: clean moves of the in-play tickers vs the group plans and trades (lib/deskPulse)
 router.use(seasonReportRouter); // season auto-report: setup x timing, best / worst, easy money, flow, tiers; conclusions into Playbook
+router.use(riskSignalsRouter); // live risk signals: stop 70/90 %, loss streak, revenge, off plan, news window; desk saved $
 router.use(leakGuardRouter); // live leak guard: active pauses, acknowledgement, impact in $, desk, levels
 router.use(capitalRouter); // capital allocation: risk moves to proven edge (lib/capital), proposals in the scaling queue
 router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)
