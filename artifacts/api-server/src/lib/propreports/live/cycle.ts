@@ -12,7 +12,8 @@
  *              PropReports account id (one more call, within the budget). Without an account id it is left to the full sync.
  *   ingest     the SAME path as the 5-minute sync: canonicalizeFillIds → buildRoundTrips → planSync → applySync
  *              (dedup by external id, fee settings, savepoint per trade, trade caches + DB stamp bumped, outbox kicked).
- *              The "propreports.synced" event is coalesced by the loop (≤ 1 a minute) instead of one per cycle.
+ *              The "propreports.synced" event is coalesced by the loop (≤ 1 a minute) instead of one per cycle; the
+ *              risk signals scan of `traders` is started by the loop at once (lib/riskSignals/live.ts).
  *   cursors    written only for accounts that were really applied; the rest is looked at again next cycle.
  *
  * The 5-minute full sync (tick step fills.recent) keeps running as the reconciliation pass: it re-plans the accounts

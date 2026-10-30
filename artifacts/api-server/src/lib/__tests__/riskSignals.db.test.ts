@@ -101,4 +101,48 @@ describe.skipIf(!available)("risk signals scan (scratch database)", () => {
     expect(summarizeSaved(all.map((a) => ({ day: a.day, signal: a.signal, settled: a.settledAt != null, saved: a.saved, cases: a.baselineN }))))
       .toMatchObject({ alerts: 3, estimated: 3, hidden: 0, saved: 240, cases: 30 });
   });
+
+  it("entry-time: an OPEN position (the live sync's row from the opening fill) alerts at once; its close adds nothing", async () => {
+    const ENTRY = "Signal Entry Trader";
+    await db.pool.query(`INSERT INTO users (name, role, active, assigned_curator) VALUES ($1, 'trader', true, $2)`, [ENTRY, CURATOR]);
+    // Own normal: 20 past trades of $1 000 notional. Today's plan: AAPL only, FOMC statement at 14:00 (high impact).
+    const past: unknown[] = [];
+    const tuples: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const day = `2026-10-${String(12 + (i % 4)).padStart(2, "0")}`;
+      past.push(ENTRY, day, JSON.stringify({ openedAt: wall(day, 10, i), closedAt: wall(day, 10, i + 1) }));
+      const b = past.length - 3;
+      tuples.push(`($${b + 1}, $${b + 2}, 'win', 10, 0, 'AAPL', 100, 10, 'propreports', $${b + 3}::jsonb)`);
+    }
+    await db.pool.query(`INSERT INTO trades (trader, date, result, pnl, fees, ticker, qty, entry, source, context_snapshot) VALUES ${tuples.join(", ")}`, past);
+    await db.pool.query(`INSERT INTO trader_plans (trader, date, doc) VALUES ($1, $2, $3::jsonb)`, [
+      ENTRY, DAY, JSON.stringify({ inPlay: [{ ticker: "AAPL" }], macro: [{ time: "14:00", title: "FOMC statement", impact: "high" }] }),
+    ]);
+    await db.pool.query(
+      `INSERT INTO trades (trader, date, result, pnl, fees, ticker, qty, entry, source, context_snapshot)
+       VALUES ($1, $2, 'loss', -80, 0, 'AAPL', 100, 10, 'propreports', $3::jsonb)`,
+      [ENTRY, DAY, JSON.stringify({ openedAt: wall(DAY, 13, 50), closedAt: wall(DAY, 14, 0) })],
+    );
+    // 14:02 the opening fill of an off-plan, 3× size position inside the FOMC window — still open (no exit, no P&L yet).
+    const { rows: [openRow] } = await db.pool.query(
+      `INSERT INTO trades (trader, date, result, pnl, fees, ticker, qty, entry, source, context_snapshot)
+       VALUES ($1, $2, 'open', 0, 0, 'TSLA', 300, 10, 'propreports', $3::jsonb) RETURNING id`,
+      [ENTRY, DAY, JSON.stringify({ openedAt: wall(DAY, 14, 2), closedAt: null })],
+    );
+
+    const { scanTradersNow } = await import("../riskSignals/scan");
+    expect(await scanTradersNow([ENTRY], new Date(ny(14, 2).getTime() + 3_000))).toMatchObject({ traders: 1, created: 3, staffTold: 1, settled: 0 });
+    const { rows } = await db.pool.query(`SELECT signal, level, trade_id, triggered_at FROM risk_signal_alerts WHERE trader = $1 ORDER BY signal, level`, [ENTRY]);
+    expect(rows.map((r) => [r.signal, r.level])).toEqual([["banned_window", "14:00"], ["off_plan", "TSLA"], ["revenge", "size"]]);
+    expect(rows.every((r) => Number(r.trade_id) === Number(openRow.id) && new Date(r.triggered_at).getTime() === ny(14, 2).getTime())).toBe(true);
+
+    // 14:20 the same row closes at a loss (the live sync updates it in place): nothing new, nobody told twice.
+    await db.pool.query(
+      `UPDATE trades SET result = 'loss', pnl = -60, exit = 9.8, context_snapshot = context_snapshot || $2::jsonb WHERE id = $1`,
+      [openRow.id, JSON.stringify({ closedAt: wall(DAY, 14, 20) })],
+    );
+    expect(await scanTradersNow([ENTRY], ny(14, 21))).toMatchObject({ created: 0, staffTold: 0 });
+    const { rows: after } = await db.pool.query(`SELECT COUNT(*)::int AS n FROM risk_signal_alerts WHERE trader = $1`, [ENTRY]);
+    expect(after[0].n).toBe(3);
+  });
 });

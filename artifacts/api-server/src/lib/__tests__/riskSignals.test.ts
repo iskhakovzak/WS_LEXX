@@ -134,6 +134,31 @@ describe("detectLive", () => {
   });
 });
 
+describe("entry-time signals on an open position", () => {
+  const baseline: Baseline = { trades: BASELINE_MIN_TRADES, medianNotional: 1000, entriesPerMin: 0.05 };
+  const plan = { tickers: new Set(["AAPL"]), setups: new Set<number>() };
+  const windows = windowsOf([{ type: "fomc", name: "FOMC", description: "Statement 2pm ET", importance: "high" }], [], 5, 5);
+  // 14:00 FOMC; a loss closed at 14:00, then an off-plan, oversized entry at 14:02 that is still OPEN (no exit, no P&L).
+  const loss = trade({ ticker: "AAPL", net: -80, in: 260, out: 270 });
+  const open = trade({ ticker: "TSLA", net: null, in: 272, out: null, qty: 300 });
+  const keys = (hits: ReturnType<typeof detectLive>) => hits.map((h) => `${h.signal}|${h.level}`).sort();
+
+  it("revenge / off-plan / restricted window fire from the opening fill (the open row), dated at the entry", () => {
+    expect(open.result).toBe("open");
+    const hits = detectLive({ trades: [loss, open], dailyLimit: null, plan, windows, baseline }, cfg, { dailyPct: null, pnlNet: null }, min(272));
+    expect(keys(hits)).toEqual(["banned_window|14:00", "off_plan|TSLA", "revenge|size"]);
+    expect(hits.every((h) => h.at === open.entryAt && h.tradeId === open.id)).toBe(true);
+  });
+
+  it("when the same row closes later the signals and their keys are the same (the stored alert dedups it)", () => {
+    const atEntry = detectLive({ trades: [loss, open], dailyLimit: null, plan, windows, baseline }, cfg, { dailyPct: null, pnlNet: null }, min(272));
+    const closed: SignalTrade = { ...open, result: "loss", net: -40, exitAt: min(290) };
+    const atClose = detectLive({ trades: [loss, closed], dailyLimit: null, plan, windows, baseline }, cfg, { dailyPct: null, pnlNet: null }, min(291));
+    expect(keys(atClose)).toEqual(keys(atEntry));
+    expect(atClose.map((h) => h.at)).toEqual(atEntry.map((h) => h.at)); // the trigger stays the entry, not the exit
+  });
+});
+
 describe("desk saved estimate", () => {
   it("rest of the session after the trigger", () => {
     const day = [trade({ net: -30, in: 0, out: 10 }), trade({ net: 50, in: 20, out: 40 }), trade({ net: -10, in: 50, out: 55 })];

@@ -2,8 +2,9 @@
  * The job «risksignals.scan» for the in-process scheduler. Importing this module loads nothing heavy: the scan
  * (lib/riskSignals/scan.ts) is imported on the first run.
  *
- * Triggers: every PropReports sync that wrote trades («propreports.synced», with the changed traders — the live path:
- * the alert follows the sync that brought the fill in) and every minute 08:00–16:59 New York on weekdays (the positions
+ * Triggers: every PropReports sync that wrote trades («propreports.synced», with the changed traders; the live fills
+ * loop also scans its changed traders directly in-process within seconds — lib/riskSignals/live.ts — so for live fills
+ * this event is the fallback) and every minute 08:00–16:59 New York on weekdays (the positions
  * snapshot moves the stop numbers without a sync event; the late runs settle the day). The scan itself is off outside
  * the session and when the desk setting riskSignals.enabled is off (settling continues).
  *

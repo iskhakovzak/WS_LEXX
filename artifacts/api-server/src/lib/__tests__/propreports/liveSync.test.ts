@@ -1,6 +1,7 @@
 /**
  * Live PropReports fills (lib/propreports/live): cadence / budget / backoff rules, the cycle's request count (one call
- * for the whole desk however many accounts; one more only for a carried position), and the loop's timers. The client
+ * for the whole desk however many accounts; one more only for a carried position), the loop's timers, and the direct
+ * risk-signals kick (in-process, at once, never stalling the loop). The client
  * and every DB dependency are fakes — no Postgres, never a real PropReports host.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ const policy = await import("../../propreports/live/policy");
 const { runLiveCycle, fetchLivePages, fillLagSec, LIVE_CURSOR_PREFIX } = await import("../../propreports/live/cycle");
 const { LiveLoop } = await import("../../propreports/live/loop");
 const { PropReportsError } = await import("../../propreports/client");
+const { LiveScanKicker } = await import("../../riskSignals/live");
 
 const TODAY = "2026-10-20";
 const NOW = new Date("2026-10-20T15:00:30Z"); // 11:00:30 New York
@@ -192,5 +194,48 @@ describe("live loop timers", () => {
     await loop.stop();
     expect(emitSynced).toHaveBeenCalledTimes(2); // the rest is flushed on stop
     expect(emitSynced.mock.calls[1]).toEqual([["Anna"]]);
+  });
+  it("a cycle that wrote trades kicks the risk scan for its traders at once — not after the coalesced minute", async () => {
+    const emitSynced = vi.fn(async () => {});
+    const scanTraders = vi.fn();
+    let n = 0;
+    const cycle = vi.fn(async () => (++n === 2 ? result({ inserted: 1, traders: ["Anna", "Boris"] }) : result()));
+    const loop = new LiveLoop({ now: () => new Date(), gate: async () => ({ run: true }), cycle, capSec: () => 2, emitSynced, scanTraders });
+    loop.start(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(scanTraders).not.toHaveBeenCalled(); // a quiet cycle scans nothing
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(cycle).toHaveBeenCalledTimes(2);
+    expect(scanTraders).toHaveBeenCalledTimes(1);
+    expect(scanTraders).toHaveBeenCalledWith(["Anna", "Boris"]);
+    await loop.stop();
+  });
+
+  it("a hanging or failing risk scan never stalls the sync loop; single-flight holds across cycles", async () => {
+    const hang = new Promise<void>(() => {});
+    const run = vi.fn(() => hang);
+    const kicker = new LiveScanKicker(run, { warn: vi.fn() } as any);
+    const cycle = vi.fn(async () => result({ updated: 1, traders: ["Anna"] }));
+    const loop = new LiveLoop({
+      now: () => new Date(), gate: async () => ({ run: true }), cycle, capSec: () => 2, emitSynced: vi.fn(async () => {}),
+      scanTraders: (t) => kicker.kick(t),
+    });
+    loop.start(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(cycle).toHaveBeenCalledTimes(6); // every 2 s as usual
+    expect(run).toHaveBeenCalledTimes(1); // Anna's scan is still running: later writes only mark one catch-up
+    await loop.stop();
+
+    const throwing = new LiveLoop({
+      now: () => new Date(), gate: async () => ({ run: true }), cycle, capSec: () => 2, emitSynced: vi.fn(async () => {}),
+      scanTraders: () => { throw new Error("scan module failed to load"); },
+    });
+    cycle.mockClear();
+    throwing.start(0);
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(cycle).toHaveBeenCalledTimes(3);
+    expect(throwing.status.failures).toBe(0);
+    expect(throwing.status.lastError).toBeNull();
+    await throwing.stop();
   });
 });

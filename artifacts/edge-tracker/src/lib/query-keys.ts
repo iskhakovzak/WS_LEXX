@@ -94,6 +94,19 @@ export function invalidateTradeDependents(qc: QueryClient, opts: { tradeId?: num
   return Promise.all(tasks).then(() => undefined);
 }
 
+/**
+ * Live risk signals (components/risk-signals): every key starts with this domain. Not trade-dependent on purpose —
+ * the server writes alerts a moment AFTER the trades (its scan follows the sync), so the live stamp poller refreshes
+ * them on its own short delay (components/propreports/live-trades refreshOnStamp).
+ */
+export const RISK_SIGNALS_DOMAIN = "risk-signals";
+export const riskSignalKeys = {
+  me: (trader: string | null) => [RISK_SIGNALS_DOMAIN, "me", trader] as const,
+  /** Prefix of the trader's own alerts (any trader picked). */
+  meAll: [RISK_SIGNALS_DOMAIN, "me"] as const,
+  desk: [RISK_SIGNALS_DOMAIN, "desk"] as const,
+};
+
 /** Keys owned by the trade replay / execution-quality feature. */
 export const qualityKeys = {
   one: (tradeId: number, afterExit: number) => ["trade-quality", tradeId, afterExit] as const,

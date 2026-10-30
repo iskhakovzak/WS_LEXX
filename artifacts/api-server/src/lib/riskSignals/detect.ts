@@ -12,6 +12,9 @@
  *   offPlan        with an own plan today: a ticker outside the plan (own in-play + the desk plan's in-play), or a
  *                  linked playbook setup outside the day's picks. One alert per ticker, at most OFF_PLAN_MAX a day.
  *   bannedWindow   an entry minute inside [event − before, event + after] of a high-impact event of the day.
+ *
+ * revenge / offPlan / bannedWindow read ENTRIES: every trade with an entry time, open ones (result «open», written by
+ * the live sync from the opening fill) included — they fire at entry, not at the close.
  */
 import type { BannedWindow, Baseline, DayContext, Hit, PlanContext, SignalConfig, SignalTrade } from "./types";
 

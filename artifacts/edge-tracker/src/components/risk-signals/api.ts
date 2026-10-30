@@ -5,14 +5,15 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
+import { RISK_SIGNALS_DOMAIN, riskSignalKeys } from "@/lib/query-keys";
 import { LIVE_POLL_MS, livePollInterval, type AlertsDay, type RiskAlert, type SavedPeriod, type SavedSummary } from "./model";
 
-export const RS_DOMAIN = "risk-signals";
+export const RS_DOMAIN = RISK_SIGNALS_DOMAIN;
 
 /** The trader's own alerts of today: every 5 s while the page is visible in desk hours, no polling outside them. */
 export const myAlertsQuery = (trader: string | null) =>
   queryOptions({
-    queryKey: [RS_DOMAIN, "me", trader] as const,
+    queryKey: riskSignalKeys.me(trader),
     queryFn: ({ signal }) => http.get<AlertsDay>("/api/risk-signals/me", { query: trader ? { trader } : {}, signal }),
     staleTime: LIVE_POLL_MS - 500,
     refetchInterval: () => livePollInterval(),
@@ -20,7 +21,7 @@ export const myAlertsQuery = (trader: string | null) =>
 
 export const deskAlertsQuery = () =>
   queryOptions({
-    queryKey: [RS_DOMAIN, "desk"] as const,
+    queryKey: riskSignalKeys.desk,
     queryFn: ({ signal }) => http.get<AlertsDay>("/api/risk-signals/desk", { signal }),
     staleTime: STALE.live,
     refetchInterval: () => (livePollInterval() ? POLL.live : false),

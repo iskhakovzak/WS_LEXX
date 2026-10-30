@@ -13,6 +13,10 @@
  *   event       "propreports.synced" (listener jobs: contract alerts, leak guard, readiness, evening cards) is enqueued in
  *               the outbox at most once per SYNCED_EVERY_MS with the traders collected since — the trades themselves
  *               and their per-trader effects are written at once by applySync
+ *   risk        the one listener that cannot wait a minute: a cycle that wrote trades kicks the risk signals scan for
+ *               exactly its changed traders in this process (lib/riskSignals/live.ts — non-blocking, single-flight per
+ *               trader, errors isolated), so an alert follows the fill within seconds. The coalesced event and the
+ *               job's every-minute run stay as the fallback.
  */
 import { randomUUID } from "node:crypto";
 import { logger } from "../../logger";
@@ -23,6 +27,7 @@ import { createTickClient, isConfigured, PropReportsError } from "../client";
 import { acquireLease, releaseLease, TICK_LEASE } from "../tick/lease";
 import { enqueueOutbox } from "../tick/outbox";
 import { tickHeld, trackLiveCycle } from "../tick/gate";
+import { kickRiskSignals, riskSignalKicksIdle } from "../../riskSignals/live";
 import { runLiveCycle, type LiveCycleResult } from "./cycle";
 import { inLiveWindow, liveBackoffMs, liveIntervalMs, LIVE_IDLE_MS } from "./policy";
 
@@ -43,6 +48,8 @@ export type LiveLoopDeps = {
   capSec: () => number;
   /** Enqueue the coalesced "propreports.synced" event. */
   emitSynced: (traders: string[]) => Promise<void>;
+  /** Start the risk signals scan of these traders now, in the background (must not block; may throw — isolated). */
+  scanTraders?: (traders: string[]) => void;
 };
 
 export type LiveStatus = {
@@ -89,6 +96,7 @@ export const defaultLoopDeps: LiveLoopDeps = {
   cycle: defaultCycle,
   capSec: () => setting("sync.liveMinIntervalSec"),
   emitSynced: (traders) => enqueueOutbox("propreports.synced", { source: "live", changed: true, traders }),
+  scanTraders: (traders) => kickRiskSignals(traders),
 };
 
 export class LiveLoop {
@@ -170,6 +178,7 @@ export class LiveLoop {
       if (r.inserted + r.updated > 0) {
         this.status.lastWriteAt = now.toISOString();
         for (const t of r.traders) this.pendingTraders.add(t);
+        this.kickScan(r.traders);
         logger.info({ inserted: r.inserted, updated: r.updated, lagSec: r.lagSec, requests: r.requests }, "propreports live: trades written");
       }
       return liveIntervalMs(r.requests, this.deps.capSec());
@@ -180,6 +189,16 @@ export class LiveLoop {
       const wait = liveBackoffMs(base, this.status.failures, rateLimited);
       logger.warn({ err: this.status.lastError, failures: this.status.failures, waitMs: wait }, "propreports live: cycle failed");
       return wait;
+    }
+  }
+
+  /** The direct risk path: never awaited, never allowed to fail the cycle. */
+  private kickScan(traders: string[]): void {
+    if (!traders.length || !this.deps.scanTraders) return;
+    try {
+      this.deps.scanTraders(traders);
+    } catch (e) {
+      logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports live: could not start the risk signals scan");
     }
   }
 
@@ -208,6 +227,7 @@ export function startLiveSync(): void {
 
 export async function stopLiveSync(waitMs?: number): Promise<void> {
   await loop?.stop(waitMs);
+  await riskSignalKicksIdle(3_000);
 }
 
 /** Status for GET /api/propreports/live (null = the loop does not run in this process). */

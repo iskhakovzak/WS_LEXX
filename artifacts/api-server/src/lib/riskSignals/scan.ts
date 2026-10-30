@@ -1,10 +1,16 @@
 /**
- * The risk signals scan (job «risksignals.scan», lib/riskSignals/jobDefs.ts): right after every PropReports sync that
- * wrote trades (event «propreports.synced», only the traders it changed — the sync is near-live, so this is the live
- * path) and every minute 08:00–16:59 New York on weekdays (every trader active today: the positions snapshot moves the
- * stop numbers without a sync event; a run lost to «already running» is caught up).
+ * The risk signals scan. Three ways in, one code path:
+ *   live      the live fills loop, in-process, seconds after a cycle wrote trades — only its changed traders, no
+ *             settling (scanTradersNow via lib/riskSignals/live.ts: single-flight per trader, errors isolated)
+ *   event     job «risksignals.scan» (lib/riskSignals/jobDefs.ts) on «propreports.synced» — the 5-minute full sync, and the
+ *             live loop's coalesced event (≤ 1 a minute, through the outbox): the fallback for a lost live kick
+ *   minute    the same job every minute 08:00–16:59 New York on weekdays (every trader active today: the positions
+ *             snapshot moves the stop numbers without a sync event; a run lost to «already running» is caught up)
  *
- *   1. detect   today's trades (one truth: the behaviour engine's rows), the dashboard's stop numbers (lib/riskData +
+ *   1. detect   today's trades (one truth: the behaviour engine's rows — an open position is a trade row with result
+ *               «open» from its opening fill, so revenge / off-plan / restricted-window are judged at ENTRY; when the
+ *               same row closes later, its alerts are already stored: the key has no trade id or exit in it),
+ *               the dashboard's stop numbers (lib/riskData +
  *               lib/riskMetrics computeMetrics, counted unrealized included), today's plan, restricted windows, the
  *               trader's own size / pace baseline (cached per day) → hits (detect.ts detectLive)
  *   2. store    once per trader / day / signal / level (UNIQUE + an in-memory set, refilled from the DB per day)
@@ -162,7 +168,8 @@ async function settleDue(day: string, now: Date, cfg: SignalConfig, res: ScanRes
 
 // ─── the run ───────────────────────────────────────────────────────────────
 
-export async function runRiskSignals(now: Date = new Date(), payload?: unknown): Promise<ScanResult> {
+/** `settle: false` = detect / store / notify only (the live path; settling is the job's minute run). */
+export async function runRiskSignals(now: Date = new Date(), payload?: unknown, opts: { settle?: boolean } = {}): Promise<ScanResult> {
   const res: ScanResult = { traders: 0, created: 0, staffTold: 0, settled: 0 };
   const cfg = currentSignalConfig();
   const day = nyDate(now);
@@ -174,9 +181,14 @@ export async function runRiskSignals(now: Date = new Date(), payload?: unknown):
     const names = payloadTraders(payload) ?? (await activeTraders(day));
     await detectAndStore(day, now, names, cfg, res);
   }
-  await settleDue(day, now, cfg, res);
+  if (opts.settle !== false) await settleDue(day, now, cfg, res);
   if (!cfg.enabled) res.skipped = "disabled";
   else if (closed) res.skipped = "market closed";
   else if (!inSession) res.skipped = "outside the session";
   return res;
+}
+
+/** The live loop's direct path (lib/riskSignals/live.ts): these traders only, now; settling stays with the job. */
+export function scanTradersNow(traders: readonly string[], now: Date = new Date()): Promise<ScanResult> {
+  return runRiskSignals(now, { traders: [...traders] }, { settle: false });
 }
