@@ -10,6 +10,7 @@ import { pool, setPoolErrorHandler } from "@workspace/db";
 import { runMigrationFiles, MigrationError } from "./db/runner";
 import { registerAllJobs } from "./jobs/definitions";
 import { startJobScheduler, stopJobScheduler } from "./jobs/registry";
+import { startLiveSync, stopLiveSync } from "./lib/propreports/live/loop";
 import { installCrashHandlers, installGracefulShutdown } from "./lib/security/lifecycle";
 import { captureProcessError } from "./lib/errorTracking";
 
@@ -51,8 +52,11 @@ function startBackgroundServices(): void {
   // Every timer lives in the job registry (src/jobs/definitions.ts); nothing starts on module import.
   try {
     registerAllJobs();
-    if (bootConfig.jobsEnabled) startJobScheduler();
-    else logger.warn("jobs: scheduler disabled (JOBS_ENABLED=false)");
+    if (bootConfig.jobsEnabled) {
+      startJobScheduler();
+      // Live PropReports fills (seconds-granular, not the minute cron): idles outside desk hours / without credentials.
+      startLiveSync();
+    } else logger.warn("jobs: scheduler disabled (JOBS_ENABLED=false)");
   } catch (err) {
     logger.error({ err }, "jobs: failed to start the scheduler");
   }
@@ -115,7 +119,7 @@ async function startServer(attempt = 1): Promise<void> {
       // SIGTERM / SIGINT: stop accepting, drain in-flight requests, stop jobs, close the pool; hard exit after 10 s.
       installGracefulShutdown(server, {
         logger,
-        stopJobs: () => stopJobScheduler(8_000),
+        stopJobs: async () => { await Promise.all([stopLiveSync(7_000), stopJobScheduler(8_000)]); },
         closePool: () => pool.end(),
         timeoutMs: 10_000,
       });

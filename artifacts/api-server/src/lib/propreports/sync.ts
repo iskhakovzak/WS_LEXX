@@ -378,6 +378,14 @@ export interface ApplyOptions {
   kick?: boolean;
   /** Called for each item whose writes failed (rolled back to its savepoint; the rest of the run still commits). */
   onItemError?: (it: PlanItem, err: unknown) => void;
+  /**
+   * Enqueue the "propreports.synced" event with the trades (default true). The live fills loop (lib/propreports/live)
+   * passes false and enqueues one coalesced event per minute itself, so its runs every few seconds do not wake every
+   * listener job each time. The per-trader effects (rule scan, ideas, challenges, structures) are always enqueued.
+   */
+  syncedEvent?: boolean;
+  /** Write the audit row (default true; the live loop's machine runs are recorded in propreports_sync_runs only). */
+  audit?: boolean;
 }
 
 export interface SyncRunResult {
@@ -512,7 +520,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
     if (writtenTrades.length) await refreshTradeStrategies(writtenTrades, client); // strategy + IMX tag, with the fills
     if (res.inserted || res.updated) {
       // atomic with the trades: a committed sync never loses its rule scan / structures / "synced" listeners
-      await enqueueSyncEffects(client, plan, writtenTrades, {
+      await enqueueSyncEffects(client, plan, writtenTrades, opts.syncedEvent === false ? null : {
         runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
         inserted: res.inserted, updated: res.updated, changed: true,
       });
@@ -536,7 +544,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
   }
   // remember what was seen, for the «Комиссии» / «Несопоставленные счета» settings blocks (never during dry runs)
   await rememberSeen(plan.unmappedAccounts, opts.feeColumns);
-  await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
+  if (opts.audit !== false) await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
   if (res.inserted || res.updated) {
     invalidateTradeCaches();
     // The side effects were enqueued with the trades (rule scan, idea relink, challenges, structures, "synced"

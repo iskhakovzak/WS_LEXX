@@ -37,9 +37,10 @@ export default {
     season: { title: "Season and quiet days", description: "The calendar of the market regime layer: the off-season, prime earnings weeks, quad witching, S&P and MSCI rebalances. On a quiet day the daily limit is multiplied by a factor and the brief says not trading is fine." },
     em: { title: "Expected move (EM)", description: "EM on reports in the calendar and the watchlist: from the free options chain (ATM straddle, a snapshot before the report), else the historical average earnings move from the candle archive, labelled «historical»." },
     access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
+    sync: { title: "Live trades from PropReports", description: "In desk hours (09:00 New York to an hour after the close, trading days) new fills are pulled every few seconds, as fast as the PropReports request limit allows, and open screens refresh on their own. The 5-minute full sync still runs and reconciles everything." },
     other: { title: "Other", description: "Settings without a group." },
   },
-  units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams", tokens: "tokens" },
+  units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams", tokens: "tokens", seconds: "sec" },
   jump: {
     aria: "Settings groups",
     pilot: "Pilot · {count} items",
@@ -148,6 +149,10 @@ export default {
     unknown: "No such trader — remove or fix the name",
   },
   settings: {
+    sync: {
+      liveEnabled: { label: "Live trades", help: "Off — trades arrive with the full sync every 5 minutes." },
+      liveMinIntervalSec: { label: "Fastest pull, seconds", help: "The loop never asks PropReports more often than this. 2 is the fastest; it slows down by itself when the request limit needs it." },
+    },
     leakGuard: {
       enabled: { label: "Guard on", help: "Off — no new pauses; events already recorded are still settled." },
       afterLoss: { label: "Pause after a loss", help: "Catches entering right after a losing trade (the what-if «pause N minutes after a loss», the «revenge» pattern)." },

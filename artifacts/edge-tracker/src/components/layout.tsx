@@ -22,6 +22,7 @@ import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-pr
 import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 import { Wordmark } from "@/components/ds/brand";
 import { OnboardingMount } from "@/components/onboarding-mount";
+import { LiveTradesSync } from "@/components/propreports/live-trades";
 import { AssistantButton } from "@/components/assistant/assistant-launcher";
 import { GuardBanner } from "@/components/leak-guard/guard-banner";
 
@@ -220,6 +221,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <PlaybookSheetHost />
       <AppearanceHost />
       <OnboardingMount />
+      <LiveTradesSync />
       {/* Live leak guard: pause / acknowledgement card when a personal leak pattern fires (components/leak-guard). */}
       <GuardBanner />
     </SidebarProvider>

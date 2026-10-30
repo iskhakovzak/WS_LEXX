@@ -8,8 +8,8 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em" | "pulse";
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch" | "regime" | "leakGuard" | "capital" | "mentor" | "dayState" | "catalyst" | "pods" | "flow" | "season" | "em" | "pulse" | "sync";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens" | "seconds";
 
 /**
  * `pilot: true` = one of the ~10 settings the pilot needs (docs/PILOT.md §2.5 / §3): the admin page shows only these
@@ -529,6 +529,10 @@ export const SETTINGS = {
   "dayState.silenceEnabled": { group: "dayState", type: "boolean", default: true },
   "dayState.missedReviewDays": { group: "dayState", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "days" },
   "dayState.silenceTelegram": { group: "dayState", type: "boolean", default: false },
+  // Live PropReports fills (lib/propreports/live): in desk hours new fills reach the journal within seconds. The loop runs
+  // as fast as its request budget allows (≥ 2 s); liveMinIntervalSec only caps the speed (2 = the fastest).
+  "sync.liveEnabled": { group: "sync", type: "boolean", default: true },
+  "sync.liveMinIntervalSec": { group: "sync", type: "number", default: 2, min: 2, max: 60, step: 1, unit: "seconds" },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

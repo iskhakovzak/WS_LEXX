@@ -12,6 +12,7 @@ import { TICK_STEPS } from "./steps";
 import { drainOutbox, enqueueOutbox, type DrainResult } from "./outbox";
 import { acquireLease, releaseLease, TICK_LEASE } from "./lease";
 import { setCursor } from "./cursor";
+import { withTickHold } from "./gate";
 import type { TickStep, TickStepState, TickSummary } from "./types";
 
 /** Steps + outbox stop at 45 s: a tick stays short (an HTTP caller gets its answer within a minute) and leaves room for DB bookkeeping. */
@@ -73,7 +74,12 @@ async function recordStep(name: string, startedAt: Date, ms: number, res: { done
   ).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), step: name }, "tick: could not record step"));
 }
 
-export async function runTick(opts: RunTickOptions): Promise<TickSummary> {
+/** One tick. In this process it first waits for a live fills cycle in flight (tick/gate.ts), so it never loses the lease to it. */
+export function runTick(opts: RunTickOptions): Promise<TickSummary> {
+  return withTickHold(() => runTickHeld(opts));
+}
+
+async function runTickHeld(opts: RunTickOptions): Promise<TickSummary> {
   const t0 = Date.now();
   const startedAt = new Date(t0);
   const deadline = t0 + (opts.budgetMs ?? TICK_BUDGET_MS);

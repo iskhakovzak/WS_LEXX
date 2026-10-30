@@ -26,8 +26,11 @@ export function changedTraders(plan: SyncPlan): string[] {
   return [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))].sort();
 }
 
-/** Everything a committed sync owes its listeners (atomic with the trades: a committed sync never loses them). */
-export async function enqueueSyncEffects(db: Pick<PoolClient, "query">, plan: SyncPlan, writtenTrades: number[], event: Record<string, unknown>): Promise<void> {
+/**
+ * Everything a committed sync owes its listeners (atomic with the trades: a committed sync never loses them).
+ * `event` null = no "propreports.synced" row (the live loop enqueues a coalesced one itself, lib/propreports/live).
+ */
+export async function enqueueSyncEffects(db: Pick<PoolClient, "query">, plan: SyncPlan, writtenTrades: number[], event: Record<string, unknown> | null): Promise<void> {
   const traders = changedTraders(plan);
   if (traders.length) {
     await enqueueOutbox("rules.scan", { traders }, db);
@@ -35,5 +38,5 @@ export async function enqueueSyncEffects(db: Pick<PoolClient, "query">, plan: Sy
     await enqueueOutbox("challenges.refresh", { traders }, db);
   }
   await enqueueStructures(db, writtenTrades);
-  await enqueueOutbox("propreports.synced", { ...event, traders }, db);
+  if (event) await enqueueOutbox("propreports.synced", { ...event, traders }, db);
 }

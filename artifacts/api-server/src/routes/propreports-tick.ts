@@ -1,6 +1,8 @@
 /**
  * PropReports background tick + history backfill (under /api/propreports, auth required):
  *
+ *   GET  /live                  [auth] the trade-book stamp + whether live fills run now (the web refetches trade screens
+ *                               when the stamp moves); staff also get the live loop's status (lib/propreports/live/loop)
  *   GET  /tick                  [staff] per-step state, last tick summary, outbox counts, lease
  *   POST /tick/run              [propreports.sync] run one tick now (≤ 45 s; the same tick as the heartbeat)
  *   GET  /backfill              [staff] history backfills (newest first) with progress
@@ -24,6 +26,7 @@ import { leaseInfo, TICK_LEASE } from "../lib/propreports/tick/lease";
 import { loadStepStates, runTick } from "../lib/propreports/tick/runner";
 import { TICK_STEPS } from "../lib/propreports/tick/steps";
 import { BackfillConflictError, MAX_RANGE_DAYS, cancelBackfill, listBackfills, startBackfill } from "../lib/propreports/tick/backfill";
+import { liveSyncStatus } from "../lib/propreports/live/loop";
 
 const router: IRouter = Router();
 
@@ -37,6 +40,26 @@ function badRequest(_res: Response, parsed: z.SafeParseError<unknown>): never {
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const notConfigured = () => new AppError("PROPREPORTS_NOT_CONFIGURED");
+
+/** The web polls this while trades can arrive (desk hours, tab visible); idle it asks once a minute. */
+const LIVE_POLL_MS = 5_000;
+const IDLE_POLL_MS = 60_000;
+/** Every signed-in tab asks every few seconds: one single-row SELECT per second per instance at most. */
+let stamp: { at: number; version: string } | null = null;
+
+async function tradesStamp(): Promise<string> {
+  if (stamp && Date.now() - stamp.at < 1_000) return stamp.version;
+  const { rows } = await pool.query(`SELECT version::text AS v FROM cache_versions WHERE name = 'trades'`).catch(() => ({ rows: [] as Array<{ v?: string }> }));
+  stamp = { at: Date.now(), version: rows[0]?.v != null ? String(rows[0].v) : "0" };
+  return stamp.version;
+}
+
+router.get("/propreports/live", requireAuth, asyncHandler(async (req, res) => {
+  const [version, staff] = await Promise.all([tradesStamp(), can(req, "propreports.read.team")]);
+  const status = liveSyncStatus();
+  const active = !!status?.running && status.active;
+  res.json({ version, active, pollMs: active ? LIVE_POLL_MS : IDLE_POLL_MS, ...(staff ? { status } : {}) });
+}));
 
 router.get("/propreports/tick", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);

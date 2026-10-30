@@ -8,7 +8,7 @@
  *   normalize              a value equal to the default is sent as null («по умолчанию»: no stored override)
  *   nyToTashkent           "16:30" NY → "01:30" Tashkent, +1 day (today's DST offsets)
  */
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens" | "seconds";
 /**
  * `pilot`: one of the ~10 pilot settings (server registry flag) — shown by default, the rest under «Показать все».
  * `hidden`: edited on its own screen (stage access: «Роли и права» → «Доступ по ступеням»), never in this form.
@@ -66,7 +66,7 @@ export interface Problem { key: string; kind: ProblemKind; min?: number; max?: n
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Groups in display order; a group the page does not know goes last, in registry order. */
-export const GROUP_ORDER = ["daily", "dayState", "coach", "regime", "season", "leakGuard", "flow", "em", "pulse", "capital", "mentor", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "alerts", "curator", "academy", "privacy", "nav", "usage"] as const;
+export const GROUP_ORDER = ["daily", "dayState", "coach", "regime", "season", "leakGuard", "flow", "em", "pulse", "sync", "capital", "mentor", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "alerts", "curator", "academy", "privacy", "nav", "usage"] as const;
 
 /**
  * Rows shown next to another row (OWNER-12: the two streak rules stay together): key → the row it follows. Display

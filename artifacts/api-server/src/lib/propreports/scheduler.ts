@@ -5,6 +5,8 @@
  *     POST /api/cron/tick — "propreports.sync" every 5 min in New York RTH (syncCron(): "*\/5 9-16 * * 1-5", or
  *     PROPREPORTS_SYNC_MINUTES when set) and "propreports.tick-hourly" every hour otherwise (OFF_HOURS_CRON). Nothing
  *     depends on Supabase pg_cron. Both jobs are on whenever the PropReports env (domain + token) is set.
+ *   live: between these ticks, lib/propreports/live (a seconds-granular loop, same lease) pulls today's new fills in desk
+ *     hours; this 5-minute tick stays the reconciliation pass.
  *   Vercel: no in-process scheduler — the heartbeat (docs/PROPREPORTS_CRON.sql, optional) calls POST /api/cron/tick.
  * All paths share the DB lease, so ticks never overlap; each step keeps its own cadence (tick/due.ts).
  *

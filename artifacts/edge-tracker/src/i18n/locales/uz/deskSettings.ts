@@ -37,9 +37,10 @@ export default {
     season: { title: "Mavsum va sokin kunlar", description: "Bozor rejimi qatlamining taqvimi: oʻlik mavsum, hisobotlar choʻqqisi haftalari, kvad-vitching, S&P va MSCI qayta balanslari. Sokin kunda kunlik limit koeffitsiyentga koʻpaytiriladi, brif esa savdo qilmaslik normal ekanini aytadi." },
     em: { title: "Kutilgan harakat (EM)", description: "Taqvim va vochlistdagi hisobotlarda EM: bepul opsionlar zanjiridan (ATM-streddl, hisobotdan oldingi snapshot), aks holda — shamlar arxividan hisobotlardagi oʻrtacha tarixiy harakat, «tarixiy» belgisi bilan." },
     access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
+    sync: { title: "PropReportsdan jonli savdolar", description: "Desk soatlarida (Nyu-York vaqti bilan 09:00 dan yopilishdan bir soat keyingacha, savdo kunlari) yangi ijrolar har bir necha soniyada — PropReports soʻrovlar limiti imkon qadar tez — olinadi va ochiq ekranlar oʻzi yangilanadi. Har 5 daqiqadagi toʻliq sinxronlash qoladi va hammasini solishtiradi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
-  units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa", tokens: "token" },
+  units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa", tokens: "token", seconds: "son" },
   jump: {
     aria: "Sozlamalar guruhlari",
     pilot: "Pilot · {count} band",
@@ -148,6 +149,10 @@ export default {
     unknown: "Bunday treyder yoʻq — olib tashlang yoki ismni tuzating",
   },
   settings: {
+    sync: {
+      liveEnabled: { label: "Jonli savdolar", help: "Oʻchiq — savdolar har 5 daqiqadagi toʻliq sinxronlash bilan keladi." },
+      liveMinIntervalSec: { label: "Eng tez soʻrov, soniya", help: "PropReports bundan tez-tez soʻralmaydi. 2 — eng tezi; soʻrovlar limiti yetmasa, oʻzi sekinlashadi." },
+    },
     leakGuard: {
       enabled: { label: "Himoya yoqilgan", help: "Oʻchiq — yangi pauzalar qoʻyilmaydi, yozilgan hodisalar hisoblanib boriladi." },
       afterLoss: { label: "Zarardan keyingi pauza", help: "Zararli savdodan keyin darhol kirishni ushlaydi (agar-shunday «zarardan keyin N daqiqa pauza», «revansh» patterni)." },
