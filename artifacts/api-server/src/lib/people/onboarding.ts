@@ -37,6 +37,10 @@ export const OnboardingStateSchema = z.object({
   seen: z.array(slug).max(32).optional(),
   /** Set by an admin («Сбросить знакомство»): show the tour and the checklist again whatever the stage. */
   again: z.boolean().optional(),
+  /** The daily-loop tour finished or skipped, per stage / staff role («junior», «trader», «senior», «curator», «admin»). */
+  loops: z.array(slug).max(8).optional(),
+  /** The step a daily-loop tour was left on: resumed there on the next visit to the dashboard. */
+  loopStep: z.object({ r: slug, i: z.number().int().min(0).max(31) }).optional(),
 });
 
 export type OnboardingState = z.infer<typeof OnboardingStateSchema>;

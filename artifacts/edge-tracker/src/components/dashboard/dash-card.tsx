@@ -8,6 +8,7 @@
  */
 import { useId, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { HelpScope, ScopedHelp } from "@/components/shared/tool-help";
 import "./dashboard.css";
 
 export function DashCard({
@@ -33,19 +34,25 @@ export function DashCard({
   fill?: boolean;
 } & Omit<HTMLAttributes<HTMLElement>, "title">) {
   const id = useId();
+  // The «?» of the tile this card is (the board sets the scope); cards nested inside draw none.
   return (
     <section aria-labelledby={title ? id : undefined} className={cn("ins-tile glass-panel dash-card", fill && "h-full", className)} {...rest}>
       {(title || actions) && (
         <div className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-          <div className="min-w-0">
-            {title && <h3 id={id} className="ins-label truncate">{title}</h3>}
-            {description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p>}
+          <div className="flex min-w-0 items-center gap-1">
+            <div className="min-w-0">
+              {title && <h3 id={id} className="ins-label truncate">{title}</h3>}
+              {description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p>}
+            </div>
+            {title && <ScopedHelp className="self-start" />}
           </div>
           {actions && <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1.5">{actions}</div>}
         </div>
       )}
-      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", bodyClassName)}>{children}</div>
-      {footer && <div className="dash-card-foot">{footer}</div>}
+      <HelpScope id={null}>
+        <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", bodyClassName)}>{children}</div>
+        {footer && <div className="dash-card-foot">{footer}</div>}
+      </HelpScope>
     </section>
   );
 }

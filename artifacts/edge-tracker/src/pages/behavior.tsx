@@ -38,7 +38,7 @@ import { RangeFacetSections, rangeFacetChips, rangeFacetCount, resetRangeFacets,
 import { ActiveFilters, FiltersButton } from "@/components/shared/filters/filter-toolbar";
 import { TEAM } from "@/components/people/staff-scope";
 import { ANALYTICS_PRESETS, useAnalyticsScope, type AnalyticsPreset } from "@/hooks/use-analytics-scope";
-import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { PageHint } from "@/components/shared/page-hint";
 
 type Tab = "behavior" | "setups";
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -105,7 +105,6 @@ export default function BehaviorPage() {
         title={tb("title")}
         description={tb("description")}
         icon={Brain}
-        actions={<HelpButton id="behavior" />}
       />
       <PageHint id="behavior" />
 

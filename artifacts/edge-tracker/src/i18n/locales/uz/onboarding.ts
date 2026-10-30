@@ -10,22 +10,6 @@ export default {
     skip: "Oʻtkazib yuborish",
     done: "Kunni boshlash",
     keys: "← → — qadamlar, Esc — yopish",
-    steps: {
-      hero: { title: "Kuningiz bitta ekranda", body: "Kun va hafta P&L, bozor va limit. Savdolar PropReports’dan oʻzi keladi — hech narsa kiritish shart emas." },
-      next: { title: "Hozir nima muhim", body: "Kunning shu payti uchun bitta keyingi vazifa. Bajardingiz — keyingisi chiqadi." },
-      loop: { title: "Kun ritmi", body: "Ochilishdan oldin — «Kun rejasi», kun davomida — savdolar, kechqurun — «Kunni yopish». Ertalab kurator kuningizni tahlil qiladi." },
-      loopJunior: { title: "Har kuni uch qadam", body: "Ertalab stopli reja, kun davomida unga koʻra savdo, kechqurun «Kunni yopish». Boshida bundan muhimroq narsa yoʻq." },
-      risk: { title: "Stopgacha qoldi", body: "Bugun yana qancha yoʻqotish mumkin. Nolga yetdingiz — kun tugadi, istisnosiz." },
-      palette: { title: "Ctrl+K — hammasi qoʻl ostida", body: "Tiker, savdo, setap yoki boʻlim: yozishni boshlang, Enter ochadi." },
-      palettePhone: { title: "Qidiruv", body: "Tiker, savdo, setap yoki boʻlim — yozishni boshlang, keraklisi topiladi." },
-      look: { title: "«Koʻrinish» — oʻzingizga moslang", body: "Mavzu, aksent, foyda va zarar ranglari, fon. Koʻzlaringiz kun boʻyi qulay boʻlsin." },
-      lookPhone: { title: "«Koʻrinish» — profil menyusida", body: "Mavzu, foyda va zarar ranglari, fon — hammasi bosh harflaringiz yozilgan tugma ostida." },
-      curator: { title: "Kurator kabineti", body: "Tahlilga yopilgan kunlar navbati va shogirdlaringiz. Ertalabni shu yerdan boshlang." },
-      curatorPhone: { title: "Kurator kabineti — «Yana»da", body: "Tahlil navbati va shogirdlar pastdagi «Yana» menyusidan ochiladi." },
-      people: { title: "Odamlar va sozlamalar", body: "Treyderlar, rollar, bosqichlar boʻyicha kirish va desk sozlamalari — admin panelda." },
-      peoplePhone: { title: "Admin panel — «Yana»da", body: "Odamlar, rollar va desk sozlamalari pastdagi «Yana» menyusidan ochiladi." },
-      riskDesk: { title: "Risk-desk", body: "Deskda hozir kim stopga yaqin — bitta roʻyxatda." },
-    },
   },
   checklist: {
     title: "Birinchi qadamlar",
@@ -51,8 +35,6 @@ export default {
   hints: {
     close: "Tushunarli",
     tryFirst: "Shundan boshlang:",
-    help: "Bu yerda nima bor?",
-    helpAria: "Maslahat: {page}",
     pages: {
       facets: { page: "Kesimlar", answer: "Qayerda topasiz va qayerda yoʻqotasiz — vaqt, strategiya, tikerlar va teglar boʻyicha.", try: "Qatorni bosing — u hisobdan chiqadi va raqamlar qayta hisoblanadi." },
       whatIf: { page: "Agar shunday boʻlsa", answer: "Oʻz qoidalaringizga amal qilganingizda hisobda qancha boʻlardi.", try: "Bitta qoidani yoqing — masalan, kunlik stop — va ikki egri chiziqni solishtiring." },
@@ -66,10 +48,13 @@ export default {
   help: {
     menu: "Yordam",
     title: "Yordam",
-    description: "Asosiy ekran bilan tanishuv, murakkab boʻlimlarga maslahatlar va tezkor tugmalar.",
+    description: "Kun ritmi bilan tanishuv, vositalar qoʻllanmasi va tezkor tugmalar.",
     restart: "Tanishuvni qayta oʻtish",
-    restartHint: "Asosiy ekran boʻylab bir-ikki daqiqa, qadamma-qadam.",
-    hintsTitle: "Boʻlimlarga maslahatlar",
+    restartHint: "Bir-ikki daqiqa: qaysi vosita qachon — rejadan kunni yopishgacha.",
+    resume: "Tanishuvni davom ettirish",
+    resumeHint: "{n}-qadamdan — toʻxtagan joyingizdan.",
+    guide: "Qoʻllanma",
+    guideHint: "Kun ritmi boʻyicha barcha vositalar: bu nima, nima uchun va qanday oʻqish.",
     open: "Ochish",
     keysTitle: "Tezkor tugmalar",
     keys: {
@@ -80,7 +65,7 @@ export default {
       steps: "Tanishuv qadamlari",
     },
     paletteAction: "Yordam va maslahatlar",
-    paletteHint: "Tanishuv, boʻlimlarga maslahatlar, tezkor tugmalar",
+    paletteHint: "Kun ritmi bilan tanishuv, qoʻllanma, tezkor tugmalar",
     keywords: "yordam maslahat tanishuv qoʻllanma tugmalar help",
   },
   admin: {

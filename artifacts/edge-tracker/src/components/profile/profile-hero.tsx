@@ -13,6 +13,7 @@ import { personInitials, personName } from "@/i18n";
 import { profileI18n } from "@/i18n/ns/profile";
 import type { ProfileResponse } from "./api";
 import { achievementName, emblemOf, metalOf, summaryText, tierName } from "./model";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 function Avatar({ name }: { name: string }) {
   return (
@@ -52,6 +53,7 @@ export function ProfileHero({ profile, actions }: { profile: ProfileResponse; ac
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="type-display text-foreground [overflow-wrap:anywhere]">{personName(p.name)}</h1>
             {p.self && <span className="rounded-full bg-primary/12 px-2 py-0.5 text-xs font-medium text-accent-soft">{t("you")}</span>}
+            <ToolHelp id="profile" />
           </div>
           {/* The ladder stage with its medal is the person's level («Джун · с 1 сент.»); the access role is a separate small
               badge, only for staff — «Трейдер · Джун» read as two stages (design audit wave 2). */}

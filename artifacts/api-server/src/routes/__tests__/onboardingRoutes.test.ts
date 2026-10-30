@@ -125,6 +125,13 @@ describe("stored block", () => {
     expect(OnboardingStateSchema.safeParse({ v: 1, hints: ["<script>"] }).success).toBe(false);
     expect(OnboardingStateSchema.safeParse({ v: 1, hints: Array.from({ length: 33 }, (_, i) => `h${i}`) }).success).toBe(false);
   });
+  it("keeps the daily-loop tour's progress (stages seen, the step it was left on) — never strips it", () => {
+    const loop = { v: 1, loops: ["junior", "trader"], loopStep: { r: "senior", i: 3 } };
+    expect(OnboardingStateSchema.parse(loop)).toEqual(loop);
+    expect(OnboardingStateSchema.safeParse({ v: 1, loopStep: { r: "senior", i: 40 } }).success).toBe(false);
+    expect(OnboardingStateSchema.safeParse({ v: 1, loops: ["<x>"] }).success).toBe(false);
+    expect(resetState(loop)).toEqual({ v: 1, again: true });
+  });
   it("an admin reset brings the tour back and keeps what was already done", () => {
     expect(resetState({ v: 1, tour: "done", checklist: "dismissed", hints: ["risk"], seen: ["trade", "playbook"] })).toEqual({ v: 1, again: true, seen: ["trade", "playbook"] });
     expect(resetState(null)).toEqual({ v: 1, again: true });

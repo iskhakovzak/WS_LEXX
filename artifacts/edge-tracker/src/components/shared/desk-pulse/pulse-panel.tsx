@@ -13,6 +13,7 @@ import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { TIMINGS, timingLabel } from "@/components/shared/session-flow/timing";
 import { deskPulseI18n } from "@/i18n/ns/deskPulse";
 import { FAMILIES, deskPulseQuery, familyLabel, pulseLine, type DeskPulse, type PulseCell } from "./api";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 const VERDICT_TONE: Record<string, Tone> = { works: "up", fails: "down", mixed: "neutral" };
 const signTone = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");
@@ -79,6 +80,7 @@ export function DeskPulsePanel({ className }: { className?: string }) {
       className={className}
       title={t("pulse.title")}
       icon={Activity}
+      actions={<ToolHelp id="deskPulse" />}
       description={p ? t("pulse.hint", { days: p.windowDays, from: fmtDate(p.from, "dayMonth"), to: fmtDate(p.to, "dayMonth"), trades: p.minTrades, people: p.minTraders }) : undefined}
     >
       <QueryState query={q} errorCompact errorTitle={t("pulse.loadFailed")}>

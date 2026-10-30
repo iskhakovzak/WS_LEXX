@@ -38,7 +38,7 @@ import { useAssistantContext } from "@/components/shared/ask-assistant";
 import { analyticsPeriodText, useAnalyticsLinkCards } from "@/components/analytics-page/link-cards";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
-import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { PageHint } from "@/components/shared/page-hint";
 
 type TabKey = AnalyticsTabKey;
 
@@ -284,7 +284,6 @@ export default function Analytics() {
           <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
             {hotBefore}<Kbd>1</Kbd>–<Kbd>{lastKey}</Kbd>{hotAfter}
           </span>
-          <HelpButton id="analytics" />
         </>}
       />
       <PageHint id="analytics" />

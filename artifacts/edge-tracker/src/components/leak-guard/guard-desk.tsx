@@ -18,6 +18,7 @@ import { personName } from "@/i18n";
 import { leakGuardI18n } from "@/i18n/ns/leakGuard";
 import { guardDeskQuery, useReleaseGuard, useSetGuardLevel } from "./api";
 import { LEVEL_CHOICES, needsAck, type GuardDesk, type LevelChoice } from "./model";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 const DAYS = 30;
 const DEFAULT = "default";
@@ -145,7 +146,7 @@ export function GuardDeskPanel({ canEdit }: { canEdit: boolean }) {
   const { t } = leakGuardI18n.useT();
   const q = useQuery(guardDeskQuery(DAYS));
   return (
-    <Panel title={t("desk.title")} description={t("desk.description")} icon={ShieldCheck}>
+    <Panel title={t("desk.title")} description={t("desk.description")} icon={ShieldCheck} actions={<ToolHelp id="leakGuard" />}>
       <QueryState query={q}>{(d) => <Body d={d} canEdit={canEdit} />}</QueryState>
     </Panel>
   );

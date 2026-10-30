@@ -14,7 +14,7 @@ import { ClampedText } from "@/components/ds/clamped-text";
 import { StatStripContext, isZeroValue } from "@/components/ds/stat-strip";
 import { useEdgeFade } from "@/components/ds/edge-fade";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
-import { PageAskSlot } from "@/components/ds/page-ask-slot";
+import { PageAskSlot, PageHelpSlot } from "@/components/ds/page-ask-slot";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtRelative } from "@/i18n/format";
 
@@ -148,7 +148,7 @@ export function PageHeader({
   className,
   meta,
   size = "default",
-  ask = true,
+  ask = true, help = true,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
@@ -162,6 +162,7 @@ export function PageHeader({
   size?: "default" | "compact";
   /** The assistant's one desktop entry (this screen's question, Ctrl+J) at the end of the actions; false = none. */
   ask?: boolean;
+  help?: boolean; // the page's «?» (what the tool is, why, how to read it — lib/help) first among the actions; false = none
 }) {
   const compact = size === "compact";
   return (
@@ -183,9 +184,9 @@ export function PageHeader({
             : <ClampedText className="mt-1">{description}</ClampedText>)}
           {meta && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
         </div>
-        {(actions || ask) && (
+        {(actions || ask || help) && (
           <div className={cn("flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2 empty:hidden", compact ? "min-h-8" : "min-h-9")}>
-            {actions}
+            {help && <PageHelpSlot />}{actions}
             {ask && <PageAskSlot />}
           </div>
         )}

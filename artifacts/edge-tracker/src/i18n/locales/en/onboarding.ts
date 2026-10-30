@@ -10,22 +10,6 @@ export default {
     skip: "Skip",
     done: "Start the day",
     keys: "← → steps, Esc closes",
-    steps: {
-      hero: { title: "Your day on one screen", body: "Today’s and this week’s P&L, the market and your limit. Trades arrive from PropReports by themselves — nothing to type in." },
-      next: { title: "What matters now", body: "One next task for this moment of the day. Done — the next one appears." },
-      loop: { title: "The rhythm of the day", body: "Before the open — Game plan, during the day — trades, in the evening — Close day. Your curator reviews it in the morning." },
-      loopJunior: { title: "Three steps every day", body: "A plan with a stop in the morning, trade by it during the day, Close day in the evening. Nothing matters more at the start." },
-      risk: { title: "Left to stop", body: "How much you can still lose today. At zero the day is over — no exceptions." },
-      palette: { title: "Ctrl+K — everything at hand", body: "A ticker, a trade, a setup or a section: start typing, Enter opens it." },
-      palettePhone: { title: "Search", body: "A ticker, a trade, a setup or a section — start typing and it turns up." },
-      look: { title: "Make it yours in Appearance", body: "Theme, accent, profit and loss colours, background. Your eyes should be comfortable all day." },
-      lookPhone: { title: "Appearance lives in your profile menu", body: "Theme, profit and loss colours, background — all under the button with your initials." },
-      curator: { title: "Curator desk", body: "The queue of closed days to review and your traders. Start the morning here." },
-      curatorPhone: { title: "Curator desk is under More", body: "The review queue and your traders open from the More menu at the bottom." },
-      people: { title: "People and settings", body: "Traders, roles, access by stage and desk settings — in the admin panel." },
-      peoplePhone: { title: "Admin panel is under More", body: "People, roles and desk settings open from the More menu at the bottom." },
-      riskDesk: { title: "Risk desk", body: "Who on the desk is close to their stop right now — in one list." },
-    },
   },
   checklist: {
     title: "First steps",
@@ -51,8 +35,6 @@ export default {
   hints: {
     close: "Got it",
     tryFirst: "Start with this:",
-    help: "What’s here?",
-    helpAria: "Hint: {page}",
     pages: {
       facets: { page: "Breakdowns", answer: "Where you make and lose money — by time, strategy, tickers and tags.", try: "Click a row — it drops out of the totals and the numbers recalculate." },
       whatIf: { page: "What if", answer: "What your account would hold if you had followed your own rules.", try: "Switch on one rule — the daily stop, say — and compare the two curves." },
@@ -66,10 +48,13 @@ export default {
   help: {
     menu: "Help",
     title: "Help",
-    description: "The tour of the main screen, hints for the deeper sections and keyboard shortcuts.",
+    description: "The tour of the day’s rhythm, the guide to every tool and keyboard shortcuts.",
     restart: "Take the tour again",
-    restartHint: "A couple of minutes around the main screen, step by step.",
-    hintsTitle: "Section hints",
+    restartHint: "A couple of minutes: which tool when — from the plan to closing the day.",
+    resume: "Continue the tour",
+    resumeHint: "From step {n} — where you stopped.",
+    guide: "Guide",
+    guideHint: "Every tool in the day’s rhythm: what it is, why and how to read it.",
     open: "Open",
     keysTitle: "Keyboard shortcuts",
     keys: {
@@ -80,7 +65,7 @@ export default {
       steps: "Tour steps",
     },
     paletteAction: "Help and hints",
-    paletteHint: "The tour, section hints, keyboard shortcuts",
+    paletteHint: "The day’s rhythm tour, the guide, keyboard shortcuts",
     keywords: "help hints tour onboarding guide shortcuts keyboard",
   },
   admin: {

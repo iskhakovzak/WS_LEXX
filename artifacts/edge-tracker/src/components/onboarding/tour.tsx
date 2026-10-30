@@ -1,6 +1,7 @@
 /**
- * Guided tour: a spotlight on a real element of the screen + one card (title, one sentence, dots, «Назад» / «Далее» /
- * «Пропустить»). Steps and anchors: lib/onboarding/model (tourSteps, placeCard).
+ * The daily-loop tour: a spotlight on a real element of the screen + one card (the loop phase, the tool's name, what it
+ * is and why — the same lines as its «?», lib/help — dots, «Назад» / «Далее» / «Пропустить»). Steps and anchors:
+ * lib/onboarding/model (tourSteps, placeCard). Each step reached is reported (`onStep`), so a tour left half-way resumes.
  *
  * - The backdrop dims the page but never takes the pointer: scrolling, the wheel and touch keep working underneath.
  * - The spotlight follows its anchor every frame (scroll in #main-content, resize, late layout); an anchor that is not
@@ -14,6 +15,8 @@ import { motionReduced } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { onboardingI18n } from "@/i18n/ns/onboarding";
+import { helpI18n } from "@/i18n/ns/help";
+import { helpText, helpTitle } from "@/components/shared/tool-help";
 import { placeCard, tourKey, type Placement, type Rect, type TourStep } from "@/lib/onboarding/model";
 
 const PAD = 6;
@@ -62,9 +65,17 @@ function isTyping(el: EventTarget | null): boolean {
 const sameRect = (a: Rect | null, b: Rect | null) =>
   a === b || (!!a && !!b && Math.abs(a.top - b.top) < 0.5 && Math.abs(a.left - b.left) < 0.5 && Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5);
 
-export function Tour({ steps, onFinish }: { steps: TourStep[]; onFinish: (kind: "done" | "skipped") => void }) {
+export function Tour({ steps, start = 0, onStep, onFinish }: {
+  steps: TourStep[];
+  /** The step to open on (a resumed tour). */
+  start?: number;
+  /** Each step reached (the store keeps it, so a tour left half-way resumes there). */
+  onStep?: (index: number) => void;
+  onFinish: (kind: "done" | "skipped") => void;
+}) {
   const { t } = onboardingI18n.useT();
-  const [index, setIndex] = useState(0);
+  const { t: th } = helpI18n.useT();
+  const [index, setIndex] = useState(() => Math.max(0, Math.min(start, steps.length - 1)));
   const [rect, setRect] = useState<Rect | null>(null);
   const [place, setPlace] = useState<Placement>({ kind: "center" });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -86,6 +97,7 @@ export function Tour({ steps, onFinish }: { steps: TourStep[]; onFinish: (kind: 
   const back = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
 
   useEffect(() => { returnFocus.current = document.activeElement; }, []);
+  useEffect(() => { onStep?.(index); }, [index, onStep]);
 
   // New step: find its anchor, bring it into view, focus the main button.
   useLayoutEffect(() => {
@@ -188,8 +200,12 @@ export function Tour({ steps, onFinish }: { steps: TourStep[]; onFinish: (kind: 
             ))}
           </ol>
         </div>
-        <h2 id={titleId} className="mt-2 text-base font-semibold leading-snug text-foreground">{t(`tour.steps.${step.copy}.title`)}</h2>
-        <p id={bodyId} className="mt-1 text-sm leading-relaxed text-muted-foreground">{t(`tour.steps.${step.copy}.body`)}</p>
+        <p className="mt-2 text-2xs font-medium text-primary">{th(`phases.${step.phase}.label`)} · {th(`phases.${step.phase}.hint`)}</p>
+        <h2 id={titleId} className="mt-0.5 text-base font-semibold leading-snug text-foreground">{helpTitle(step.id)}</h2>
+        <div id={bodyId} className="mt-1 space-y-1 text-sm leading-relaxed">
+          <p className="text-foreground/90">{helpText(step.id).what}</p>
+          <p className="text-muted-foreground">{helpText(step.id).why}</p>
+        </div>
         <div className="mt-4 flex items-center justify-between gap-2">
           <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={() => finish("skipped")}>{t("tour.skip")}</Button>
           <div className="flex items-center gap-1.5">

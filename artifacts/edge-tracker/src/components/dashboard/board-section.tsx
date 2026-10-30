@@ -15,6 +15,19 @@ import { dragType } from "./tile-gallery";
 import { variantFor, type BoardSection, type LayoutItem, type TileSize, type TileVariant } from "./layout-model";
 import { packTiles, type Placed } from "./pack";
 import { SECTION_META, type SectionId } from "./use-dashboard";
+import { HelpScope } from "@/components/shared/tool-help";
+import type { HelpId } from "@/lib/help/registry";
+
+/**
+ * The help entry (lib/help/registry) of each tile: its frame (DashCard, the insight tile head, WidgetShell) draws the «?»
+ * and the tour can point at it (`data-help-anchor`). The six small edge tiles share one entry; the quote has none.
+ */
+const TILE_HELP: Readonly<Record<SectionId, HelpId | null>> = {
+  regime: "regime", mentor: "mentorLine", attention: "attention", equity: "equity", leaks: "leaks",
+  streaks: "edgeTiles", seqDay: "edgeTiles", afterLoss: "edgeTiles", holdTime: "edgeTiles", fees: "edgeTiles", weekdays: "edgeTiles",
+  positions: "positions", recent: "recentTrades", desk: "deskToday",
+  brief: "brief", checkin: "checkin", sectors: "sectors", macro: "macro", dna: "dna", quote: null, psychology: "psychology",
+};
 
 export type BoardTileDef = {
   /** Has something to show now (open positions, the risk desk…); otherwise a placeholder in the edit mode only. */
@@ -141,7 +154,9 @@ function BoardTile(p: SectionViewProps & { item: LayoutItem; pl: Placed; sizeNam
       onKeyDown={editing ? (e: KeyboardEvent) => p.onKey(e, id) : undefined}
       onContextMenu={editing ? (e: MouseEvent) => e.preventDefault() : undefined}
     >
-      <div className="dash-tile-body" inert={editing || undefined}>{body}</div>
+      <div className="dash-tile-body" inert={editing || undefined} data-help-anchor={TILE_HELP[id] ?? undefined}>
+        <HelpScope id={editing ? null : TILE_HELP[id]}>{body}</HelpScope>
+      </div>
       {editing && (
         <TileChrome
           item={item}

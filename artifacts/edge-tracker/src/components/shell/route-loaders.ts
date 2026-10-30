@@ -69,6 +69,7 @@ const PAGE_IMPORTS = {
   "/academy/learn": () => import("@/pages/academy/learn"),
   "/academy/lesson": () => import("@/pages/academy/lesson"),
   "/academy/content-admin": () => import("@/pages/academy/content-admin"),
+  "/guide": () => import("@/pages/guide"),
 } satisfies Record<string, Loader>;
 
 export type LazyRoute = keyof typeof PAGE_IMPORTS;

@@ -205,7 +205,7 @@ describe("nav-structure: menus per role", () => {
     expect(manage.items.map((i) => i.href)).toEqual(["/curator", "/academy/mentor", "/scaling", "/admin", "/integrations", "/academy/content-admin"]);
     // The staff member's own learning stays with the trader pages.
     expect(groups.find((g) => g.id === "learn")!.items.map((i) => i.href)).toEqual([
-      "/academy/my", "/academy/learn", "/academy/path", "/academy/challenges", "/academy/cohorts", "/trainer",
+      "/academy/my", "/academy/learn", "/academy/path", "/academy/challenges", "/academy/cohorts", "/guide", "/trainer",
     ]);
   });
 

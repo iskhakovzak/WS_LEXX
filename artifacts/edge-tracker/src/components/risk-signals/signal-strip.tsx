@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { fmtTimeNY, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { riskSignalsI18n } from "@/i18n/ns/riskSignals";
+import { ToolHelp } from "@/components/shared/tool-help";
 import { useMyAlerts, useSeenAlert } from "./api";
 import { alertKey, alertVars, stripAlerts } from "./model";
 
@@ -40,6 +41,7 @@ export function RiskSignalStrip({ trader, enabled }: { trader: string | null; en
     <section
       role="status"
       aria-label={t("strip.aria")}
+      data-help-anchor="riskSignals"
       className={cn("glass-panel flex items-start gap-2.5 rounded-2xl border p-3", critical ? "border-down/40" : "border-warn/40")}
     >
       <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", critical ? "text-down" : "text-warn")} aria-hidden="true" />
@@ -61,6 +63,7 @@ export function RiskSignalStrip({ trader, enabled }: { trader: string | null; en
           {t("strip.seen")}
         </Button>
       )}
+      <ToolHelp id="riskSignals" className="mt-1" />
     </section>
   );
 }

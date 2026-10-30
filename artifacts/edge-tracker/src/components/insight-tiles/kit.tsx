@@ -14,6 +14,7 @@ import type { Confidence, Interval, Trend } from "@/lib/stats-lite";
 import { rich } from "@/i18n/rich";
 import { cn } from "@/lib/utils";
 import { insightTilesI18n } from "@/i18n/ns/insightTiles";
+import { ScopedHelp } from "@/components/shared/tool-help";
 import type { Claim } from "./insights";
 import "./insight-tiles.css";
 
@@ -231,7 +232,11 @@ export function Tile(props: TileProps) {
 function TileHead({ id, label, extra, children }: { id: string; label: string; extra?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div className="flex min-h-6 flex-wrap items-center justify-between gap-2">
-      <h3 id={`ins-${id}-label`} className="ins-label">{label}</h3>
+      <div className="flex min-w-0 items-center gap-1">
+        <h3 id={`ins-${id}-label`} className="ins-label">{label}</h3>
+        {/* On the dashboard: the tile's «?» (the board sets the help scope); on /stats none. */}
+        <ScopedHelp />
+      </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {extra}
         {children}

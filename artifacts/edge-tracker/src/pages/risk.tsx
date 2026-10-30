@@ -20,7 +20,7 @@ import { useAgo, useStoredState } from "@/components/risk/primitives";
 import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
-import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { PageHint } from "@/components/shared/page-hint";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { GuardDeskPanel } from "@/components/leak-guard/guard-desk";
 import { GuardImpactPanel } from "@/components/leak-guard/guard-impact";
@@ -89,7 +89,6 @@ export default function RiskPage() {
               <Button variant="outline" size="icon" onClick={refresh} aria-label={t("page.refreshAria")} disabled={fetching}>
                 <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
               </Button>
-              <HelpButton id={view === "desk" ? "riskDesk" : "risk"} />
             </>
           ) : undefined
         }

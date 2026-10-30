@@ -15,6 +15,7 @@ import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { personName } from "@/i18n";
 import { deskPulseI18n } from "@/i18n/ns/deskPulse";
 import { easyBoardQuery, moveText, setupText, useSaveEasyNote, type BoardMove, type MatchRow } from "./easy-api";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 function Result({ r }: { r: MatchRow }) {
   const { t } = deskPulseI18n.useT();
@@ -93,6 +94,8 @@ export function EasyMoneyBoard({ date, className }: { date: string | null; class
       className={className}
       title={t("easy.title")}
       icon={Coins}
+      actions={<ToolHelp id="easyMoney" />}
+      data-help-anchor="easyMoney"
       description={d ? t("easy.hint", { day: fmtDate(d.day, "dayMonth"), move: String(d.cfg.minMovePct), clean: fmtRate(d.cfg.cleanShare) }) : undefined}
     >
       <QueryState query={q} errorCompact errorTitle={t("easy.loadFailed")}>

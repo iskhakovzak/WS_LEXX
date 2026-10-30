@@ -55,6 +55,7 @@ export default {
     settings: "Settings",
     integrations: "Integrations",
     admin: "Admin panel",
+    guide: "Guide",
   },
   navShort: {
     dashboard: "Dashboard",

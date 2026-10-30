@@ -11,6 +11,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { leakGuardI18n } from "@/i18n/ns/leakGuard";
 import { guardImpactQuery } from "./api";
 import { statusOf, type GuardEvent, type GuardImpact, type PatternStat } from "./model";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 const STATUS_TONE: Record<ReturnType<typeof statusOf>, Tone> = {
   complied: "up", ignored: "down", late: "neutral", no_trades: "neutral", unknown: "neutral", open: "warn",
@@ -91,7 +92,7 @@ export function GuardImpactPanel({ trader }: { trader: string | null }) {
   const { t } = leakGuardI18n.useT();
   const q = useQuery(guardImpactQuery(trader));
   return (
-    <Panel title={t("impact.title")} description={t("impact.description")} icon={ShieldCheck}>
+    <Panel title={t("impact.title")} description={t("impact.description")} icon={ShieldCheck} actions={<ToolHelp id="leakGuard" />}>
       <QueryState query={q}>{(d) => <Body d={d} />}</QueryState>
     </Panel>
   );

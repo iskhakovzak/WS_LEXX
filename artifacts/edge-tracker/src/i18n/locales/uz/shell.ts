@@ -55,6 +55,7 @@ export default {
     settings: "Sozlamalar",
     integrations: "Integratsiyalar",
     admin: "Admin panel",
+    guide: "Qoʻllanma",
   },
   navShort: {
     dashboard: "Panel",

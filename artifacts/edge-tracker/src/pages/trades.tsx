@@ -32,7 +32,8 @@ import { useFacetFilters, useTradesFacets } from "@/components/trades/TradesFace
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { facetChips, resetFacetFilters } from "@/components/shared/trade-facets/facet-filters";
 import { ActiveFilters } from "@/components/shared/filters/filter-toolbar";
-import { HelpButton, PageHint } from "@/components/shared/page-hint";
+import { PageHint } from "@/components/shared/page-hint";
+import { ToolHelp } from "@/components/shared/tool-help";
 import { PresetNote, tradeFilterChips, tradesScopeLabel } from "@/components/trades/trade-filter-chips";
 import { ReviewKpiLine } from "@/components/trades/review-kpi-line";
 import { TradePagination } from "@/components/trades/TradePagination";
@@ -626,7 +627,7 @@ export default function Trades() {
             onSaveView={(n) => { F.saveView(n); toast({ title: tt("page.toast.viewSaved", { name: n }) }); }}
             onApplyView={F.applyView}
             onRemoveView={F.removeView}
-            facets={{ view: FV.view, onChange: FV.update, data: FQ.data, loading: FQ.isFetching, error: FQ.isError, help: <HelpButton id="facets" /> }}
+            facets={{ view: FV.view, onChange: FV.update, data: FQ.data, loading: FQ.isFetching, error: FQ.isError, help: <ToolHelp id="tradeFacets" /> }}
             resultCount={summary?.total}
           />
           <PageHint id="facets" />

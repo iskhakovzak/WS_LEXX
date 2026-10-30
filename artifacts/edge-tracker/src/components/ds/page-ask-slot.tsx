@@ -7,6 +7,9 @@
  */
 import * as React from "react";
 
+/** The help «?» slot sits next to this one in PageHeader (one import for ds.tsx). */
+export { PageHelpSlot } from "./page-help-slot";
+
 type AskComponent = React.ComponentType;
 
 let registered: AskComponent | null = null;

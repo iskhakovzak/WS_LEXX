@@ -14,6 +14,7 @@ import { personName } from "@/i18n";
 import { riskSignalsI18n } from "@/i18n/ns/riskSignals";
 import { deskAlertsQuery, savedQuery } from "./api";
 import { alertKey, alertVars, savedView, type AlertsDay, type SavedPeriod, type SavedSummary } from "./model";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 const usd = (v: number) => fmtUsd(v, { decimals: 0 });
 const PERIODS: readonly SavedPeriod[] = ["day", "week", "month"];
@@ -93,7 +94,7 @@ export function RiskSignalsDeskPanel() {
   const { t } = riskSignalsI18n.useT();
   const q = useQuery(deskAlertsQuery());
   return (
-    <Panel title={t("desk.title")} description={t("desk.description")} icon={Radar}>
+    <Panel title={t("desk.title")} description={t("desk.description")} icon={Radar} actions={<ToolHelp id="riskSignals" />}>
       <div className="space-y-4">
         <QueryState query={q}>{(d) => <AlertList d={d} />}</QueryState>
         <Saved />

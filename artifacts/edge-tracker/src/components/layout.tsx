@@ -22,6 +22,7 @@ import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-pr
 import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 import { Wordmark } from "@/components/ds/brand";
 import { OnboardingMount } from "@/components/onboarding-mount";
+import { HelpAccess } from "@/components/help-mount";
 import { LiveTradesSync } from "@/components/propreports/live-trades";
 import { AssistantButton } from "@/components/assistant/assistant-launcher";
 import { GuardBanner } from "@/components/leak-guard/guard-banner";
@@ -169,6 +170,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={onSidebarOpen} style={SIDEBAR_SIZES}>
+      {/* Who is looking, for every «?» and the guide (components/help-mount.tsx). */}
+      <HelpAccess>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-skip focus:rounded-full focus:bg-primary-solid focus:px-4 focus:py-2 focus:text-xs focus:font-medium focus:text-primary-foreground"
@@ -224,6 +227,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <LiveTradesSync />
       {/* Live leak guard: pause / acknowledgement card when a personal leak pattern fires (components/leak-guard). */}
       <GuardBanner />
+      </HelpAccess>
     </SidebarProvider>
   );
 }

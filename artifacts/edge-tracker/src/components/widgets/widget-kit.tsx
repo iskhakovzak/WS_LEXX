@@ -11,6 +11,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tone } from "@/components/ds";
 import { smoothPath, type Pt } from "@/components/shared/charts/path";
+import { HelpScope, ScopedHelp } from "@/components/shared/tool-help";
 
 /* ───────────────────────────── Shell ───────────────────────────── */
 
@@ -65,11 +66,13 @@ export function WidgetShell({
           <h2 id={headingId} className="truncate text-sm font-semibold text-foreground">
             {title}
           </h2>
+          {/* On the dashboard: the tile's «?» (the board sets the help scope). */}
+          <ScopedHelp />
           {meta && <span className="truncate text-xs text-muted-foreground tabular-nums">{meta}</span>}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
       </header>
-      <div className={cn("px-4 pb-4 pt-3", bodyClassName)}>{children}</div>
+      <HelpScope id={null}><div className={cn("px-4 pb-4 pt-3", bodyClassName)}>{children}</div></HelpScope>
     </As>
   );
 }

@@ -40,6 +40,7 @@ import { freshDay, teamStatesQuery, traderStateQuery, type TraderState } from "@
 import { dayStateI18n } from "@/i18n/ns/dayState";
 import { RegimeDayView } from "@/components/shared/regime/regime-day";
 import { RiskSignalStrip } from "@/components/risk-signals/signal-strip";
+import { ToolHelp } from "@/components/shared/tool-help";
 import { useDashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { addItem, TILE_SPECS, type BoardSection, type TileVariant } from "@/components/dashboard/layout-model";
 import { DayLine, DayProgress } from "@/components/daily/day-line";
@@ -299,7 +300,12 @@ export default function Dashboard() {
         };
       // The AI mentor's line (own day only; staff see their own mentor): opens /coach.
       case "mentor":
-        return { ready: m.authed && scope === "me", render: () => <DashCard fill aria-label={t("sections.mentor.label")}>{sl.mentorStop ? <StopMentorLine /> : lazyExtra(<MentorLine />)}</DashCard> };
+        return { ready: m.authed && scope === "me", render: () => (
+          <DashCard fill aria-label={t("sections.mentor.label")} bodyClassName="flex-row items-center gap-1">
+            <div className="min-w-0 flex-1">{sl.mentorStop ? <StopMentorLine /> : lazyExtra(<MentorLine />)}</div>
+            <ToolHelp id="mentorLine" />
+          </DashCard>
+        ) };
       case "attention": return { ready: true, render: () => plan };
       case "equity": return { ready: true, render: equity };
       case "positions": return { ready: !!today?.positions?.length, render: () => (today ? lazyExtra(<PositionsPanel data={today} />) : null) };

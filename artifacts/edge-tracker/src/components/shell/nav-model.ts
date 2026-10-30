@@ -277,7 +277,7 @@ const EXTRA_BLOCKABLE: { href: string; group: NavGroup["id"]; label: () => strin
  * switch sections, never the home page), grouped and ordered as in the sidebar, children right after their row.
  */
 export function blockableSections(): BlockableGroup[] {
-  const ok = (i: NavItem) => !i.staff && !i.hidden && !i.feature && i.href !== "/";
+  const ok = (i: NavItem) => !i.staff && !i.hidden && !i.feature && i.href !== "/" && i.href !== "/guide";
   const section = (i: NavItem, parent: string | null): BlockableSection => ({ href: i.href, get label() { return i.name; }, parent });
   return NAV_GROUPS.map((g) => {
     const sections = g.items.flatMap((r) => [

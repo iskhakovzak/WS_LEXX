@@ -39,6 +39,7 @@ import { OverlayView } from "@/components/chart-lab/OverlayView";
 import { ExitsView } from "@/components/chart-lab/ExitsView";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { comparePersonNames } from "@/i18n";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 /** `movePct`: side-aware entry → exit move, % (desk payload) — the result when neither $ nor R is available. */
 type TradeRow = TradeLike & { rMultiple?: number | string | null; movePct?: number | null };
@@ -282,6 +283,7 @@ export default function ChartLabPage() {
       <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-3">
         <header className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold tracking-tight">{tl("title.page")}</h1>
+          <ToolHelp id="chartLab" />
           {viewSwitch}
           {isCurator && (
             <StaffTraderPicker value={labTrader || (user?.traderName ?? "")} onChange={setLabTrader} me={user?.traderName} names={traderNames} team={false} className="h-9 w-auto min-w-[12rem]" ariaLabel={tl("views.traderAria")} />
@@ -295,6 +297,7 @@ export default function ChartLabPage() {
     <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-2 lg:-mb-[2.25rem] lg:h-[calc(100svh-6.25rem)] lg:min-h-[520px]">
       <header className="flex min-w-0 flex-wrap items-center gap-2">
         <h1 className="sr-only text-lg font-semibold tracking-tight sm:not-sr-only sm:mr-1">{tl("title.page")}</h1>
+        <ToolHelp id="chartLab" className="max-sm:hidden" />
         {viewSwitch}
         <TradePicker
           label={label}

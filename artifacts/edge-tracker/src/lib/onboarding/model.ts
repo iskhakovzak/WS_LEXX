@@ -4,10 +4,11 @@
  *
  * Stored per user in `users.settings.onboarding` (PUT /api/users/me/settings), mirrored by the API's
  * lib/people/onboarding.ts. The «new user» rule is the server's (GET /api/users/me/onboarding → stage):
- *   new       no closed day, < 5 active days, account < 45 days → tour (once), checklist, page hints on first open
+ *   new       no closed day, < 5 active days, account < 45 days → checklist, page hints on first open
  *   settling  < 10 closed days and < 20 active days → page hints on first open only
- *   settled   heavy users → nothing automatic («?» buttons and «Помощь» still work)
- * An admin reset (Admin → Люди → «Сбросить знакомство») sets `again`: tour + checklist + hints as for a new user.
+ *   settled   heavy users → no hints («?» buttons, «Справочник» and «Помощь» still work)
+ * The daily-loop tour is for everyone, once per stage (`loops`, see «Tour» below), whatever the server's stage.
+ * An admin reset (Admin → Люди → «Сбросить знакомство») sets `again` and clears `loops`: everything as for a new user.
  *
  * Never automatic (same rules as the welcome intro, lib/welcome-intro.ts): print, automation (navigator.webdriver:
  * headless recording / e2e), the per-browser switch localStorage ws_lexx_intro = "off", `?intro=0` or `?onboarding=0`.
@@ -15,6 +16,7 @@
  * root with no query (a deep link goes straight to its content).
  */
 import { z } from "zod";
+import { HELP, helpVisible, type HelpId, type HelpPhase } from "@/lib/help/registry";
 
 // ─── Stored block ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,10 @@ export const OnboardingStateSchema = z.object({
   hints: z.array(slug).max(32).optional(),
   seen: z.array(slug).max(32).optional(),
   again: z.boolean().optional(),
+  /** Tours finished or skipped, by stage / staff role (the daily-loop tour shows once per each). */
+  loops: z.array(slug).max(8).optional(),
+  /** The step a tour was left on (resumed there next time). */
+  loopStep: z.object({ r: slug, i: z.number().int().min(0).max(31) }).optional(),
 });
 export type OnboardingState = z.infer<typeof OnboardingStateSchema>;
 export const EMPTY_STATE: OnboardingState = { v: 1 };
@@ -96,13 +102,16 @@ export function isNewcomer({ mode, stage, state }: ShowInput): boolean {
 
 const ROOT_PATHS = new Set(["", "/"]);
 
-/** Start the tour on this screen now? Only on the dashboard root, with no deep-link query, once. */
-export function shouldStartTour(i: ShowInput & { path: string; search: string }): boolean {
-  if (!isNewcomer(i)) return false;
+/**
+ * Start the daily-loop tour on this screen now? Once per user and stage, for everyone (not only newcomers): on the
+ * dashboard root with no deep-link query, never on an "off" load. A tour left half-way resumes (resumeIndex).
+ */
+export function shouldStartTour(i: { mode: Mode; state: OnboardingState; path: string; search: string; role: TourRole }): boolean {
+  if (i.mode === "off") return false;
   if (!ROOT_PATHS.has(i.path)) return false;
   if (i.mode === "force") return true;
   if (i.search.replace(/^\?/, "") !== "") return false;
-  return i.state.tour == null;
+  return !tourSeen(i.state, i.role);
 }
 
 /** Open a page hint on its own (first visit of the page)? */
@@ -113,74 +122,91 @@ export function shouldAutoHint(i: ShowInput & { id: HintId }): boolean {
   return i.stage !== "settled" || i.state.again === true;
 }
 
-// ─── Tour ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Tour: the daily loop ──────────────────────────────────────────────────────────────────────────────────────────
 
-export type TourRole = "junior" | "trader" | "curator" | "admin";
-export type StepId = "hero" | "next" | "loop" | "risk" | "palette" | "look" | "curator" | "people" | "riskDesk";
+/**
+ * Owner, 2026-10-30: the tour walks the DAILY LOOP — which tool when: the home screen → the plan before the open →
+ * the session (trades from PropReports, live risk signals) → «Закрыть день» after the close → the week / season → the
+ * guide. One tour per stage (Джун, Трейдер, Сеньор) and per staff role; each step is a help registry entry
+ * (lib/help/registry), so its title and lines are the same as the tool's «?». Shown once per user and stage (a
+ * promotion brings the next stage's tour once), skippable, resumable at the step it was left on, re-launchable from
+ * «Помощь» and «Справочник».
+ */
+export type TourRole = "junior" | "trader" | "senior" | "curator" | "admin";
+export const TOUR_ROLES: readonly TourRole[] = ["junior", "trader", "senior", "curator", "admin"];
 
-/** Juniors: the daily loop first; curators: the cabinet and the queue; admins: people, settings, the risk desk. */
-export const TOURS: Readonly<Record<TourRole, readonly StepId[]>> = {
-  junior: ["hero", "loop", "next", "risk", "look"],
-  trader: ["hero", "next", "loop", "risk", "palette", "look"],
-  curator: ["hero", "curator", "next", "riskDesk", "palette", "look"],
-  admin: ["hero", "people", "riskDesk", "curator", "palette", "look"],
+export const TOURS: Readonly<Record<TourRole, readonly HelpId[]>> = {
+  junior: ["dashboard", "gamePlan", "trades", "riskSignals", "journal", "trainer", "guide"],
+  trader: ["dashboard", "gamePlan", "trades", "riskSignals", "risk", "journal", "weeklyReview", "guide"],
+  senior: ["dashboard", "gamePlan", "easyMoney", "trades", "riskSignals", "journal", "seasonReport", "guide"],
+  curator: ["dashboard", "gamePlan", "risk", "curator", "academyMentor", "weeklyReview", "guide"],
+  admin: ["dashboard", "risk", "curator", "admin", "integrations", "scaling", "guide"],
 };
 
+/** The server's effective role and ladder tier → the tour (lead counts as senior; no tier yet = Джун). */
 export function tourRole(role: string | null | undefined, tier: string | null | undefined): TourRole {
   if (role === "admin") return "admin";
   if (role === "curator") return "curator";
-  return tier === "trainee" || tier === "junior" ? "junior" : "trader";
+  if (tier === "senior" || tier === "lead") return "senior";
+  if (tier === "trader") return "trader";
+  return "junior";
 }
-
-/** Section a step points at: the step is dropped when the viewer cannot open it (stage-blocked, staff-only). */
-const STEP_SECTION: Partial<Record<StepId, string>> = { curator: "/curator", people: "/admin", riskDesk: "/risk", risk: "/risk", loop: "/game-plan" };
 
 const sidebarLink = (href: string) => `[data-sidebar="sidebar"] a[href$="${href}"]`;
 const DOCK = '[data-tour="dock"]';
 const DOCK_MORE = '[data-tour="dock"] li:last-child button';
 const USER_MENU = '[data-i18n-focus="user-menu"]';
+const HERO = ['[data-tour="hero"]', 'section[aria-labelledby="dash-hero-title"]'];
 
 /**
- * CSS selectors per step, tried in order; the first one that is on screen is the anchor. None visible (a collapsed
- * group, a phone without that element) → the card is centred with no spotlight. Phone steps point at the bottom dock.
+ * CSS selectors per step, tried in order; the first one on screen is the anchor. A card on the dashboard marks itself
+ * with `data-help-anchor="<id>"`; a page is its sidebar link (the bottom dock or «Ещё» on a phone). Nothing visible (a
+ * folded group, a phone without that element) → the card is centred with no spotlight.
  */
-const ANCHORS: Readonly<Record<StepId, { desktop: readonly string[]; phone: readonly string[] }>> = {
-  hero: { desktop: ['[data-tour="hero"]', 'section[aria-labelledby="dash-hero-title"]'], phone: ['[data-tour="hero"]', 'section[aria-labelledby="dash-hero-title"]'] },
-  next: { desktop: ['[data-tour="attention"]'], phone: ['[data-tour="next-step"]', '[data-tour="attention"]'] },
-  loop: { desktop: ['[data-tour="nav"]', '[data-sidebar="sidebar"]'], phone: [DOCK] },
-  risk: { desktop: ['[data-tour="risk"]', sidebarLink("/risk")], phone: ['[data-tour="risk"]', `${DOCK} a[href$="/risk"]`] },
-  palette: { desktop: ['[data-tour="palette"]'], phone: ['[data-tour="palette"]'] },
-  look: { desktop: ['[data-tour="look"]', USER_MENU], phone: [USER_MENU] },
-  curator: { desktop: [sidebarLink("/curator"), '[data-tour="nav"]'], phone: [DOCK_MORE, DOCK] },
-  people: { desktop: [sidebarLink("/admin"), '[data-tour="nav"]'], phone: [DOCK_MORE, DOCK] },
-  riskDesk: { desktop: [sidebarLink("/risk"), '[data-tour="risk"]'], phone: [`${DOCK} a[href$="/risk"]`, '[data-tour="risk"]'] },
-};
-
-export function anchorsFor(step: StepId, phone: boolean): readonly string[] {
-  return phone ? ANCHORS[step].phone : ANCHORS[step].desktop;
+export function anchorsFor(id: HelpId, phone: boolean): readonly string[] {
+  if (id === "dashboard") return HERO;
+  const own = `[data-help-anchor="${id}"]`;
+  const href = HELP[id].href;
+  // A dashboard card: itself, or (the risk signals strip shows only with an alert) the hero's «left to stop» cell.
+  if (href === "/") return id === "riskSignals" ? [own, '[data-tour="risk"]'] : [own];
+  if (id === "guide") return phone ? [own, USER_MENU] : [own, sidebarLink(href), USER_MENU];
+  return phone ? [own, `${DOCK} a[href$="${href}"]`, DOCK_MORE] : [own, sidebarLink(href), '[data-tour="nav"]'];
 }
 
-/** Copy key under `tour.steps` (the phone variant names the place on a phone; juniors get the loop in their words). */
-export type StepCopy =
-  | "hero" | "next" | "loop" | "loopJunior" | "risk" | "palette" | "palettePhone" | "look" | "lookPhone"
-  | "curator" | "curatorPhone" | "people" | "peoplePhone" | "riskDesk";
+export type TourStep = { id: HelpId; phase: HelpPhase; anchors: readonly string[] };
 
-export function stepCopy(step: StepId, role: TourRole, phone: boolean): StepCopy {
-  if (step === "loop") return role === "junior" ? "loopJunior" : "loop";
-  if (phone && step === "palette") return "palettePhone";
-  if (phone && step === "look") return "lookPhone";
-  if (phone && step === "curator") return "curatorPhone";
-  if (phone && step === "people") return "peoplePhone";
-  return step;
-}
-
-export type TourStep = { id: StepId; copy: StepCopy; anchors: readonly string[] };
-
-/** The tour for this viewer: 4–6 steps, those pointing at a section they cannot open left out. */
+/**
+ * The tour for this viewer: 7–8 steps, those the viewer cannot see left out (a section closed for the stage, a
+ * staff-only page) — the tour never points at a hidden section.
+ */
 export function tourSteps(role: TourRole, phone: boolean, canOpen: (href: string) => boolean = () => true): TourStep[] {
+  const viewer = { isCurator: role === "curator" || role === "admin", tier: role === "senior" ? "senior" : role, canOpen };
   return TOURS[role]
-    .filter((id) => { const s = STEP_SECTION[id]; return !s || canOpen(s); })
-    .map((id) => ({ id, copy: stepCopy(id, role, phone), anchors: anchorsFor(id, phone) }));
+    .filter((id) => helpVisible(id, viewer))
+    .map((id) => ({ id, phase: HELP[id].phase, anchors: anchorsFor(id, phone) }));
+}
+
+/** Where to start: the step this stage's tour was left on (a fresh start otherwise), clamped to the steps there are. */
+export function resumeIndex(state: OnboardingState, role: TourRole, total: number): number {
+  const at = state.loopStep;
+  if (!at || at.r !== role || total <= 0) return 0;
+  return Math.max(0, Math.min(at.i, total - 1));
+}
+
+/** Has this stage's tour been finished or skipped? */
+export function tourSeen(state: OnboardingState, role: TourRole): boolean {
+  return state.loops?.includes(role) ?? false;
+}
+
+export function withTourStep(state: OnboardingState, role: TourRole, i: number): OnboardingState {
+  if (state.loopStep?.r === role && state.loopStep.i === i) return state;
+  return { ...state, loopStep: { r: role, i: Math.max(0, Math.min(31, Math.round(i))) } };
+}
+
+export function withTourFinished(state: OnboardingState, role: TourRole, kind: "done" | "skipped", at: string): OnboardingState {
+  const loops = state.loops?.includes(role) ? state.loops : [...(state.loops ?? []), role];
+  const { loopStep: _left, ...rest } = state;
+  return { ...rest, tour: kind, tourAt: at, loops };
 }
 
 /** Keyboard: → / Enter next, ← back, Esc skip; anything else is not the tour's. */

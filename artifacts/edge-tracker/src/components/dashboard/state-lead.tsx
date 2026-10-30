@@ -19,6 +19,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { dayStateI18n } from "@/i18n/ns/dayState";
 import { DashCard } from "./dash-card";
+import { ToolHelp } from "@/components/shared/tool-help";
 import { haltFacts } from "./today-hero";
 import type { RiskMe } from "./use-dashboard";
 
@@ -50,6 +51,7 @@ export function StopCard({ risk, state, quietDay }: { risk: RiskMe | null | unde
           <h2 className={cn("text-lg font-semibold leading-7", quietDay ? "text-foreground" : toneText("down"))}>{t("stop.title")}</h2>
           {used && <p className="text-sm tabular-nums text-foreground">{limit ? t("stop.usedOf", { used, limit }) : used}</p>}
         </div>
+        <ToolHelp id="dayState" />
       </div>
       {facts && facts.limit != null && <LimitBar used={facts.used} limit={facts.limit} warnAt={0.7} size="sm" showValues={false} ariaLabel={ruleText} />}
       <p className="max-w-prose text-sm text-muted-foreground">{quietDay ? t("stop.closed") : t(`stop.lift.${rule}`)}</p>
@@ -94,6 +96,7 @@ export function WelcomeBackCard({ state }: { state: TraderState }) {
           <p className="text-sm text-muted-foreground">{t("back.lead")}</p>
           <p className="mt-1 text-xs tabular-nums text-muted-foreground">{lastLine}</p>
         </div>
+        <ToolHelp id="dayState" />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button asChild size="sm">
@@ -127,6 +130,7 @@ export function NewcomerCard({ state }: { state: TraderState }) {
           <h2 className="text-lg font-semibold leading-7">{t("newcomer.title")}</h2>
           <p className="text-sm text-muted-foreground">{t("newcomer.lead", { target: n.target, count: n.trades })}</p>
         </div>
+        <ToolHelp id="dayState" />
       </div>
       <div role="meter" aria-valuemin={0} aria-valuemax={n.target} aria-valuenow={n.trades} aria-label={t("newcomer.progressAria", { count: n.trades, target: n.target })} className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-hover-bg)]">
         <div className="h-full rounded-full bg-foreground/70 motion-safe:transition-[width] motion-safe:duration-300" style={{ width: `${pct}%` }} />

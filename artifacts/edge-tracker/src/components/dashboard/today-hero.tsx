@@ -16,6 +16,7 @@ import { AskCuratorButton } from "@/components/shared/ask-curator";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 /** Greeting by the desk clock (New York) — the same «16:02 NY» the hero shows, not the browser's zone. */
 export function greeting(d: Date) {
@@ -349,18 +350,22 @@ export function DashboardHeader({
             {userName ? <>, {personName(userName)}</> : ""}
           </h1>
         </div>
-        {canChooseScope && !guest && (
-          <Segmented<Scope>
-            ariaLabel={tr("hero.scopeAria")}
-            size="sm"
-            value={scope}
-            onChange={onScopeChange}
-            options={[
-              { value: "me", label: tr("hero.mine") },
-              { value: "team", label: tr("hero.team") },
-            ]}
-          />
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {canChooseScope && !guest && (
+            <Segmented<Scope>
+              ariaLabel={tr("hero.scopeAria")}
+              size="sm"
+              value={scope}
+              onChange={onScopeChange}
+              options={[
+                { value: "me", label: tr("hero.mine") },
+                { value: "team", label: tr("hero.team") },
+              ]}
+            />
+          )}
+          {/* The home screen's «?» (lib/help): what this screen is and how the day runs through it. */}
+          <ToolHelp id="dashboard" size="md" />
+        </div>
       </div>
 
       <div className="dash-kpis">

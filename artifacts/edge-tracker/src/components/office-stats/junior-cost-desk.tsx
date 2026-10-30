@@ -13,6 +13,7 @@ import { juniorCostI18n } from "@/i18n/ns/juniorCost";
 import { deskJuniorCostQuery, EXPOSURE_DAYS, STOP_DAYS, type DeskJuniorCost, type GroupBy } from "@/components/shared/junior-cost/api";
 import { kmDays, tradingDays, usd } from "@/components/shared/junior-cost/model";
 import { AttributionList, CohortTable, JuniorsTable } from "./junior-cost-parts";
+import { ToolHelp } from "@/components/shared/tool-help";
 
 function Summary({ d }: { d: DeskJuniorCost }) {
   const { t } = juniorCostI18n.useT();
@@ -32,7 +33,7 @@ function MoneyPanel({ d }: { d: DeskJuniorCost }) {
   const { t } = juniorCostI18n.useT();
   const m = d.cohorts.cohort.desk.money;
   return (
-    <Panel title={t("money.title")} icon={Coins} description={t("money.formula")} className="lg:col-span-4" fill>
+    <Panel title={t("money.title")} icon={Coins} description={t("money.formula")} className="lg:col-span-4" fill actions={<ToolHelp id="juniorCost" />}>
       <div className="flex flex-col">
         <StatRow label={t("money.fees")} value={usd(m.fees)} />
         <StatRow label={t("money.gross")} value={usd(m.gross, true)} tone={m.gross < 0 ? "down" : m.gross > 0 ? "up" : "neutral"} />

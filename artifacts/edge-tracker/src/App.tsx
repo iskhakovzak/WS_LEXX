@@ -91,6 +91,7 @@ const AcademyCohorts = lazy(L["/academy/cohorts"]);
 const AcademyLearn = lazy(L["/academy/learn"]);
 const AcademyLesson = lazy(L["/academy/lesson"]);
 const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
+const Guide = lazy(L["/guide"]);
 // Signed-out screen and the 404 page: own chunks too (a signed-in visit never needs the login form).
 const NotFound = lazy(() => import("@/pages/not-found").then(async (m) => { await i18nReady(); return m; }));
 const LoginPage = lazy(() => import("@/pages/login").then(async (m) => { await i18nReady(); return m; }));
@@ -231,6 +232,7 @@ function Router() {
           <Route path="/academy/learn" component={AcademyLearn} />
           <Route path="/academy/lesson" component={AcademyLesson} />
           <Route path="/academy/content-admin" component={AcademyContentAdmin} />
+          <Route path="/guide" component={Guide} />
           <Route component={NotFound} />
         </Switch>
         )}

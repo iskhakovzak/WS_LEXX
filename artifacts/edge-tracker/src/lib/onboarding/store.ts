@@ -10,8 +10,8 @@
 import { useSyncExternalStore } from "react";
 import { http } from "@/lib/api/http";
 import {
-  EMPTY_STATE, onboardingMode, parseState, parseStatus, withHint, withSeen,
-  type HintId, type Mode, type OnboardingState, type OnboardingStatus, type SeenKey, type ShowEnv,
+  EMPTY_STATE, onboardingMode, parseState, parseStatus, withHint, withSeen, withTourFinished, withTourStep,
+  type HintId, type Mode, type OnboardingState, type OnboardingStatus, type SeenKey, type ShowEnv, type TourRole,
 } from "./model";
 
 const SETTINGS_API = "/api/users/me/settings";
@@ -28,13 +28,13 @@ export type OnboardingSnapshot = {
   /** True once the stored block is known (local copy or server). */
   ready: boolean;
   mode: Mode;
-  /** Bumped by «Пройти знакомство заново»: the tour host starts the tour on the dashboard. */
+  /** Bumped by «Пройти знакомство» («Помощь», «Справочник»): the tour host starts the tour on the dashboard. */
   tourRequest: number;
-  /** A hint re-opened from «?» or «Помощь» (shown even if seen). */
-  reopen: { id: HintId; n: number } | null;
+  /** The last request continues at the step the tour was left on (otherwise from the first step). */
+  tourResume: boolean;
 };
 
-let snap: OnboardingSnapshot = { user: null, state: EMPTY_STATE, status: null, ready: false, mode: "off", tourRequest: 0, reopen: null };
+let snap: OnboardingSnapshot = { user: null, state: EMPTY_STATE, status: null, ready: false, mode: "off", tourRequest: 0, tourResume: false };
 const listeners = new Set<() => void>();
 let generation = 0;
 
@@ -74,7 +74,7 @@ export function readShowEnv(): ShowEnv {
 export function startOnboarding(user: string | null, opts: { guest: boolean }): void {
   const gen = ++generation;
   if (!user || opts.guest) {
-    emit({ user: null, state: EMPTY_STATE, status: null, ready: false, mode: "off", reopen: null });
+    emit({ user: null, state: EMPTY_STATE, status: null, ready: false, mode: "off" });
     return;
   }
   const local = readLocal(user);
@@ -109,24 +109,26 @@ function save(next: OnboardingState): void {
   void http.put(SETTINGS_API, { onboarding: next }).catch(() => undefined);
 }
 
-export function finishTour(kind: "done" | "skipped"): void {
-  save({ ...snap.state, tour: kind, tourAt: new Date().toISOString() });
+/** The tour finished or skipped for this stage: it does not start by itself again (re-launch: requestTour). */
+export function finishTour(kind: "done" | "skipped", role: TourRole): void {
+  save(withTourFinished(snap.state, role, kind, new Date().toISOString()));
+}
+/** The step the tour is on (left half-way, it resumes here). */
+export function saveTourStep(role: TourRole, i: number): void {
+  save(withTourStep(snap.state, role, i));
 }
 export function dismissChecklist(kind: "done" | "dismissed" = "dismissed"): void {
   save({ ...snap.state, checklist: kind });
 }
 export function markHintSeen(id: HintId): void {
   save(withHint(snap.state, id));
-  if (snap.reopen?.id === id) emit({ reopen: null });
 }
 export function markSeen(key: SeenKey): void {
   save(withSeen(snap.state, key));
 }
-export function requestTour(): void {
-  emit({ tourRequest: snap.tourRequest + 1 });
-}
-export function reopenHint(id: HintId): void {
-  emit({ reopen: { id, n: (snap.reopen?.n ?? 0) + 1 } });
+/** «Пройти знакомство» / «Продолжить знакомство»: to the dashboard, then the tour (from the start or where it was left). */
+export function requestTour(opts: { resume?: boolean } = {}): void {
+  emit({ tourRequest: snap.tourRequest + 1, tourResume: !!opts.resume });
 }
 export function openHelp(): void {
   window.dispatchEvent(new CustomEvent(OPEN_HELP_EVENT));

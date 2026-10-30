@@ -22,7 +22,7 @@ import {
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
   Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, CalendarRange, Bell, FlaskConical, Brain, FileText, TextSearch,
   GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Gamepad2, Shapes, ScanSearch,
-  ChartSpline, Scale, IdCard, Compass,
+  ChartSpline, Scale, IdCard, Compass, LifeBuoy,
 } from "lucide-react";
 import { shellI18n, type NavGroupKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
 import ruShell from "@/i18n/locales/ru/shell";
@@ -176,6 +176,9 @@ export const NAV_GROUPS: NavGroup[] = [
       nav("academyPath", { short: true, href: "/academy/path", icon: GraduationCap, keywords: "academy академия путь стажёр джун трейдер сеньор перевод ступень критерии" }),
       nav("academyChallenges", { href: "/academy/challenges", icon: Target, keywords: "academy экзамены challenge челлендж оценка капитал" }),
       nav("academyCohorts", { href: "/academy/cohorts", icon: UsersRound, keywords: "academy когорты группы офис удалённо расписание занятия" }),
+      // Owner, 2026-10-30: every tool in the day's rhythm (lib/help/registry) — the same texts as the «?» buttons. Never
+      // closed per stage (nav-model blockableSections leaves it out).
+      nav("guide", { href: "/guide", icon: LifeBuoy, keywords: "guide справочник помощь help что это зачем инструменты задумка как читать знакомство тур qoʻllanma" }),
     ] }),
     // Practice on real charts (bar by bar, the day's task, own days): learning by doing, next to the courses.
     nav("trainer", { href: "/trainer", icon: Gamepad2, also: ["/simulator"], keywords: "trainer тренажёр симулятор simulator игра задача дня найди вход мои дни chartgame бар за баром тренировка practice drill tools инструменты" }),

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
 import { CalendarDays, AlertTriangle, Zap } from "lucide-react";
 import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
+import { ScopedHelp } from "@/components/shared/tool-help";
 
 const ht = marketWidgetsI18n.t;
 
@@ -145,6 +146,8 @@ export function UpcomingEventsList({ limit = 6, className }: { limit?: number; c
           <CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           {t("events.calendar")}
         </h2>
+        {/* On the dashboard: the tile's «?» (the board sets the help scope). */}
+        <ScopedHelp className="mr-auto" />
         <span className="text-xs text-muted-foreground">{t("events.days14")}</span>
       </div>
       <div className="px-4 pb-4 pt-2 sm:px-5">

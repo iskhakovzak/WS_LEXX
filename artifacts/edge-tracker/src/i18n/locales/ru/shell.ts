@@ -56,6 +56,7 @@ export default {
     settings: "Настройки",
     integrations: "Интеграции",
     admin: "Админка",
+    guide: "Справочник",
   },
   navShort: {
     dashboard: "Дашборд",
