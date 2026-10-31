@@ -11,100 +11,104 @@ const sizes = ["1", "2-10", "11-25", "26-50", "51-100", "100+"];
 const segments = ["prop_desk", "funded_trader", "futures_firm"] as const;
 const messages = { sending: f.sending, submit: f.submit, generic: f.errorGeneric, validation: f.errorValidation, rate: f.errorRate };
 ---
-<section id="contact" class="section wrap contact" aria-labelledby="contact-title">
-  <div class="contact-copy">
-    <h2 id="contact-title" data-reveal>{f.title}</h2>
-    <p class="lede" data-reveal style="--i:1">{f.lede}</p>
-    <p class="muted note" data-reveal style="--i:2">{f.traderNote}</p>
-  </div>
+<section id="contact" class="sec contact" aria-labelledby="contact-title">
+  <div class="sec-side blend"><p class="kick">[{t(locale).ui.kick.contact}]</p></div>
+  <div class="contact-grid">
+    <div class="contact-copy blend">
+      <h2 id="contact-title" class="sec-title" data-reveal>{f.title}</h2>
+      <p class="sec-lede read" data-reveal style="--i:1">{f.lede}</p>
+      <p class="read muted note" data-reveal style="--i:2">{f.traderNote}</p>
+    </div>
 
-  <div class="contact-form" data-reveal style="--i:1">
-    <form data-lead-form data-endpoint={`${LEADS_API_BASE}/api/leads`} data-locale={locale} data-messages={JSON.stringify(messages)} novalidate>
-      <div class="field">
-        <label for="lf-segment">{f.segment}</label>
-        <select id="lf-segment" name="segment" required>
-          {segments.map((s) => <option value={s}>{f.segments[s]}</option>)}
-        </select>
-      </div>
-      <div class="row">
+    <div class="contact-form" data-reveal style="--i:1">
+      <form data-lead-form data-endpoint={`${LEADS_API_BASE}/api/leads`} data-locale={locale} data-messages={JSON.stringify(messages)} novalidate>
         <div class="field">
-          <label for="lf-name">{f.name}</label>
-          <input id="lf-name" name="name" autocomplete="name" required maxlength="120" />
-        </div>
-        <div class="field">
-          <label for="lf-email">{f.email}</label>
-          <input id="lf-email" name="email" type="email" autocomplete="email" required maxlength="254" />
-        </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label for="lf-company">{f.company}</label>
-          <input id="lf-company" name="company" autocomplete="organization" maxlength="160" aria-describedby="lf-company-hint" />
-          <p id="lf-company-hint" class="hint">{f.companyHint}</p>
-        </div>
-        <div class="field">
-          <label for="lf-traders">{f.traders}</label>
-          <select id="lf-traders" name="tradersCount">
-            <option value="">{f.tradersChoose}</option>
-            {sizes.map((s) => <option value={s}>{s}</option>)}
+          <label for="lf-segment">{f.segment}</label>
+          <select id="lf-segment" name="segment" required>
+            {segments.map((s) => <option value={s}>{f.segments[s]}</option>)}
           </select>
         </div>
+        <div class="row">
+          <div class="field">
+            <label for="lf-name">{f.name}</label>
+            <input id="lf-name" name="name" autocomplete="name" required maxlength="120" />
+          </div>
+          <div class="field">
+            <label for="lf-email">{f.email}</label>
+            <input id="lf-email" name="email" type="email" autocomplete="email" required maxlength="254" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="lf-company">{f.company}</label>
+            <input id="lf-company" name="company" autocomplete="organization" maxlength="160" aria-describedby="lf-company-hint" />
+            <p id="lf-company-hint" class="hint">{f.companyHint}</p>
+          </div>
+          <div class="field">
+            <label for="lf-traders">{f.traders}</label>
+            <select id="lf-traders" name="tradersCount">
+              <option value="">{f.tradersChoose}</option>
+              {sizes.map((s) => <option value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="lf-platform">{f.platform}</label>
+          <select id="lf-platform" name="platform">
+            <option value="">{f.platformChoose}</option>
+            {f.platforms.map((p) => <option value={p}>{p}</option>)}
+          </select>
+        </div>
+        <div class="field">
+          <label for="lf-message">{f.message} <span class="muted">({f.optional})</span></label>
+          <textarea id="lf-message" name="message" rows="4" maxlength="2000"></textarea>
+        </div>
+        <div class="hp" aria-hidden="true">
+          <label for="lf-website">Website</label>
+          <input id="lf-website" name="website" tabindex="-1" autocomplete="off" />
+        </div>
+        <p class="form-error" role="alert" data-error hidden></p>
+        <div class="submit-row">
+          <button class="btn btn-primary" type="submit" data-submit>{f.submit}</button>
+          <p class="hint"><a href={pathFor(locale, "privacy")}>{f.privacy}</a></p>
+        </div>
+      </form>
+      <div class="done" data-done hidden tabindex="-1">
+        <p class="done-title">{f.successTitle}</p>
+        <p class="muted">{f.success}</p>
       </div>
-      <div class="field">
-        <label for="lf-platform">{f.platform}</label>
-        <select id="lf-platform" name="platform">
-          <option value="">{f.platformChoose}</option>
-          {f.platforms.map((p) => <option value={p}>{p}</option>)}
-        </select>
-      </div>
-      <div class="field">
-        <label for="lf-message">{f.message} <span class="muted">({f.optional})</span></label>
-        <textarea id="lf-message" name="message" rows="4" maxlength="2000"></textarea>
-      </div>
-      <div class="hp" aria-hidden="true">
-        <label for="lf-website">Website</label>
-        <input id="lf-website" name="website" tabindex="-1" autocomplete="off" />
-      </div>
-      <p class="form-error" role="alert" data-error hidden></p>
-      <div class="submit-row">
-        <button class="btn btn-primary" type="submit" data-submit>{f.submit}</button>
-        <p class="hint"><a href={pathFor(locale, "privacy")}>{f.privacy}</a></p>
-      </div>
-    </form>
-    <div class="done" data-done hidden tabindex="-1">
-      <p class="done-title">{f.successTitle}</p>
-      <p class="muted">{f.success}</p>
     </div>
   </div>
 </section>
 
 <style>
-  .contact { display: grid; gap: 40px; }
-  .contact-copy .lede { margin-top: 24px; }
-  .note { margin-top: 20px; max-width: 44ch; }
-  @media (min-width: 960px) { .contact { grid-template-columns: 5fr 7fr; gap: 72px; } }
-  .contact-form { background: var(--surface); border-radius: 20px; padding: clamp(20px, 3.5vw, 40px); }
+  .contact-grid { display: grid; gap: 40px; }
+  .note { margin-top: 18px; max-width: 44ch; }
+  @media (min-width: 1200px) { .contact-grid { grid-template-columns: 5fr 7fr; gap: 56px; } }
+  /* The form sits on an opaque card; labels in the UI voice, inputs in readable sentence case. */
+  .contact-form { background: var(--card); border: 1px solid var(--line); padding: clamp(18px, 3vw, 32px); }
   form { display: grid; gap: 18px; }
   .row { display: grid; gap: 18px; }
   @media (min-width: 640px) { .row { grid-template-columns: 1fr 1fr; } }
   .field { display: grid; gap: 8px; align-content: start; }
-  label { font-size: var(--step-small); font-weight: 550; }
+  label { font-size: 12px; text-transform: uppercase; color: var(--text); }
   input, select, textarea {
-    width: 100%; min-height: 48px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--field-border);
-    background: var(--surface-2); color: var(--ink); font: 400 1rem/1.4 var(--font);
-    transition: border-color 160ms, background-color 160ms;
+    width: 100%; min-height: 46px; padding: 11px 12px; border-radius: 0; border: 1px solid var(--line-2);
+    background: #000; color: var(--white); font: 400 1rem/1.4 var(--font);
+    transition: border-color 300ms;
   }
   textarea { resize: vertical; min-height: 112px; }
-  input:hover, select:hover, textarea:hover { border-color: rgb(255 255 255 / 0.24); }
-  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  input:hover, select:hover, textarea:hover { border-color: #5a5a5a; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 1px solid var(--ring); outline-offset: 0; border-color: var(--ring); }
   [aria-invalid="true"] { border-color: var(--down); }
-  .hint { font-size: 0.8125rem; color: var(--ink-2); }
-  .hint a { color: var(--ink-2); }
+  .hint { font: 400 0.8125rem/1.45 var(--font); color: var(--muted); text-transform: none; }
+  .hint a { color: var(--muted); }
   .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .form-error { color: var(--down); font-weight: 550; }
+  .form-error { color: var(--down); font-family: var(--font); }
   .submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 4px; }
   .done { padding: 24px 4px; }
-  .done-title { font-size: var(--step-h3); font-weight: 650; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .done-title { font-size: 1.125rem; text-transform: uppercase; color: #fff; margin-bottom: 8px; }
+  .done .muted { font-family: var(--font); }
 </style>
 
 <script>

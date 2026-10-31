@@ -1,0 +1,183 @@
+---
+// "Who it serves" role cards and the "Everything inside" explorer: parts of the day as tabs on the left, the chosen
+// part on the right (headline benefit, an illustration or a product screenshot, and each tool as an expandable
+// problem / what it does / what changes). Without script every part is listed in full, one after another.
+import Illo from "./Illo.astro";
+import { features } from "../content/features";
+import { screens } from "../lib/screens";
+import { t, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const f = features(locale);
+const d = t(locale);
+const two = (n: number) => String(n).padStart(2, "0");
+const shot = (id?: string) => screens.find((s) => s.id === id && s.exists);
+---
+<section id="roles" class="sec" aria-labelledby="roles-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.roles}]</p></div>
+  <div>
+    <h2 id="roles-title" class="sec-title blend" data-reveal>{f.rolesTitle}</h2>
+    <p class="sec-lede read blend" data-reveal style="--i:1">{f.rolesLede}</p>
+    <ul class="roles blend">
+      {f.roles.map((r, i) => (
+        <li class="role" data-reveal style={`--i:${i}`}>
+          <p class="ui muted">{two(i + 1)} / {r.label}</p>
+          <p class="role-value">{r.value}</p>
+          <ul class="role-points">{r.points.map((p) => <li class="read"><span class="acc" aria-hidden="true">-&gt;</span> {p}</li>)}</ul>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<section id="inside" class="sec" aria-labelledby="inside-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.inside}]</p></div>
+  <div class="ex" data-explorer>
+    <h2 id="inside-title" class="sec-title blend" data-reveal>{f.title}</h2>
+    <p class="sec-lede read blend" data-reveal style="--i:1">{f.lede}</p>
+
+    <div class="ex-grid">
+      <div class="ex-tabs blend" role="tablist" aria-label={f.labels.groups} aria-orientation="vertical" hidden data-tabs>
+        {f.groups.map((g, i) => (
+          <button type="button" role="tab" id={`tab-${g.id}`} aria-controls={`panel-${g.id}`} aria-selected={i === 0 ? "true" : "false"} tabindex={i === 0 ? 0 : -1} class="ex-tab">
+            <span class="muted">{two(i + 1)}</span>
+            <span class="ex-tab-name">{g.label}</span>
+            <span class="muted ex-count">{g.features.length}</span>
+          </button>
+        ))}
+      </div>
+
+      <div class="ex-panels">
+        {f.groups.map((g, i) => {
+          const img = shot(g.screen);
+          return (
+            <div class="ex-panel" role="tabpanel" id={`panel-${g.id}`} aria-labelledby={`tab-${g.id}`} data-panel={i}>
+              <div class="ex-head blend">
+                <h3 class="kick">[{two(i + 1)} {g.label}]</h3>
+                <p class="ex-headline">{g.headline}</p>
+                <p class="read muted">{g.who}</p>
+              </div>
+              <div class="ex-body">
+                <figure class="ex-visual">
+                  {img
+                    ? <img src={img.file} alt={d.screens.items[img.id]} width="1600" height="1000" loading="lazy" decoding="async" />
+                    : <Illo kind={g.illo} locale={locale} />}
+                  <figcaption class="ui muted">{img ? d.screens.items[img.id] : f.labels.illo}</figcaption>
+                </figure>
+                <ul class="ex-list blend">
+                  {g.features.map((x) => (
+                    <li>
+                      <details class="feat">
+                        <summary>
+                          <span class="feat-name ui">{x.name}</span>
+                          <span class="feat-out read">{x.outcome}</span>
+                          <span class="feat-sign" aria-hidden="true"></span>
+                        </summary>
+                        <dl class="feat-body">
+                          <div><dt class="ui muted">{f.labels.pain}</dt><dd class="read">{x.pain}</dd></div>
+                          <div><dt class="ui muted">{f.labels.does}</dt><dd class="read">{x.does}</dd></div>
+                          <div><dt class="ui acc">{f.labels.outcome}</dt><dd class="read">{x.outcome}</dd></div>
+                        </dl>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .acc { color: var(--accent); }
+  .roles { display: grid; gap: 24px; margin-top: 40px; }
+  .role { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 12px; align-content: start; }
+  .role-value { font-size: clamp(1rem, 1.2vw, 1.125rem); line-height: 1.3; text-transform: uppercase; color: #fff; }
+  .role-points { display: grid; gap: 8px; }
+  .role-points li { font-size: 0.9375rem; line-height: 1.5; }
+  @media (min-width: 760px) { .roles { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1280px) { .roles { grid-template-columns: repeat(4, 1fr); gap: 20px; } }
+
+  .ex-grid { display: grid; gap: 28px; margin-top: 40px; }
+  .ex-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .ex-tabs::-webkit-scrollbar { display: none; }
+  .ex-tab {
+    display: inline-flex; align-items: baseline; gap: 10px; flex: none; padding: 8px 11px; border: 0; background: var(--chip);
+    color: #cfcfcf; font: 400 12px / 1.3 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; text-align: left; cursor: pointer;
+    transition: background-color 300ms, color 300ms;
+  }
+  .ex-tab:hover { background: #2a2a2a; color: #fff; }
+  .ex-tab[aria-selected="true"] { background: #e6e6e6; color: #000; }
+  .ex-tab[aria-selected="true"] .muted { color: #555; }
+  .ex-count { margin-left: auto; }
+  @media (min-width: 1000px) {
+    .ex-grid { grid-template-columns: 240px minmax(0, 1fr); gap: 40px; align-items: start; }
+    .ex-tabs { flex-direction: column; overflow: visible; position: sticky; top: 32px; }
+    .ex-tab { width: 100%; padding: 10px 12px; }
+  }
+
+  .ex-panel + .ex-panel { margin-top: 72px; }
+  .ex.js .ex-panel + .ex-panel { margin-top: 0; }
+  .ex.js .ex-panel { animation: panel-in 500ms var(--ease); }
+  .ex.js .ex-panel[hidden] { display: none; }
+  @keyframes panel-in { from { opacity: 0; } to { opacity: 1; } }
+  .ex-head { display: grid; gap: 10px; max-width: 64ch; }
+  .ex-head .kick { margin: 0; font-weight: 400; }
+  .ex-headline { font-size: clamp(1.25rem, 2vw, 1.75rem); line-height: 1.2; text-transform: uppercase; color: #fff; }
+  .ex-body { display: grid; gap: 24px; margin-top: 28px; }
+  @media (min-width: 1240px) { .ex-body { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px; align-items: start; } .ex-visual { position: sticky; top: 32px; } }
+
+  /* Opaque card for the illustration or the screenshot. */
+  .ex-visual { margin: 0; max-width: 520px; background: var(--card); border: 1px solid var(--line); padding: 14px; }
+  .ex-visual img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-radius: 2px; }
+  .ex-visual figcaption { margin-top: 10px; font-size: 11px; }
+
+  .ex-list { border-bottom: 1px solid var(--line); }
+  .feat { border-top: 1px solid var(--line); }
+  .feat summary { display: grid; grid-template-columns: minmax(0, 1fr) 16px; gap: 4px 16px; padding: 14px 0; cursor: pointer; list-style: none; }
+  .feat summary::-webkit-details-marker { display: none; }
+  .feat-name { color: #fff; }
+  .feat-out { grid-column: 1; font-size: 0.9375rem; line-height: 1.45; color: var(--muted); }
+  .feat-sign { grid-column: 2; grid-row: 1 / span 2; align-self: center; position: relative; width: 12px; height: 12px; }
+  .feat-sign::before, .feat-sign::after { content: ""; position: absolute; left: 0; top: 5.5px; width: 12px; height: 1px; background: var(--text); transition: transform 300ms var(--ease); }
+  .feat-sign::after { transform: rotate(90deg); }
+  .feat[open] .feat-sign::after { transform: rotate(0deg); }
+  .feat summary:hover .feat-name { text-decoration: underline; text-underline-offset: 0.22em; }
+  .feat[open] .feat-out { display: none; }
+  .feat-body { display: grid; gap: 12px; padding: 0 0 18px; }
+  .feat-body dd { margin-top: 4px; font-size: 0.9375rem; line-height: 1.55; }
+  @media (min-width: 760px) { .feat-body { grid-template-columns: repeat(3, 1fr); gap: 20px; } }
+  @media (prefers-reduced-motion: reduce) { .ex.js .ex-panel { animation: none; } .feat-sign::before, .feat-sign::after, .ex-tab { transition: none; } }
+</style>
+
+<script>
+  // Tabs (WAI-ARIA pattern): arrows move between parts of the day, Home / End jump; one panel shown at a time.
+  for (const root of document.querySelectorAll<HTMLElement>("[data-explorer]")) {
+    const list = root.querySelector<HTMLElement>("[data-tabs]");
+    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>("[role=tab]"));
+    const panels = Array.from(root.querySelectorAll<HTMLElement>("[data-panel]"));
+    if (!list || !tabs.length) continue;
+    root.classList.add("js");
+    list.hidden = false;
+    const select = (i: number, focus = false) => {
+      tabs.forEach((t, k) => { t.setAttribute("aria-selected", k === i ? "true" : "false"); t.tabIndex = k === i ? 0 : -1; });
+      panels.forEach((p, k) => { p.hidden = k !== i; });
+      if (focus) tabs[i].focus();
+    };
+    tabs.forEach((t, i) => {
+      t.addEventListener("click", () => select(i));
+      t.addEventListener("keydown", (e) => {
+        const n = tabs.length;
+        const k = { ArrowDown: i + 1, ArrowRight: i + 1, ArrowUp: i - 1, ArrowLeft: i - 1, Home: 0, End: n - 1 }[e.key];
+        if (k === undefined) return;
+        e.preventDefault();
+        select((k + n) % n, true);
+      });
+    });
+    select(0);
+  }
+</script>

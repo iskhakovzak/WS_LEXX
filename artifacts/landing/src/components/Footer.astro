@@ -11,29 +11,26 @@ const email = isPlaceholder(LEGAL.contactEmail) ? null : LEGAL.contactEmail;
 const entity = isPlaceholder(LEGAL.entity) ? "WS_DeskOS" : LEGAL.entity;
 ---
 <footer class="foot">
-  <div class="wrap">
-    <p class="foot-name"><Mark size={64} /><span>WS<span class="soft">_DeskOS</span></span></p>
-    <div class="foot-row">
-      <p class="muted">{d.footer.tagline}</p>
-      <nav aria-label="Legal" class="foot-links">
-        <a href={pathFor(locale, "terms")}>{d.footer.terms}</a>
-        <a href={pathFor(locale, "privacy")}>{d.footer.privacy}</a>
-        <a href={pathFor(locale, "refund")}>{d.footer.refund}</a>
-        {email && <a href={`mailto:${email}`}>{d.footer.contact}</a>}
-      </nav>
-    </div>
-    <p class="foot-copy muted">&copy; {year} {entity}. {d.footer.rights}</p>
+  <p class="foot-name blend"><Mark size={64} width={5} /><span>WS_DeskOS</span></p>
+  <div class="foot-row">
+    <p class="ui muted blend">{d.footer.tagline}</p>
+    <nav aria-label="Legal" class="foot-links ui">
+      <a href={pathFor(locale, "terms")}>{d.footer.terms} <span aria-hidden="true">-&gt;</span></a>
+      <a href={pathFor(locale, "privacy")}>{d.footer.privacy} <span aria-hidden="true">-&gt;</span></a>
+      <a href={pathFor(locale, "refund")}>{d.footer.refund} <span aria-hidden="true">-&gt;</span></a>
+      {email && <a href={`mailto:${email}`}>{d.footer.contact} <span aria-hidden="true">-&gt;</span></a>}
+    </nav>
   </div>
+  <p class="foot-copy ui muted">&copy; {year} {entity}. {d.footer.rights}</p>
 </footer>
 
 <style>
-  .foot { margin-top: var(--section); padding-block: 72px 40px; background: var(--surface); }
-  .foot-name { display: flex; align-items: center; gap: clamp(12px, 2vw, 24px); font-size: clamp(2.75rem, 10vw, 9rem); overflow: hidden; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
-  .foot-name :global(svg) { width: 0.62em; height: 0.62em; flex: none; }
-  .soft { color: var(--ink-2); font-weight: 450; }
-  .foot-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 32px; margin-top: 48px; }
-  .foot-links { display: flex; flex-wrap: wrap; gap: 8px 28px; }
-  .foot-links a { text-decoration: none; color: var(--ink); }
-  .foot-links a:hover { text-decoration: underline; }
-  .foot-copy { margin-top: 24px; font-size: var(--step-small); }
+  .foot { max-width: var(--max); margin: var(--section) auto 0; padding: 48px var(--edge) 32px; border-top: 1px solid var(--line); }
+  .foot-name { display: flex; align-items: center; gap: clamp(12px, 2vw, 24px); font-size: clamp(2.5rem, 9.5vw, 8.5rem); line-height: 1; color: #fff; letter-spacing: -0.04em; text-transform: uppercase; overflow: hidden; }
+  .foot-name :global(svg) { width: 0.7em; height: 0.7em; flex: none; }
+  .foot-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 32px; margin-top: 40px; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .foot-links a { text-decoration: none; color: var(--text); transition: opacity 300ms; }
+  .foot-links a:hover { opacity: 0.7; text-decoration: underline; }
+  .foot-copy { margin-top: 24px; font-size: 11px; }
 </style>

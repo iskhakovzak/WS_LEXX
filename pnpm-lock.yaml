@@ -441,6 +441,9 @@ importers:
       astro:
         specifier: 5.18.2
         version: 5.18.2(@types/node@25.6.0)(jiti@2.7.0)(lightningcss@1.32.0)(rollup@4.60.2)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.1)
+      three:
+        specifier: 0.150.1
+        version: 0.150.1
     devDependencies:
       '@astrojs/check':
         specifier: 0.9.4
@@ -448,6 +451,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.0
+      '@types/three':
+        specifier: 0.150.2
+        version: 0.150.2
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -2230,11 +2236,20 @@ packages:
   '@types/serve-static@2.2.0':
     resolution: {integrity: sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==}
 
+  '@types/stats.js@0.17.4':
+    resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
+
+  '@types/three@0.150.2':
+    resolution: {integrity: sha512-cvcz/81Mmj4oiAA+uxzwaRK3t8lYw8WxejXKqIBfu6PqvwSAEEiCi3VfCiVY18UflBqL0LDX/za85+sfqjMoIw==}
+
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@types/webxr@0.5.24':
+    resolution: {integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==}
 
   '@typescript-eslint/eslint-plugin@8.70.1':
     resolution: {integrity: sha512-nDNrUQ/4ruSNYbu749TRY7cfrzPtoLHEXSNBI8aaNY32LlZCajixqRf3FqcKC4p5Cam4VOHYx/t+i5+nKXvrqA==}
@@ -3265,6 +3280,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.6.11:
+    resolution: {integrity: sha512-3JyEFWGjFn7zHmoa9+zG1BmW7X2okcmAB+0Cnu9UFbVs/jCBnl2A8o065ZlXiw145K3eBM3uLuzrYXC0RK7eDg==}
+
   figures@6.1.0:
     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
     engines: {node: '>=18'}
@@ -3769,6 +3787,9 @@ packages:
 
   lightweight-charts@5.2.0:
     resolution: {integrity: sha512-ey3Vas8UhV06ni+LT9TA1nEe4y8So4Mi6CL/oarNHFMyTktz/xy8e8+oh04Q//eO3t6etvFXgayz2fClyFQb5w==}
+
+  lil-gui@0.17.0:
+    resolution: {integrity: sha512-MVBHmgY+uEbmJNApAaPbtvNh1RCAeMnKym82SBjtp5rODTYKWtM+MXHCifLe2H2Ti1HuBGBtK/5SyG4ShQ3pUQ==}
 
   linkify-it@5.0.0:
     resolution: {integrity: sha512-5aHCbzQRADcdP+ATqnDuhhJ/MRIqDkZX5pyjFHRRysS8vZ5AbqGEoFIb6pYHPZ+L/OC2Lc+xT8uHVVR5CAK/wQ==}
@@ -4847,6 +4868,9 @@ packages:
 
   thread-stream@3.1.0:
     resolution: {integrity: sha512-OqyPZ9u96VohAyMfJykzmivOrY2wfMSf3C5TtFJVgN+Hm6aj+voFhlK+kZEIv2FBh1X6Xp3DlnCOfEQ3B2J86A==}
+
+  three@0.150.1:
+    resolution: {integrity: sha512-5C1MqKUWaHYo13BX0Q64qcdwImgnnjSOFgBscOzAo8MYCzEtqfQqorEKMcajnA3FHy1yVlIe9AmaMQ0OQracNA==}
 
   tiny-inflate@1.0.3:
     resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
@@ -7227,9 +7251,20 @@ snapshots:
       '@types/http-errors': 2.0.5
       '@types/node': 25.6.0
 
+  '@types/stats.js@0.17.4': {}
+
+  '@types/three@0.150.2':
+    dependencies:
+      '@types/stats.js': 0.17.4
+      '@types/webxr': 0.5.24
+      fflate: 0.6.11
+      lil-gui: 0.17.0
+
   '@types/tough-cookie@4.0.5': {}
 
   '@types/unist@3.0.3': {}
+
+  '@types/webxr@0.5.24': {}
 
   '@typescript-eslint/eslint-plugin@8.70.1(@typescript-eslint/parser@8.70.1(eslint@10.11.0(jiti@2.7.0))(typescript@5.9.3))(eslint@10.11.0(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
@@ -8349,6 +8384,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
+  fflate@0.6.11: {}
+
   figures@6.1.0:
     dependencies:
       is-unicode-supported: 2.1.0
@@ -8912,6 +8949,8 @@ snapshots:
   lightweight-charts@5.2.0:
     dependencies:
       fancy-canvas: 2.1.0
+
+  lil-gui@0.17.0: {}
 
   linkify-it@5.0.0:
     dependencies:
@@ -10292,6 +10331,8 @@ snapshots:
   thread-stream@3.1.0:
     dependencies:
       real-require: 0.2.0
+
+  three@0.150.1: {}
 
   tiny-inflate@1.0.3: {}
 

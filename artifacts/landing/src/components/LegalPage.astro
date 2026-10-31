@@ -11,27 +11,27 @@ const d = t(locale);
 const doc = legalDoc(locale, slug);
 ---
 <Base locale={locale} slug={slug} title={doc.title} description={doc.intro.slice(0, 155)}>
-  <article class="wrap legal">
-    <p class="draft">{d.legal.draft} &middot; {d.legal.updated}: {LEGAL.effectiveDate}</p>
+  <article class="legal">
+    <p class="draft ui">{d.legal.draft} &middot; {d.legal.updated}: {LEGAL.effectiveDate}</p>
     <h1>{doc.title}</h1>
-    <p class="intro">{doc.intro}</p>
+    <p class="intro read">{doc.intro}</p>
     {doc.sections.map((s) => (
       <section>
         <h2>{s.h}</h2>
-        {s.p.map((para) => <p>{para}</p>)}
+        {s.p.map((para) => <p class="read">{para}</p>)}
       </section>
     ))}
-    <p class="back"><a href={pathFor(locale)}>{d.legal.back}</a></p>
+    <p class="back ui"><a class="arrow" href={pathFor(locale)}><span aria-hidden="true">&lt;-</span> {d.legal.back}</a></p>
   </article>
 </Base>
 
 <style>
-  .legal { max-width: calc(760px + 2 * var(--gutter)); padding-top: clamp(48px, 7vw, 96px); }
-  .legal h1 { font-size: clamp(2.25rem, 5vw, 3.75rem); }
-  .draft { color: var(--warn); font-size: var(--step-small); font-weight: 600; margin-bottom: 20px; }
-  .intro { margin-top: 28px; font-size: 1.1875rem; }
-  .legal section { margin-top: 40px; }
-  .legal h2 { font-size: 1.375rem; letter-spacing: -0.015em; line-height: 1.25; }
-  .legal section p { margin-top: 12px; color: #d6d6d6; }
+  .legal { max-width: calc(760px + 2 * var(--edge)); margin-inline: auto; padding: clamp(120px, 14vw, 168px) var(--edge) 0; }
+  .legal h1 { font-size: clamp(1.75rem, 4vw, 2.75rem); line-height: 1.1; text-transform: uppercase; color: #fff; }
+  .draft { color: var(--warn); margin-bottom: 20px; }
+  .intro { margin-top: 28px; font-size: 1.125rem; color: var(--text); }
+  .legal section { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 20px; }
+  .legal h2 { font-size: 15px; line-height: 1.35; text-transform: uppercase; color: var(--accent); }
+  .legal section p { margin-top: 12px; }
   .back { margin-top: 56px; }
 </style>

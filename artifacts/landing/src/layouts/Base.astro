@@ -10,8 +10,10 @@ interface Props {
   slug?: string;
   title?: string;
   description?: string;
+  /** Home page: the header shows the round counter. */
+  home?: boolean;
 }
-const { locale, slug = "", title, description } = Astro.props;
+const { locale, slug = "", title, description, home = false } = Astro.props;
 const d = t(locale);
 const pageTitle = title ? `${title} | WS_DeskOS` : d.meta.title;
 const pageDescription = description ?? d.meta.description;
@@ -31,7 +33,7 @@ const umami = UMAMI.url && UMAMI.id ? UMAMI : null;
     <link rel="canonical" href={canonical} />
     {alternates.map((a) => <link rel="alternate" hreflang={a.l} href={a.href} />)}
     <link rel="alternate" hreflang="x-default" href={alternates[0].href} />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#000000" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDescription} />
@@ -42,7 +44,7 @@ const umami = UMAMI.url && UMAMI.id ? UMAMI : null;
   </head>
   <body>
     <a class="skip" href="#main">{d.nav.skip}</a>
-    <Header locale={locale} slug={slug} />
+    <Header locale={locale} slug={slug} home={home} />
     <main id="main">
       <slot />
     </main>

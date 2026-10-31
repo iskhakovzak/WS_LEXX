@@ -1,0 +1,188 @@
+---
+// Small live-styled illustrations for the feature explorer, in CSS and SVG (sample data, decorative). Motion is slow
+// and stops under prefers-reduced-motion.
+import type { Illo } from "../content/features";
+import type { Locale } from "../i18n";
+
+interface Props { kind: Illo; locale: Locale }
+const { kind, locale } = Astro.props;
+const L = {
+  en: { plan: "[game plan]", rows: ["Desk plan: SPY 512 / 505", "My stop: $600 / 6 trades", "Rule: no adds after 11:00"], ready: "readiness",
+    stop: "[day stop]", alerts: ["10:42  Day stop 70% used", "11:05  Day stop 90% used", "11:21  Revenge size 2.4x"], level: "plan 24.80", inn: "in", out: "out",
+    equity: "[equity, 90 days]", radar: "[sector radar]", next: "[next: profit factor 1.5]", ideas: "[idea stats]", author: "Author", desk: "[desk today]",
+    card: "16:30 evening card", clock: "New York trading day" },
+  es: { plan: "[plan de juego]", rows: ["Plan mesa: SPY 512 / 505", "Mi stop: $600 / 6 ops.", "Regla: nada tras 11:00"], ready: "preparación",
+    stop: "[stop diario]", alerts: ["10:42  70% del stop diario", "11:05  90% del stop diario", "11:21  Tamaño de venganza 2,4x"], level: "plan 24.80", inn: "entrada", out: "salida",
+    equity: "[capital, 90 días]", radar: "[radar de sectores]", next: "[siguiente: profit factor 1,5]", ideas: "[estadísticas de ideas]", author: "Autor", desk: "[la mesa hoy]",
+    card: "16:30 tarjeta de la tarde", clock: "Día de trading de Nueva York" },
+}[locale];
+const desk = Array.from({ length: 24 }, (_, i) => (i === 5 || i === 17 ? "stop" : i === 9 ? "noplan" : i === 14 || i === 21 ? "quiet" : "ok"));
+const sectors = [["XLK", 62, 1], ["XLF", 38, 1], ["XLE", 46, 0], ["XLV", 24, 0], ["XLY", 54, 1], ["XLI", 30, 1]] as const;
+---
+<svg class:list={["illo", `illo-${kind}`]} viewBox="0 0 320 200" aria-hidden="true" focusable="false">
+  {kind === "plan" && (
+    <g>
+      <text x="16" y="28" class="t-k">{L.plan}</text>
+      {L.rows.map((s, i) => (
+        <g class="row" style={`--d:${i * 0.5}s`}>
+          <rect x="16" y={44 + i * 30} width="12" height="12" class="box" />
+          <path d={`M18 ${50 + i * 30} l3 3 l6 -6`} class="tick" />
+          <text x="38" y={54 + i * 30} class="t">{s}</text>
+        </g>
+      ))}
+      <circle cx="262" cy="96" r="38" class="track" />
+      <circle cx="262" cy="96" r="38" class="arc" pathLength="100" />
+      <text x="262" y="102" class="t-big" text-anchor="middle">78</text>
+      <text x="262" y="152" class="t-m" text-anchor="middle">{L.ready}</text>
+    </g>
+  )}
+  {kind === "feed" && (
+    <g>
+      <text x="16" y="28" class="t-k">{L.stop}</text>
+      <rect x="16" y="42" width="288" height="10" class="track-r" />
+      <rect x="16" y="42" width="288" height="10" class="fill" />
+      <line x1="217.6" y1="36" x2="217.6" y2="58" class="mark" /><text x="217.6" y="70" class="t-m" text-anchor="middle">70%</text>
+      <line x1="275.2" y1="36" x2="275.2" y2="58" class="mark" /><text x="275.2" y="70" class="t-m" text-anchor="middle">90%</text>
+      <g class="alert a1"><circle cx="22" cy="104" r="4" class="warn" /><text x="34" y="108" class="t">{L.alerts[0]}</text></g>
+      <g class="alert a2"><circle cx="22" cy="134" r="4" class="crit" /><text x="34" y="138" class="t">{L.alerts[1]}</text></g>
+      <g class="alert a3"><circle cx="22" cy="164" r="4" class="crit" /><text x="34" y="168" class="t">{L.alerts[2]}</text></g>
+    </g>
+  )}
+  {kind === "chart" && (
+    <g>
+      <line x1="16" y1="70" x2="304" y2="70" class="level" /><text x="300" y="64" class="t-m" text-anchor="end">{L.level}</text>
+      {[[30, 120, 140, 110, 150, 1], [52, 112, 126, 104, 132, 1], [74, 100, 114, 92, 120, 1], [96, 92, 104, 84, 110, 1], [118, 84, 96, 74, 100, 1], [140, 78, 88, 66, 94, 0], [162, 86, 96, 80, 104, 0], [184, 80, 92, 72, 98, 1], [206, 70, 82, 62, 88, 1], [228, 62, 74, 54, 80, 1], [250, 58, 68, 50, 76, 0], [272, 64, 76, 58, 82, 0]].map(([x, o, c, h, l, up]) => (
+        <g class:list={["candle", up ? "up" : "dn"]}><line x1={x} y1={h} x2={x} y2={l} /><rect x={x - 5} y={Math.min(o, c)} width="10" height={Math.abs(c - o) || 2} /></g>
+      ))}
+      <path d="M96 116 l-6 10 h12 z" class="entry" /><text x="96" y="140" class="t-m" text-anchor="middle">{L.inn}</text>
+      <path d="M228 50 l-6 -10 h12 z" class="exit" /><text x="228" y="34" class="t-m" text-anchor="middle">{L.out}</text>
+      <line x1="16" y1="24" x2="16" y2="180" class="scan" />
+    </g>
+  )}
+  {kind === "equity" && (
+    <g>
+      <defs><linearGradient id="eq-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#aa88ff" stop-opacity="0.35" /><stop offset="1" stop-color="#aa88ff" stop-opacity="0" /></linearGradient></defs>
+      <path d="M16 160 L40 150 L64 156 L88 136 L112 140 L136 118 L160 124 L184 100 L208 106 L232 82 L256 88 L280 60 L304 52 L304 184 L16 184 Z" fill="url(#eq-g)" class="area" />
+      <path d="M16 160 L40 150 L64 156 L88 136 L112 140 L136 118 L160 124 L184 100 L208 106 L232 82 L256 88 L280 60 L304 52" class="line" pathLength="100" />
+      <circle cx="304" cy="52" r="4" class="dot" />
+      <text x="16" y="28" class="t-k">{L.equity}</text>
+    </g>
+  )}
+  {kind === "market" && (
+    <g>
+      <text x="16" y="28" class="t-k">{L.radar}</text>
+      {sectors.map(([n, w, up], i) => (
+        <g class="bar" style={`--d:${i * 0.4}s`}>
+          <text x="16" y={56 + i * 24} class="t-m">{n}</text>
+          <rect x={up ? 160 : 160 - w * 1.9} y={46 + i * 24} width={w * 1.9} height="12" class={up ? "up-f" : "dn-f"} />
+        </g>
+      ))}
+      <line x1="160" y1="40" x2="160" y2="190" class="axis" />
+    </g>
+  )}
+  {kind === "ladder" && (
+    <g>
+      {["Junior", "Trader", "Senior"].map((s, i) => (
+        <g class:list={["step", i === 1 && "here"]}>
+          <rect x={16 + i * 100} y={130 - i * 40} width="88" height={40 + i * 40} />
+          <text x={60 + i * 100} y={122 - i * 40} class="t" text-anchor="middle">{s}</text>
+        </g>
+      ))}
+      <rect x="16" y="186" width="288" height="4" class="track-r" />
+      <rect x="16" y="186" width="288" height="4" class="prog" />
+      <text x="16" y="28" class="t-k">{L.next}</text>
+    </g>
+  )}
+  {kind === "team" && (
+    <g>
+      <text x="16" y="28" class="t-k">{L.ideas}</text>
+      {([["A", 64], ["B", 51], ["C", 43], ["D", 38]] as const).map(([n, v], i) => (
+        <g class="bar" style={`--d:${i * 0.4}s`}>
+          <text x="16" y={60 + i * 32} class="t">{L.author} {n}</text>
+          <rect x="120" y={50 + i * 32} width="184" height="12" class="track-r" />
+          <rect x="120" y={50 + i * 32} width={v * 1.84} height="12" class="acc-f" />
+          <text x="300" y={60 + i * 32} class="t-m" text-anchor="end">{v}%</text>
+        </g>
+      ))}
+    </g>
+  )}
+  {kind === "desk" && (
+    <g>
+      <text x="16" y="28" class="t-k">{L.desk}</text>
+      {desk.map((s, i) => <rect x={16 + (i % 8) * 37} y={44 + Math.floor(i / 8) * 46} width="30" height="38" class:list={["cell", s]} style={`--d:${(i % 5) * 0.3}s`} />)}
+    </g>
+  )}
+  {kind === "platform" && (
+    <g>
+      <rect x="28" y="20" width="96" height="168" rx="12" class="phone" />
+      {[0, 1, 2, 3, 4].map((i) => <circle cx={44 + i * 16} cy="172" r="3" class:list={["dockdot", i === 4 && "on"]} />)}
+      <rect x="40" y="40" width="72" height="8" class="ln" /><rect x="40" y="56" width="52" height="8" class="ln" /><rect x="40" y="72" width="64" height="8" class="ln" />
+      {["RU", "EN", "UZ"].map((l, i) => <g><rect x={160 + i * 48} y="40" width="40" height="22" class:list={["chipr", i === 1 && "on"]} /><text x={180 + i * 48} y="55" class:list={["t", i === 1 && "ink"]} text-anchor="middle">{l}</text></g>)}
+      <g class="bubble"><rect x="160" y="96" width="144" height="44" rx="2" class="bub" /><text x="170" y="114" class="t">Telegram</text><text x="170" y="130" class="t-m">{L.card}</text></g>
+      <text x="160" y="172" class="t-m">{L.clock}</text>
+    </g>
+  )}
+</svg>
+
+<style>
+  .illo { display: block; width: 100%; height: auto; font-family: var(--mono); }
+  .illo :global(text) { font-size: 11px; fill: var(--text); letter-spacing: 0.02em; }
+  .illo :global(.t-k) { fill: var(--accent); text-transform: uppercase; }
+  .illo :global(.t-m) { fill: var(--muted); font-size: 10px; }
+  .illo :global(.t-big) { font-size: 26px; fill: #fff; }
+  .illo :global(.up) { fill: var(--up); }
+  .illo :global(.ink) { fill: #000; }
+  .box { fill: none; stroke: var(--line-2); }
+  .tick { fill: none; stroke: var(--up); stroke-width: 1.6; stroke-dasharray: 12; stroke-dashoffset: 12; animation: draw 0.6s var(--ease) forwards; animation-delay: var(--d); }
+  .track { fill: none; stroke: var(--line); stroke-width: 6; }
+  .arc { fill: none; stroke: var(--accent); stroke-width: 6; stroke-dasharray: 78 100; transform: rotate(-90deg); transform-origin: 262px 96px; animation: arc 2s var(--ease) both; }
+  .track-r { fill: var(--chip); }
+  .fill { fill: var(--warn); transform-origin: 16px 0; animation: fill 6s var(--ease) infinite; }
+  .mark { stroke: var(--muted); }
+  .warn { fill: var(--warn); } .crit { fill: var(--down); }
+  .alert { opacity: 0; animation: pop 6s infinite; }
+  .a1 { animation-delay: 1.6s; } .a2 { animation-delay: 2.6s; } .a3 { animation-delay: 3.4s; }
+  .level { stroke: var(--accent); stroke-dasharray: 3 4; }
+  .candle line { stroke: var(--muted); }
+  .candle.up rect { fill: var(--up); } .candle.dn rect { fill: var(--down); }
+  .entry { fill: var(--up); } .exit { fill: var(--accent); }
+  .scan { stroke: #fff; stroke-opacity: 0.5; animation: scan 7s linear infinite; }
+  .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 100; animation: draw100 2.4s var(--ease) both; }
+  .dot { fill: #fff; animation: blink 2s infinite; }
+  .area { animation: fade 2.4s var(--ease) both; }
+  .axis { stroke: var(--line-2); }
+  .up-f { fill: var(--up); transform-origin: left; } .dn-f { fill: var(--down); transform-origin: right; }
+  .bar rect { transform-box: fill-box; animation: breathe 5s ease-in-out infinite; animation-delay: var(--d); }
+  .bar .track-r { animation: none; }
+  .acc-f { fill: var(--accent); transform-origin: left; }
+  .step rect { fill: var(--chip); stroke: var(--line-2); }
+  .step.here rect { fill: rgb(170 136 255 / 0.18); stroke: var(--accent); }
+  .prog { fill: var(--accent); transform-origin: 16px 0; animation: prog 3s var(--ease) both; }
+  .cell { fill: rgb(80 200 140 / 0.22); stroke: rgb(80 200 140 / 0.35); }
+  .cell.stop { fill: rgb(240 110 110 / 0.35); stroke: var(--down); animation: blink 2.4s infinite; animation-delay: var(--d); }
+  .cell.noplan { fill: rgb(240 180 70 / 0.3); stroke: var(--warn); }
+  .cell.quiet { fill: var(--chip); stroke: var(--line-2); }
+  .phone { fill: #050505; stroke: var(--line-2); }
+  .dockdot { fill: var(--line-2); } .dockdot.on { fill: var(--accent); }
+  .ln { fill: var(--chip); }
+  .chipr { fill: var(--chip); } .chipr.on { fill: #e6e6e6; }
+  .bub { fill: var(--chip); stroke: var(--line-2); }
+  .bubble { animation: pop 6s infinite; animation-delay: 1s; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes draw100 { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+  @keyframes arc { from { stroke-dasharray: 0 100; } }
+  @keyframes fill { 0% { transform: scaleX(0.2); } 60%, 100% { transform: scaleX(0.92); } }
+  @keyframes pop { 0%, 8% { opacity: 0; } 14%, 85% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes scan { from { transform: translateX(0); } to { transform: translateX(288px); } }
+  @keyframes blink { 50% { opacity: 0.45; } }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes breathe { 50% { transform: scaleX(0.82); } }
+  @keyframes prog { from { transform: scaleX(0); } to { transform: scaleX(0.72); } }
+  @media (prefers-reduced-motion: reduce) {
+    .illo *, .illo :global(*) { animation: none !important; }
+    .alert, .bubble { opacity: 1; }
+    .tick { stroke-dashoffset: 0; }
+    .fill { transform: scaleX(0.92); }
+    .prog { transform: scaleX(0.72); }
+  }
+</style>

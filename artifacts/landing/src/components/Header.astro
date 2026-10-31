@@ -1,46 +1,62 @@
 ---
+// Top layer of every page, in the reference layout: brand mark top-left, a quiet nav, the language switch and, on
+// the home page, the round counter top-right (the number of live risk signals the product watches).
 import Mark from "./Mark.astro";
 import { t, pathFor, type Locale } from "../i18n";
 
-interface Props { locale: Locale; slug?: string }
-const { locale, slug = "" } = Astro.props;
+interface Props { locale: Locale; slug?: string; home?: boolean }
+const { locale, slug = "", home = false } = Astro.props;
 const d = t(locale);
-const home = pathFor(locale);
+const root = pathFor(locale);
 const other: Locale = locale === "en" ? "es" : "en";
+// Every item of the risk list but the last ("the $ saved counter") is a live signal.
+const signals = d.risk.list.length - 1;
 ---
 <header class="bar">
-  <div class="wrap bar-in">
-    <a class="brand" href={home} aria-label="WS_DeskOS">
-      <Mark size={26} />
-      <span>WS<span class="brand-soft">_DeskOS</span></span>
-    </a>
-    <nav class="links" aria-label="Main">
-      <a href={`${home}#risk`}>{d.nav.risk}</a>
-      <a href={`${home}#growth`}>{d.nav.growth}</a>
-      <a href={`${home}#analytics`}>{d.nav.analytics}</a>
-      <a href={`${home}#security`}>{d.nav.security}</a>
-    </nav>
-    <div class="actions">
-      <a class="lang" href={pathFor(other, slug)} hreflang={other} lang={other} aria-label={`${d.nav.language}: ${other === "es" ? "Español" : "English"}`}>{other.toUpperCase()}</a>
-      <a class="btn btn-primary bar-cta" href={`${home}#contact`} data-segment="prop_desk">{d.nav.demo}</a>
-    </div>
+  <a class="brand" href={root} aria-label="WS_DeskOS">
+    <svg class="brand-mark" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+      <circle cx="20" cy="20" r="18.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+      <g transform="translate(9.4 9.6) scale(0.34)"><Mark inline width={5} /></g>
+    </svg>
+    <span class="brand-text">
+      <span class="brand-name">WS_DeskOS</span>
+      <span class="brand-sub">{d.ui.brandSub}</span>
+    </span>
+  </a>
+  <nav class="links" aria-label="Main">
+    <a href={`${root}#risk`}>{d.nav.risk}</a>
+    <a href={`${root}#growth`}>{d.nav.growth}</a>
+    <a href={`${root}#analytics`}>{d.nav.analytics}</a>
+    <a href={`${root}#security`}>{d.nav.security}</a>
+  </nav>
+  <div class="actions">
+    <a class="chip lang" href={pathFor(other, slug)} hreflang={other} lang={other} aria-label={`${d.nav.language}: ${other === "es" ? "Español" : "English"}`}>{other.toUpperCase()}</a>
+    <a class="chip on cta" href={`${root}#contact`} data-segment="prop_desk">{d.nav.demo}</a>
+    {home && (
+      <a class="counter" href="#risk" aria-label={`${signals} ${d.ui.counter}`} title={`${signals} ${d.ui.counter}`}>
+        <span class="num" aria-hidden="true">{String(signals).padStart(2, "0")}</span>
+      </a>
+    )}
   </div>
 </header>
 
 <style>
-  .bar { position: sticky; top: 0; z-index: 20; background: var(--ground); }
-  .bar-in { display: flex; align-items: center; gap: 24px; min-height: 68px; }
-  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 1.125rem; letter-spacing: -0.02em; text-decoration: none; }
-  .brand-soft { color: var(--ink-2); font-weight: 450; }
-  .links { display: none; gap: 28px; margin-left: auto; font-size: var(--step-small); }
-  .links a { text-decoration: none; color: var(--ink-2); transition: color 160ms; }
-  .links a:hover { color: var(--ink); }
-  .actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
-  .lang { font-size: var(--step-small); font-weight: 600; color: var(--ink-2); text-decoration: none; padding: 10px 6px; }
-  .lang:hover { color: var(--ink); }
-  .bar-cta { min-height: 40px; padding: 0 18px; font-size: var(--step-small); }
-  @media (min-width: 960px) {
-    .links { display: flex; }
-    .actions { margin-left: 28px; }
+  .bar { position: absolute; inset: 0 0 auto 0; display: flex; align-items: flex-start; gap: 24px; padding: var(--edge); }
+  .brand { display: inline-flex; align-items: center; gap: 14px; text-decoration: none; color: #fff; mix-blend-mode: plus-lighter; }
+  .brand-mark { flex: none; }
+  .brand-text { display: grid; gap: 2px; }
+  .brand-name { font-size: 20px; line-height: 1; letter-spacing: 0; }
+  .brand-sub { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .links { display: none; gap: 22px; margin: 12px 0 0 auto; text-transform: uppercase; mix-blend-mode: plus-lighter; }
+  .links a { text-decoration: none; color: var(--muted); transition: color 300ms; }
+  .links a:hover { color: #fff; }
+  .actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .chip { min-height: 26px; }
+  .counter {
+    display: grid; place-items: center; width: 44px; height: 44px; margin-left: 10px; border-radius: 50%;
+    border: 1px solid var(--line); background: #0a0a0a; font-size: 14px; color: #fff; text-decoration: none; transition: border-color 300ms;
   }
+  .counter:hover { border-color: var(--accent); }
+  @media (min-width: 1100px) { .links { display: flex; } .actions { margin-left: 28px; } }
+  @media (max-width: 520px) { .brand-sub, .cta { display: none; } }
 </style>

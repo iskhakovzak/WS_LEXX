@@ -133,6 +133,33 @@ export const en = {
     rights: "All rights reserved.",
   },
   legal: { draft: "Draft", updated: "Effective date", back: "Back to home" },
+  /** Small UI labels of the monospace layer: [bracketed] kickers, the hero counter, card and chip groups. */
+  ui: {
+    brandSub: "Prop desk operating system",
+    counter: "live risk signals",
+    tags: "Segments and features",
+    cards: "Product screens",
+    info: "info",
+    aims: "aims",
+    sync: "sync",
+    connect: "connect",
+    scroll: "Scroll",
+    sample: "sample data",
+    insideLink: "Everything inside",
+    kick: {
+      risk: "live risk",
+      growth: "growth",
+      analytics: "analytics",
+      segments: "segments",
+      integrations: "integrations",
+      security: "security",
+      numbers: "numbers",
+      screens: "screens",
+      contact: "contact",
+      roles: "who it serves",
+      inside: "everything inside",
+    },
+  },
 };
 
 type Widen<T> = T extends string ? string : T extends readonly (infer U)[] ? readonly Widen<U>[] : { [K in keyof T]: Widen<T[K]> };

@@ -1,110 +1,187 @@
 ---
+// Home page. The hero follows the reference layout over a fixed particle canvas: tag chips and a column of product
+// screen cards on the left, a [bracketed] text column on the right. Sections below keep the same monospace layer.
 import LiveFeed from "./LiveFeed.astro";
 import LeadForm from "./LeadForm.astro";
 import Proof from "./Proof.astro";
+import Mark from "./Mark.astro";
+import Explorer from "./Explorer.astro";
+import { screens } from "../lib/screens";
 import { t, type Locale } from "../i18n";
 
 interface Props { locale: Locale }
 const { locale } = Astro.props;
 const d = t(locale);
 const segmentCodes = ["prop_desk", "funded_trader", "futures_firm"] as const;
+const two = (n: number) => String(n).padStart(2, "0");
+const tags = [
+  ...d.segments.items.map(([name]) => ({ label: name, href: "#segments" })),
+  { label: d.nav.risk, href: "#risk" },
+  { label: d.nav.growth, href: "#growth" },
+  { label: d.nav.analytics, href: "#analytics" },
+  { label: d.integrations.primaryName, href: "#integrations" },
+  { label: d.nav.security, href: "#security" },
+];
+const pillars = [
+  { title: d.risk.title, href: "#risk" },
+  { title: d.growth.title, href: "#growth" },
+  { title: d.analytics.title, href: "#analytics" },
+  { title: d.ui.insideLink, href: "#inside" },
+];
 ---
-<section class="hero wrap" aria-labelledby="hero-title">
-  <h1 id="hero-title" data-reveal>{d.hero.title}</h1>
-  <div class="hero-grid">
-    <div class="hero-copy">
-      <p class="lede" data-reveal style="--i:1">{d.hero.lede}</p>
-      <div class="cta" data-reveal style="--i:2">
-        <a class="btn btn-primary" href="#contact" data-segment="prop_desk">{d.hero.demo}</a>
-        <a class="btn btn-quiet" href="#contact" data-segment="funded_trader">{d.hero.access}</a>
-      </div>
-    </div>
-    <div class="hero-feed" data-reveal style="--i:3"><LiveFeed locale={locale} /></div>
+<div class="bg" aria-hidden="true" data-bg>
+  <div class="bg-fallback">
+    <svg viewBox="1.07 0.41 61.87 61.87" focusable="false">
+      <g class="glow"><Mark inline width={9} /></g>
+      <g class="dots"><Mark inline width={1.1} /></g>
+    </svg>
   </div>
-</section>
+  <canvas class="bg-canvas" data-bg-canvas></canvas>
+</div>
 
-<section id="risk" class="section wrap risk" aria-labelledby="risk-title">
-  <div class="risk-head">
-    <h2 id="risk-title" data-reveal>{d.risk.title}</h2>
-    <p class="lede" data-reveal style="--i:1">{d.risk.lede}</p>
-  </div>
-  <dl class="risk-list">
-    {d.risk.list.map(([term, desc], i) => (
-      <div class:list={["risk-item", i === d.risk.list.length - 1 && "risk-saved"]} data-reveal style={`--i:${i % 2}`}>
-        <dt>{term}</dt>
-        <dd>{desc}</dd>
-      </div>
+<section class="hero" aria-labelledby="hero-title" data-hero>
+  <ul class="tags" aria-label={d.ui.tags}>
+    {tags.map((tag, i) => <li><a class:list={["chip", i === 0 && "on"]} href={tag.href}>{tag.label}</a></li>)}
+  </ul>
+
+  <div class="cards" role="region" aria-label={d.ui.cards} tabindex="0">
+    {screens.map((s, i) => (
+      <figure class="card">
+        {s.exists
+          ? <div class="thumb"><img src={s.file} alt={d.screens.items[s.id]} width="1600" height="1000" decoding="async" /></div>
+          : <div class="thumb empty" aria-hidden="true"><Mark size={28} /></div>}
+        <figcaption class="meta">
+          <span>{d.screens.items[s.id]}</span>
+          <span class="muted">{two(i + 1)} / {two(screens.length)}</span>
+        </figcaption>
+      </figure>
     ))}
-  </dl>
-</section>
-
-<section id="growth" class="section wrap growth" aria-labelledby="growth-title">
-  <div class="growth-head">
-    <h2 id="growth-title" data-reveal>{d.growth.title}</h2>
-    <p class="lede" data-reveal style="--i:1">{d.growth.lede}</p>
   </div>
-  <ol class="ladder">
-    {d.growth.stages.map(([name, desc], i) => (
-      <li data-reveal style={`--i:${i}`}>
-        <p class="ladder-name">{name}</p>
-        <p>{desc}</p>
-      </li>
-    ))}
-  </ol>
-  <div class="loop" data-reveal>
-    <h3>{d.growth.loopTitle}</h3>
-    <ol class="loop-steps">{d.growth.loop.map((s) => <li>{s}</li>)}</ol>
-    <p class="loop-guide">{d.growth.guide}</p>
-  </div>
-</section>
 
-<section id="analytics" class="section paper" aria-labelledby="analytics-title">
-  <div class="wrap paper-in">
-    <div>
-      <h2 id="analytics-title" data-reveal>{d.analytics.title}</h2>
-      <p class="lede" data-reveal style="--i:1">{d.analytics.lede}</p>
+  <div class="col blend">
+    <div class="blk">
+      <p class="kick">[{d.ui.info}]</p>
+      <h1 id="hero-title">{d.hero.title}</h1>
+      <p class="hero-lede">{d.hero.lede}</p>
     </div>
-    <ul class="truths">
-      {d.analytics.points.map((p, i) => <li data-reveal style={`--i:${i}`}>{p}</li>)}
+    <div class="blk">
+      <p class="kick">[{d.ui.aims}]</p>
+      <ol class="aims">
+        {pillars.map((p, i) => <li><a class="arrow" href={p.href}><span class="muted">{two(i + 1)}</span> {p.title} <span aria-hidden="true">-&gt;</span></a></li>)}
+      </ol>
+    </div>
+    <div class="blk blk-sync">
+      <p class="kick">[{d.ui.sync}]</p>
+      <p>{d.integrations.primaryName}: {d.integrations.primary}</p>
+    </div>
+    <div class="blk">
+      <p class="kick">[{d.ui.connect}]</p>
+      <a class="arrow" href="#contact" data-segment="prop_desk">{d.hero.demo} <span aria-hidden="true">-&gt;</span></a>
+      <a class="arrow" href="#contact" data-segment="funded_trader">{d.hero.access} <span aria-hidden="true">-&gt;</span></a>
+    </div>
+  </div>
+
+  <a class="scroll muted blend" href="#risk">[{d.ui.scroll}] <span aria-hidden="true">&darr;</span></a>
+</section>
+
+<section id="risk" class="sec" aria-labelledby="risk-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.risk}]</p></div>
+  <div>
+    <h2 id="risk-title" class="sec-title blend" data-reveal>{d.risk.title}</h2>
+    <p class="sec-lede read blend" data-reveal style="--i:1">{d.risk.lede}</p>
+    <div class="risk-grid">
+      <dl class="rule risk-list blend">
+        {d.risk.list.map(([term, desc], i) => (
+          <div class:list={["risk-item", i === d.risk.list.length - 1 && "risk-saved"]} data-reveal style={`--i:${i % 3}`}>
+            <dt class="ui"><span class="muted">{two(i + 1)}</span> {term}</dt>
+            <dd class="read">{desc}</dd>
+          </div>
+        ))}
+      </dl>
+      <div class="risk-feed" data-reveal style="--i:1"><LiveFeed locale={locale} /></div>
+    </div>
+  </div>
+</section>
+
+<section id="growth" class="sec" aria-labelledby="growth-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.growth}]</p></div>
+  <div>
+    <h2 id="growth-title" class="sec-title blend" data-reveal>{d.growth.title}</h2>
+    <p class="sec-lede read blend" data-reveal style="--i:1">{d.growth.lede}</p>
+    <ol class="ladder blend">
+      {d.growth.stages.map(([name, desc], i) => (
+        <li data-reveal style={`--i:${i}`}>
+          <p class="ui muted">{two(i + 1)} / {two(d.growth.stages.length)}</p>
+          <p class="ladder-name">{name}</p>
+          <p class="read">{desc}</p>
+        </li>
+      ))}
+    </ol>
+    <div class="loop blend" data-reveal>
+      <h3 class="ui loop-title">[{d.growth.loopTitle}]</h3>
+      <ol class="loop-steps">
+        {d.growth.loop.map((s, i) => <li class="ui">{s}{i < d.growth.loop.length - 1 && <span class="muted" aria-hidden="true"> -&gt;</span>}</li>)}
+      </ol>
+      <p class="read">{d.growth.guide}</p>
+    </div>
+  </div>
+</section>
+
+<section id="analytics" class="sec" aria-labelledby="analytics-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.analytics}]</p></div>
+  <div>
+    <h2 id="analytics-title" class="sec-title blend" data-reveal>{d.analytics.title}</h2>
+    <p class="sec-lede read blend" data-reveal style="--i:1">{d.analytics.lede}</p>
+    <ul class="rule truths blend">
+      {d.analytics.points.map((p, i) => <li class="ui" data-reveal style={`--i:${i}`}><span class="acc" aria-hidden="true">-&gt;</span> {p}</li>)}
     </ul>
   </div>
 </section>
 
-<section class="section wrap segments" aria-labelledby="segments-title">
-  <h2 id="segments-title" data-reveal>{d.segments.title}</h2>
-  <ul class="seg-list">
-    {d.segments.items.map(([name, desc, cta], i) => (
-      <li class="seg" data-reveal style={`--i:${i}`}>
-        <h3 class="seg-name">{name}</h3>
-        <p>{desc}</p>
-        <a class="seg-cta" href="#contact" data-segment={segmentCodes[i]}>{cta}<span aria-hidden="true"> &rarr;</span></a>
-      </li>
-    ))}
-  </ul>
+<Explorer locale={locale} />
+
+<section id="segments" class="sec" aria-labelledby="segments-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.segments}]</p></div>
+  <div>
+    <h2 id="segments-title" class="sec-title blend" data-reveal>{d.segments.title}</h2>
+    <ul class="rule seg-list blend">
+      {d.segments.items.map(([name, desc, cta], i) => (
+        <li class="seg" data-reveal style={`--i:${i}`}>
+          <h3 class="seg-name">{name}</h3>
+          <p class="read">{desc}</p>
+          <a class="arrow" href="#contact" data-segment={segmentCodes[i]}>{cta} <span aria-hidden="true">-&gt;</span></a>
+        </li>
+      ))}
+    </ul>
+  </div>
 </section>
 
-<section class="section wrap integrations" aria-labelledby="int-title">
-  <h2 id="int-title" data-reveal>{d.integrations.title}</h2>
-  <div class="int-grid">
-    <div class="int-main" data-reveal>
-      <p class="int-name"><span class="live" aria-hidden="true"></span>{d.integrations.primaryName}</p>
-      <p>{d.integrations.primary}</p>
-    </div>
-    <div class="int-more" data-reveal style="--i:1">
-      <h3>{d.integrations.othersTitle}</h3>
-      <p>{d.integrations.others}</p>
+<section id="integrations" class="sec" aria-labelledby="int-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.integrations}]</p></div>
+  <div>
+    <h2 id="int-title" class="sec-title blend" data-reveal>{d.integrations.title}</h2>
+    <div class="rule int-list blend">
+      <div class="int-main" data-reveal>
+        <p class="int-name"><span class="live" aria-hidden="true"></span>{d.integrations.primaryName}</p>
+        <p class="read">{d.integrations.primary}</p>
+      </div>
+      <div class="int-more" data-reveal style="--i:1">
+        <h3 class="ui">{d.integrations.othersTitle}</h3>
+        <p class="read">{d.integrations.others}</p>
+      </div>
     </div>
   </div>
 </section>
 
-<section id="security" class="section security-band" aria-labelledby="sec-title">
-  <div class="wrap sec-in">
-    <h2 id="sec-title" data-reveal>{d.security.title}</h2>
-    <dl class="sec-list">
+<section id="security" class="sec" aria-labelledby="sec-title">
+  <div class="sec-side blend"><p class="kick">[{d.ui.kick.security}]</p></div>
+  <div>
+    <h2 id="sec-title" class="sec-title blend" data-reveal>{d.security.title}</h2>
+    <dl class="sec-list blend">
       {d.security.items.map(([term, desc], i) => (
         <div data-reveal style={`--i:${i}`}>
-          <dt>{term}</dt>
-          <dd>{desc}</dd>
+          <dt class="ui"><span class="muted">{two(i + 1)}</span> {term}</dt>
+          <dd class="read">{desc}</dd>
         </div>
       ))}
     </dl>
@@ -116,73 +193,135 @@ const segmentCodes = ["prop_desk", "funded_trader", "futures_firm"] as const;
 <LeadForm locale={locale} />
 
 <style>
-  .hero { padding-top: clamp(40px, 7vw, 104px); }
-  .hero h1 { max-width: 19ch; }
-  .hero-grid { display: grid; gap: 40px; margin-top: clamp(32px, 4vw, 56px); align-items: start; }
-  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
-  @media (min-width: 960px) {
-    .hero-grid { grid-template-columns: 5fr 6fr; gap: 64px; }
+  /* Background layer: the canvas (once WebGL is up) or a static dotted mark (no WebGL, no script, before init). */
+  .bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #000; }
+  .bg-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 1400ms var(--ease); }
+  .bg-fallback { position: absolute; left: 50%; top: 50%; width: min(44vw, 620px); transform: translate(-46%, -50%); transition: opacity 1400ms var(--ease); }
+  .bg-fallback svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .bg-fallback .glow { color: #6c56b8; opacity: 0.16; filter: blur(14px); }
+  .bg-fallback .dots { color: #cbbcff; opacity: 0.7; }
+  .bg-fallback .dots :global(path) { stroke-dasharray: 0.01 1.5; }
+  :global(.bg.is-live) .bg-canvas { opacity: 1; }
+  :global(.bg.is-live) .bg-fallback { opacity: 0; }
+  @media (max-width: 760px) { .bg-fallback { width: 84vw; top: 32%; transform: translate(-50%, -50%); } }
+
+  .hero { position: relative; height: 100vh; height: 100svh; min-height: 640px; }
+  .tags { position: absolute; top: 120px; left: var(--edge); width: var(--side); display: flex; flex-wrap: wrap; gap: 6px; }
+  .cards {
+    position: absolute; top: 250px; left: var(--edge); bottom: 0; width: var(--side); overflow-y: auto; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent);
+  }
+  .cards::-webkit-scrollbar { display: none; }
+  .card { padding: 18px 0; border-top: 1px solid var(--line); }
+  .thumb { height: 160px; border-radius: 2px; background: var(--card); overflow: hidden; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .thumb.empty { display: grid; place-items: center; background: rgb(0 0 0 / 0.35); border: 1px solid var(--line); color: #3a3a3a; }
+  .meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 10px; font-size: 12px; text-transform: uppercase; color: #fff; }
+  .meta .muted { text-align: right; flex: none; }
+
+  .col { position: absolute; right: 90px; top: 50%; transform: translateY(-50%); width: 380px; text-transform: uppercase; }
+  .blk + .blk { margin-top: 2.2em; }
+  .kick { margin-bottom: 1em; }
+  h1 { font-size: clamp(20px, 1.8vw, 27px); line-height: 1.15; color: #fff; letter-spacing: 0.01em; margin-bottom: 0.8em; }
+  .hero-lede { text-align: justify; hyphens: auto; }
+  .aims .arrow { text-decoration: none; }
+  .aims .arrow:hover { text-decoration: underline; }
+  .scroll { position: absolute; right: var(--edge); bottom: var(--edge); text-decoration: none; text-transform: uppercase; }
+  .scroll:hover { color: #fff; }
+  @media (max-width: 1100px) { .col { right: var(--edge); width: 320px; } }
+  @media (max-width: 760px) {
+    .tags, .cards, .scroll, .blk-sync { display: none; }
+    .hero { min-height: 680px; }
+    .col { left: var(--edge); right: var(--edge); bottom: var(--edge); top: auto; transform: none; width: auto; }
+    .hero-lede { text-align: left; }
   }
 
-  .risk { display: grid; gap: 48px; }
-  .risk-list { display: grid; gap: 12px; }
-  .risk-item { background: var(--surface); border-radius: 16px; padding: 24px 26px; }
-  .risk-item dt { font-weight: 600; font-size: var(--step-h3); letter-spacing: -0.015em; line-height: 1.2; }
-  .risk-item dd { margin-top: 8px; color: var(--ink-2); }
-  .risk-saved { background: var(--up); color: #06140d; }
-  .risk-saved dd { color: #0b2a1a; }
-  @media (min-width: 900px) {
-    .risk { grid-template-columns: 5fr 7fr; gap: 64px; }
-    .risk-head { position: sticky; top: 112px; align-self: start; }
-    .risk-head .lede { margin-top: 28px; }
-    .risk-list { grid-template-columns: 1fr 1fr; }
-  }
-  .risk-head .lede, .growth-head .lede { margin-top: 24px; }
-
-  .growth-head { display: grid; gap: 0; max-width: 980px; }
-  .ladder { display: grid; gap: 32px; margin-top: 56px; counter-reset: none; }
-  .ladder-name { font-size: clamp(2.75rem, 7vw, 6rem); font-weight: 700; letter-spacing: -0.045em; line-height: 1; margin-bottom: 14px; }
-  .ladder li:nth-child(1) .ladder-name { color: var(--ink-2); }
-  .ladder li p:last-child { max-width: 32ch; }
-  @media (min-width: 900px) { .ladder { grid-template-columns: repeat(3, 1fr); gap: 40px; } }
-  .loop { margin-top: 72px; background: var(--surface); border-radius: 20px; padding: clamp(24px, 4vw, 48px); display: grid; gap: 24px; }
-  .loop-steps { display: grid; gap: 10px; }
-  .loop-steps li { background: var(--surface-2); border-radius: 999px; padding: 14px 22px; font-weight: 550; }
-  .loop-guide { color: var(--ink-2); max-width: 60ch; }
-  @media (min-width: 900px) { .loop-steps { grid-template-columns: repeat(3, 1fr); } }
-
-  .paper { background: var(--paper); color: var(--paper-ink); padding-bottom: var(--section); margin-top: var(--section); padding-top: var(--section); }
-  .paper .lede { margin-top: 24px; }
-  .paper-in { display: grid; gap: 48px; }
-  .truths { display: grid; gap: 4px; }
-  .truths li { font-size: clamp(1.125rem, 1vw + 0.9rem, 1.5rem); line-height: 1.35; font-weight: 550; letter-spacing: -0.01em; padding: 20px 0; }
-  .truths li + li { box-shadow: inset 0 1px 0 rgb(0 0 0 / 0.12); }
-  @media (min-width: 900px) { .paper-in { grid-template-columns: 6fr 5fr; gap: 80px; align-items: end; } }
-  .paper + .segments { padding-top: var(--section); }
-
-  .seg-list { display: grid; gap: 12px; margin-top: 48px; }
-  .seg { display: grid; gap: 10px; background: var(--surface); border-radius: 16px; padding: 26px; transition: background-color 200ms; }
-  .seg:hover { background: var(--surface-2); }
-  .seg-name { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.03em; }
-  .seg p { color: var(--ink-2); }
-  .seg-cta { font-weight: 600; text-decoration: none; justify-self: start; padding: 6px 0; }
-  .seg-cta:hover { text-decoration: underline; }
-  @media (min-width: 900px) {
-    .seg { grid-template-columns: 4fr 6fr auto; align-items: center; gap: 32px; padding: 32px 36px; }
+  .risk-grid { display: grid; gap: 32px; margin-top: 48px; }
+  .risk-item { display: grid; gap: 6px; }
+  .risk-item dt { color: #fff; }
+  .risk-item dd { color: var(--muted); }
+  .risk-saved dt { color: var(--accent); }
+  @media (min-width: 1200px) {
+    .risk-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; }
+    .risk-feed { position: sticky; top: 32px; }
   }
 
-  .int-grid { display: grid; gap: 16px; margin-top: 48px; }
-  .int-main { background: var(--primary); color: var(--primary-ink); border-radius: 20px; padding: clamp(28px, 4vw, 48px); display: grid; gap: 16px; align-content: start; }
-  .int-name { display: flex; align-items: center; gap: 14px; font-size: clamp(2.25rem, 5vw, 4.25rem); font-weight: 700; letter-spacing: -0.045em; line-height: 1; }
-  .int-main .live { width: 14px; height: 14px; border-radius: 50%; background: hsl(151 55% 38%); flex: none; }
-  .int-main p:last-child { max-width: 40ch; font-size: 1.125rem; }
-  .int-more { background: var(--surface); border-radius: 20px; padding: clamp(28px, 4vw, 48px); display: grid; gap: 16px; align-content: start; }
-  .int-more p { color: var(--ink-2); max-width: 44ch; }
-  @media (min-width: 900px) { .int-grid { grid-template-columns: 7fr 5fr; } }
+  .ladder { display: grid; gap: 32px; margin-top: 56px; }
+  .ladder li { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 12px; align-content: start; }
+  .ladder-name { font-size: clamp(2rem, 4.4vw, 3.75rem); line-height: 1; text-transform: uppercase; color: #fff; letter-spacing: -0.02em; }
+  .ladder li:first-child .ladder-name { color: var(--muted); }
+  @media (min-width: 900px) { .ladder { grid-template-columns: repeat(3, 1fr); gap: 24px; } }
+  .loop { margin-top: 56px; border: 1px solid var(--line); padding: clamp(18px, 3vw, 32px); display: grid; gap: 18px; }
+  .loop-title { color: var(--accent); }
+  .loop-steps { display: flex; flex-wrap: wrap; gap: 8px 10px; color: #fff; }
+  .loop-steps li { background: var(--chip); padding: 7px 11px; }
+  .loop .read { max-width: 60ch; }
 
-  .security-band { background: var(--surface); margin-top: var(--section); padding-bottom: var(--section); }
-  .sec-list { display: grid; gap: 36px; margin-top: 56px; }
-  .sec-list dt { font-size: var(--step-h3); font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
-  .sec-list dd { margin-top: 10px; color: var(--ink-2); max-width: 40ch; }
-  @media (min-width: 900px) { .sec-list { grid-template-columns: repeat(3, 1fr); gap: 48px; } }
+  .truths { margin-top: 40px; }
+  .truths li { color: #fff; }
+  .acc { color: var(--accent); }
+
+  .seg-list { margin-top: 40px; }
+  .seg { display: grid; gap: 10px; }
+  .seg-name { font-size: clamp(1.125rem, 1.6vw, 1.375rem); text-transform: uppercase; color: #fff; }
+  .seg .arrow { justify-self: start; }
+  @media (min-width: 900px) { .seg { grid-template-columns: 4fr 6fr 3fr; align-items: baseline; gap: 32px; } .seg .arrow { justify-self: end; } }
+
+  .int-list { margin-top: 40px; }
+  .int-main, .int-more { display: grid; gap: 12px; }
+  .int-name { display: flex; align-items: center; gap: 14px; font-size: clamp(2rem, 4.4vw, 3.75rem); line-height: 1; text-transform: uppercase; color: #fff; letter-spacing: -0.02em; }
+  .live { width: 10px; height: 10px; border-radius: 50%; background: var(--up); flex: none; box-shadow: 0 0 12px var(--up); }
+  .int-main .read, .int-more .read { max-width: 56ch; }
+  .int-more h3 { color: #fff; }
+
+  .sec-list { display: grid; gap: 28px; margin-top: 40px; }
+  .sec-list > div { border-top: 1px solid var(--line); padding-top: 18px; }
+  .sec-list dt { color: #fff; }
+  .sec-list dd { margin-top: 10px; }
+  @media (min-width: 1000px) { .sec-list { grid-template-columns: repeat(3, 1fr); gap: 24px; } }
 </style>
+
+<script>
+  // Dim the cloud as the page scrolls so long text stays readable, and start WebGL only after first paint.
+  const bg = document.querySelector<HTMLElement>("[data-bg]");
+  const canvas = document.querySelector<HTMLCanvasElement>("[data-bg-canvas]");
+  const hero = document.querySelector<HTMLElement>("[data-hero]");
+  if (bg && canvas && hero) {
+    let queued = false;
+    const dim = () => {
+      queued = false;
+      const k = Math.min(1, window.scrollY / (window.innerHeight * 0.9));
+      bg.style.opacity = String(1 - 0.78 * k);
+    };
+    window.addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(dim); } }, { passive: true });
+    dim();
+
+    // Feature check on a throwaway context, so a browser without WebGL2 / float targets never downloads three.
+    const supported = () => {
+      try {
+        const gl = document.createElement("canvas").getContext("webgl2");
+        if (!gl) return false;
+        const ok = !!gl.getExtension("EXT_color_buffer_float");
+        gl.getExtension("WEBGL_lose_context")?.loseContext();
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+    const boot = () => {
+      if (!supported()) return;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      import("../scripts/hero").then(({ startHero }) => {
+        try {
+          startHero({ canvas, hero, reducedMotion, onReady: () => bg.classList.add("is-live"), onLost: () => bg.classList.remove("is-live") });
+        } catch {
+          bg.classList.remove("is-live");
+        }
+      }).catch(() => bg.classList.remove("is-live"));
+    };
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    const idle = (cb: () => void) => (ric ? ric.call(window, cb, { timeout: 1500 }) : window.setTimeout(cb, 200));
+    if (document.readyState === "complete") idle(boot);
+    else window.addEventListener("load", () => idle(boot), { once: true });
+  }
+</script>

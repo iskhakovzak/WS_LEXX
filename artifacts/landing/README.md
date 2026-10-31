@@ -32,9 +32,24 @@ Everything the owner fills in lives in **`src/site.config.ts`**. The build print
 
 The hero's live risk feed uses clearly labelled sample data (`src/i18n/*.ts`, "Trader 07" etc.), not desk data.
 
+## Look and moving parts
+
+- **Hero background**: a GPU particle cloud shaped like the WS mark, stirred by the cursor through a fluid simulation
+  (`src/scripts/hero/`: `shape.ts` SDF of the mark, `cloud.ts` particle sim, `fluid.ts` cursor fluid, `index.ts` lifecycle).
+  three.js `0.150.1` is bundled and loaded lazily after first paint, in its own chunk. 262k points on desktop, 16k on
+  phones. It pauses when the tab is hidden or the hero is off screen, and dims as the page scrolls.
+- **Fallbacks**: no WebGL2 or no float render targets: three is never downloaded and a static dotted mark stays in
+  place (this mark also shows before the cloud starts and when script is off). `prefers-reduced-motion`: the cloud is
+  pre-settled and drifts very slowly, with no cursor fluid; illustrations and reveals stop moving.
+- **Feature explorer** ("Everything inside", `src/components/Explorer.astro`): copy in `src/content/features.ts` (EN + ES,
+  checked against the app's code). Keep every claim true to the product; features that are off by default stay out
+  or are marked optional.
+
+
 ## Screenshots
 
-Four slots, shown only when the file exists in `public/screens/` (WebP, 1600x1000, 16:10):
+Four slots (WebP, 1600x1000, 16:10) in `public/screens/`. The "Inside WS_DeskOS" section and the explorer show a
+screenshot only when its file exists; the hero's card column shows an empty frame until then:
 
 | File | What to capture |
 |---|---|
