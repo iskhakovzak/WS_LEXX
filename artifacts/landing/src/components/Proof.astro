@@ -4,6 +4,7 @@
 import { NUMBERS, SHOW_PLACEHOLDERS, isPlaceholder } from "../site.config";
 import { screens as allScreens } from "../lib/screens";
 import { t, type Locale } from "../i18n";
+import Shot from "./Shot.astro";
 
 interface Props { locale: Locale }
 const { locale } = Astro.props;
@@ -18,7 +19,7 @@ const figures = [
 const numbersFilled = figures.every((f) => !isPlaceholder(f.value));
 const showNumbers = numbersFilled || SHOW_PLACEHOLDERS;
 const period = isPlaceholder(NUMBERS.period) && !SHOW_PLACEHOLDERS ? "" : NUMBERS.period;
-const screens = allScreens.filter((s) => s.hero && (s.exists || SHOW_PLACEHOLDERS));
+const screens = allScreens.filter((s) => s.inside && (s.exists || SHOW_PLACEHOLDERS));
 // The first shot spans the content column, the rest take half of it from 900 px.
 const sizes = (i: number) => (i === 0 ? "(min-width: 1440px) 1030px, (min-width: 900px) calc(100vw - 440px), calc(100vw - 54px)" : "(min-width: 1440px) 505px, (min-width: 900px) calc(50vw - 230px), calc(100vw - 54px)");
 const two = (n: number) => String(n).padStart(2, "0");
@@ -50,7 +51,7 @@ const two = (n: number) => String(n).padStart(2, "0");
         {screens.map((s, i) => (
           <figure data-reveal style={`--i:${i % 2}`}>
             {s.exists
-              ? <img src={s.src} srcset={s.srcset} sizes={sizes(i)} alt={d.screens.alt[s.id]} width="1600" height="1000" loading="lazy" decoding="async" />
+              ? <Shot shot={s} alt={d.screens.alt[s.id]} caption={d.screens.items[s.id]} zoomLabel={d.ui.zoom} sizes={sizes(i)} />
               : <div class="slot" role="img" aria-label={`${d.screens.pending}: ${d.screens.items[s.id]}`}>{d.screens.pending}: {s.src}</div>}
             <figcaption class="meta">
               <span>{d.screens.items[s.id]}</span>
@@ -74,8 +75,8 @@ const two = (n: number) => String(n).padStart(2, "0");
 
   /* Screenshots sit on opaque cards: no blend. */
   .shots { display: grid; gap: 24px; margin-top: 48px; }
-  .shots figure { margin: 0; background: var(--card); border: 1px solid var(--line); padding: 10px; }
-  .shots img, .slot { width: 100%; aspect-ratio: 16 / 10; border-radius: 2px; background: var(--card); object-fit: cover; object-position: top left; }
+  .shots figure { margin: 0; }
+  .slot { width: 100%; aspect-ratio: 16 / 10; border-radius: 2px; background: var(--card); object-fit: cover; object-position: top left; }
   .slot { display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); text-transform: uppercase; outline: 1px dashed var(--line-2); outline-offset: -1px; }
   .meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 10px; font-size: 12px; text-transform: uppercase; color: #fff; }
   @media (min-width: 900px) { .shots { grid-template-columns: 1fr 1fr; } .shots figure:first-child { grid-column: 1 / -1; } }

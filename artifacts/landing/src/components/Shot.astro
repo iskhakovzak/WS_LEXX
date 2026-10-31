@@ -1,0 +1,44 @@
+---
+// A product screenshot in a thin window frame (title bar with three dots, 1 px line, soft violet glow). The frame is
+// a link to the full-size file, so it opens without script; with script Lightbox.astro shows it enlarged in place.
+// `tilt` leans the frame slightly in 3D (hero cards); it straightens on hover / focus and never moves with reduced motion.
+import type { Screen } from "../lib/screens";
+
+interface Props {
+  shot: Screen;
+  alt: string;
+  caption: string;
+  zoomLabel: string;
+  sizes: string;
+  loading?: "eager" | "lazy";
+  priority?: boolean;
+  tilt?: boolean;
+  /** Image box: fixed height (hero column) or 16:10. */
+  fit?: "ratio" | "fill";
+}
+const { shot, alt, caption, zoomLabel, sizes, loading = "lazy", priority = false, tilt = false, fit = "ratio" } = Astro.props;
+---
+<a class:list={["shot", tilt && "tilt", fit === "fill" && "fill"]} href={shot.src} data-zoom data-caption={caption} aria-label={`${zoomLabel}: ${caption}`}>
+  <span class="bar" aria-hidden="true"><i></i><i></i><i></i></span>
+  <img src={shot.src} srcset={shot.srcset} sizes={sizes} alt={alt} width="1600" height="1000" decoding="async" loading={loading} fetchpriority={priority ? "high" : "auto"} />
+</a>
+
+<style>
+  .shot {
+    position: relative; display: block; overflow: hidden; border-radius: 6px; border: 1px solid #2c2838;
+    background: #0b0b0b; cursor: zoom-in; text-decoration: none;
+    box-shadow: 0 0 0 1px rgb(170 136 255 / 0.04), 0 18px 48px -18px rgb(110 80 220 / 0.45), 0 2px 10px rgb(0 0 0 / 0.6);
+    transition: transform 600ms var(--ease), box-shadow 600ms var(--ease), border-color 600ms var(--ease);
+  }
+  .shot:hover, .shot:focus-visible { border-color: #4a3f6b; box-shadow: 0 0 0 1px rgb(170 136 255 / 0.12), 0 22px 60px -16px rgb(130 96 255 / 0.6), 0 2px 10px rgb(0 0 0 / 0.6); }
+  .bar { display: flex; gap: 5px; align-items: center; height: 18px; padding: 0 9px; background: linear-gradient(#17151e, #111016); border-bottom: 1px solid #24212e; }
+  .bar i { width: 6px; height: 6px; border-radius: 50%; background: #3a3646; }
+  .bar i:first-child { background: #5b4a8f; }
+  img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; background: #0b0b0b; }
+  .fill { height: 100%; }
+  .fill img { height: calc(100% - 18px); aspect-ratio: auto; }
+  .tilt { transform: perspective(1100px) rotateY(9deg) rotateX(2deg); transform-origin: left center; }
+  .tilt:hover, .tilt:focus-visible { transform: none; }
+  @media (max-width: 1100px) { .tilt { transform: perspective(1600px) rotateY(4deg) rotateX(1deg); } }
+  @media (prefers-reduced-motion: reduce) { .shot { transition: none; } .tilt, .tilt:hover { transform: none; } }
+</style>

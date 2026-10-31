@@ -1,0 +1,53 @@
+---
+// Click-to-enlarge for every [data-zoom] screenshot link (Shot.astro): one modal <dialog> per page with the full
+// 1600 px file and its caption. Esc, the close button or a click outside closes it; focus returns to the link.
+// Without script the links simply open the image file.
+import { t, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const d = t(Astro.props.locale);
+---
+<dialog class="lb" data-lightbox aria-label={d.ui.zoom}>
+  <figure>
+    <img alt="" data-lb-img />
+    <figcaption class="ui"><span data-lb-cap></span><button type="button" class="lb-close" data-lb-close>{d.ui.close} <span aria-hidden="true">&times;</span></button></figcaption>
+  </figure>
+</dialog>
+
+<style>
+  .lb { padding: 0; border: 0; background: transparent; max-width: min(96vw, 1680px); max-height: 94vh; overflow: visible; color: var(--text); }
+  .lb::backdrop { background: rgb(0 0 0 / 0.82); backdrop-filter: blur(6px); }
+  .lb figure { margin: 0; display: grid; gap: 10px; }
+  .lb img {
+    display: block; max-width: min(96vw, 1680px); max-height: calc(94vh - 44px); width: auto; height: auto; border-radius: 6px;
+    border: 1px solid #3a3350; box-shadow: 0 30px 90px -20px rgb(120 90 240 / 0.55); background: #0b0b0b; cursor: zoom-out;
+  }
+  .lb figcaption { display: flex; justify-content: space-between; align-items: center; gap: 16px; color: #fff; }
+  .lb-close { border: 0; background: var(--chip); color: #e6e6e6; font: inherit; text-transform: uppercase; padding: 7px 11px; cursor: pointer; }
+  .lb-close:hover { background: #2a2a2a; }
+  .lb[open] { animation: lb-in 260ms var(--ease); }
+  @keyframes lb-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .lb[open] { animation: none; } }
+</style>
+
+<script>
+  const box = document.querySelector<HTMLDialogElement>("[data-lightbox]");
+  const img = box?.querySelector<HTMLImageElement>("[data-lb-img]");
+  const cap = box?.querySelector<HTMLElement>("[data-lb-cap]");
+  if (box && img && cap && typeof box.showModal === "function") {
+    let opener: HTMLElement | null = null;
+    document.addEventListener("click", (e) => {
+      const a = (e.target as Element | null)?.closest?.<HTMLAnchorElement>("a[data-zoom]");
+      if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      opener = a;
+      const thumb = a.querySelector("img");
+      img.src = a.href;
+      img.alt = thumb?.alt ?? "";
+      cap.textContent = a.dataset.caption ?? "";
+      box.showModal();
+    });
+    box.addEventListener("click", (e) => { if (e.target === box || e.target === img || (e.target as Element).closest("[data-lb-close]")) box.close(); });
+    box.addEventListener("close", () => { img.removeAttribute("src"); opener?.focus(); });
+  }
+</script>

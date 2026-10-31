@@ -47,22 +47,23 @@ export const NUMBERS = {
 
 /**
  * Product screenshots (README.md "Screenshots"): public/screens/<name>.webp (1600x1000) plus <name>-800.webp
- * (800x500), captured from the synthetic demo desk only. `hero: true` slots fill the hero's card column; every slot can
+ * (800x500), captured from the synthetic demo desk only. `hero: true` slots fill the hero's card column, `inside: true` ones the "Inside WS_DeskOS" section; every slot can
  * be the picture of an explorer group (content/features.ts `screen`). A slot whose file is missing is not shown
  * (placeholder frames appear only with PUBLIC_SHOW_PLACEHOLDERS=1).
  */
 export const SCREENS = [
-  { id: "risk", name: "live-risk", hero: true },
-  { id: "day", name: "trader-day", hero: true },
-  { id: "academy", name: "academy", hero: true },
-  { id: "analytics", name: "analytics", hero: true },
-  { id: "plan", name: "plan", hero: false },
-  { id: "journal", name: "journal", hero: false },
-  { id: "whatif", name: "what-if", hero: false },
-  { id: "themes", name: "themes", hero: false },
-  { id: "ideas", name: "ideas", hero: false },
-  { id: "curator", name: "curator", hero: false },
-  { id: "everywhere", name: "everywhere", hero: false },
+  { id: "risk", name: "live-risk", hero: true, inside: true },
+  { id: "day", name: "trader-day", hero: true, inside: true },
+  { id: "academy", name: "academy", hero: true, inside: true },
+  { id: "analytics", name: "analytics", hero: true, inside: true },
+  { id: "journal", name: "journal", hero: false, inside: true },
+  { id: "plan", name: "plan", hero: false, inside: false },
+  { id: "chart", name: "chart", hero: false, inside: false },
+  { id: "whatif", name: "what-if", hero: false, inside: false },
+  { id: "themes", name: "themes", hero: false, inside: false },
+  { id: "ideas", name: "ideas", hero: false, inside: false },
+  { id: "curator", name: "curator", hero: false, inside: false },
+  { id: "everywhere", name: "everywhere", hero: false, inside: false },
 ] as const;
 export type ScreenId = (typeof SCREENS)[number]["id"];
 

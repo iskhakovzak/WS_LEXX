@@ -6,6 +6,8 @@ import LeadForm from "./LeadForm.astro";
 import Proof from "./Proof.astro";
 import Mark from "./Mark.astro";
 import Explorer from "./Explorer.astro";
+import Shot from "./Shot.astro";
+import Lightbox from "./Lightbox.astro";
 import { screens } from "../lib/screens";
 import { SHOW_PLACEHOLDERS } from "../site.config";
 import { t, type Locale } from "../i18n";
@@ -83,7 +85,7 @@ const pillars = [
       {heroShots.map((s, i) => (
         <figure class="card">
           {s.exists
-            ? <div class="thumb"><img src={s.src} srcset={s.srcset} sizes={cardSizes} alt={d.screens.alt[s.id]} width="1600" height="1000" decoding="async" loading={i < 2 ? "eager" : "lazy"} fetchpriority={i === 0 ? "high" : "auto"} /></div>
+            ? <div class="thumb"><Shot shot={s} alt={d.screens.alt[s.id]} caption={d.screens.items[s.id]} zoomLabel={d.ui.zoom} sizes={cardSizes} loading={i < 2 ? "eager" : "lazy"} priority={i === 0} tilt fit="fill" /></div>
             : <div class="thumb empty" aria-hidden="true"><Mark size={28} /></div>}
           <figcaption class="meta">
             <span>{d.screens.items[s.id]}</span>
@@ -203,6 +205,8 @@ const pillars = [
 
 <LeadForm locale={locale} />
 
+<Lightbox locale={locale} />
+
 <style>
   /* Background layer: the canvas (once WebGL is up) or a static dotted mark (no WebGL, no script, before init). */
   .bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #000; }
@@ -232,10 +236,9 @@ const pillars = [
     -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent);
   }
   .cards::-webkit-scrollbar { display: none; }
-  .card { padding: 18px 0; border-top: 1px solid var(--line); }
+  .card { padding: 18px 14px 18px 0; border-top: 1px solid var(--line); }
   /* Opaque frame in the screenshots' own ground colour: no empty-box flash while an image decodes. */
-  .thumb { height: 160px; border-radius: 2px; background: #0b0b0b; overflow: hidden; }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .thumb { height: 178px; }
   .thumb.empty { display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); color: var(--line-2); }
   .meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 10px; font-size: 12px; text-transform: uppercase; color: #fff; }
   .meta .muted { text-align: right; flex: none; }

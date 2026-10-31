@@ -89,7 +89,7 @@ const en: Features = {
       ],
     },
     {
-      id: "close", label: "After the close", illo: "chart", screen: "journal",
+      id: "close", label: "After the close", illo: "chart", screen: "chart",
       headline: "Closing the day takes minutes, and the lesson reaches tomorrow.",
       who: "Traders review their own day. Curators get it in a queue ranked by money.",
       features: [
@@ -325,7 +325,7 @@ const es: Features = {
       ],
     },
     {
-      id: "close", label: "Después del cierre", illo: "chart", screen: "journal",
+      id: "close", label: "Después del cierre", illo: "chart", screen: "chart",
       headline: "Cerrar el día lleva minutos, y la lección llega a mañana.",
       who: "Los traders revisan su día. Los curadores lo reciben en una cola ordenada por dinero.",
       features: [

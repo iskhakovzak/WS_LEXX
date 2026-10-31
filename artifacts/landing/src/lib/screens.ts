@@ -9,6 +9,7 @@ const has = (path: string) => existsSync(fileURLToPath(new URL(path.replace(/^\/
 export type Screen = {
   id: ScreenId;
   hero: boolean;
+  inside: boolean;
   exists: boolean;
   /** 1600x1000, the default src. */
   src: string;
@@ -22,6 +23,7 @@ export const screens: Screen[] = SCREENS.map((s) => {
   return {
     id: s.id,
     hero: s.hero,
+    inside: s.inside,
     exists: has(src),
     src,
     srcset: has(small) ? `${small} 800w, ${src} 1600w` : `${src} 1600w`,

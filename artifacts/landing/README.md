@@ -50,21 +50,24 @@ The hero's live risk feed uses clearly labelled sample data (`src/i18n/*.ts`, "T
 
 ## Screenshots
 
-Eleven slots in `public/screens/` (list in `src/site.config.ts` `SCREENS`): `<name>.webp` at 1600x1000 plus
-`<name>-800.webp` at 800x500, served as a 1x/2x `srcset`. A slot shows only when its file exists. The four `hero`
-slots fill the hero's card column (below the first screen from 1100 px down) and the "Inside WS_DeskOS" section;
-every explorer group points at one slot (`screen` in `src/content/features.ts`) and falls back to its CSS illustration
-when the file is missing. Alt text and captions: `screens.alt` / `screens.items` in `src/i18n/*.ts`.
+Twelve slots in `public/screens/` (list in `src/site.config.ts` `SCREENS`): `<name>.webp` at 1600x1000 plus
+`<name>-800.webp` at 800x500, served as a 1x/2x `srcset`. A slot shows only when its file exists. `hero` slots fill the
+hero's card column (below the first screen from 1100 px down), `inside` slots the "Inside WS_DeskOS" section, and every
+explorer group points at one slot (`screen` in `src/content/features.ts`), falling back to its CSS illustration when the
+file is missing. Each screenshot sits in a window frame with a soft glow (`src/components/Shot.astro`; the hero cards
+lean slightly in 3D, straight with reduced motion) and opens enlarged on click (`src/components/Lightbox.astro`; without
+script the link opens the file). Alt text and captions: `screens.alt` / `screens.items` in `src/i18n/*.ts`.
 
 | File | Screen (demo user) |
 |---|---|
-| `live-risk` | Risk desk in the session: risk alerts, desk saved for the month (admin) |
-| `trader-day` | Dashboard in the session with a live alert (junior trader) |
-| `academy` | Trader path: ladder, readiness, criteria (junior trader) |
-| `analytics` | Office stats against the year target (admin) |
+| `live-risk` | Risk desk in the session: alerts, desk saved +$3,111 for the month (admin) |
+| `trader-day` | Dashboard ten minutes before the close: +$3,371 day (senior trader) |
+| `academy` | Trader path: readiness 13 of 14 (junior trader) |
+| `analytics` | Office stats: +48% for the year, target reached (admin) |
+| `journal` | Journal after the close: the +$3,371 day, +$8,817 month (senior trader) |
 | `plan` | Desk game plan before the open (junior trader) |
-| `journal` | Journal after the close: day result, leaks, calendar (junior trader) |
-| `what-if` | What-if on the trader's own quarter (junior trader) |
+| `chart` | Chart lab: a +$2,326 trade with entry and exit (senior trader) |
+| `what-if` | What-if on the quarter: +$3,377 better without one ticker (senior trader) |
 | `themes` | Market themes (admin) |
 | `ideas` | Trade ideas board (admin) |
 | `curator` | Curator cabinet (curator) |
@@ -73,9 +76,11 @@ when the file is missing. Alt text and captions: `screens.alt` / `screens.items`
 Capture them from the **synthetic seed-demo desk only**, never from the live desk or the local copy of it
 (`edge_tracker`): a scratch database on the local server, migrated by the API on start and filled with
 `scripts/src/seed-demo.ts` (`DATABASE_URL` pointing at the scratch DB for that command only), a second API and web dev
-server on free ports, sessions minted for demo users (no sign-in), the English UI, a 1600x1000 viewport at 2x. The
-seed writes Russian names and notes; give the demo users Latin names (`pnpm --filter @workspace/api-server run
-rename-user`) and English text in the scratch DB before capturing. Drop the scratch DB afterwards.
+server on free ports, sessions minted for demo users (no sign-in), the English UI with the Porsche photo background
+(`porsche-gt3rs`), a 1600 px wide viewport at 2x, cropped to the interesting part at 16:10. The seed writes Russian names
+and notes; give the demo users Latin names (`pnpm --filter @workspace/api-server run rename-user`) and English text in the
+scratch DB before capturing. The featured numbers come from shaping that fictional data (larger sizes for the featured
+senior trader, smaller sizes after alerts, a passed exam for the featured junior). Drop the scratch DB afterwards.
 
 Check every capture before committing: demo names only, no real trader, account or PropReports data, no browser
 chrome or personal bookmarks.
