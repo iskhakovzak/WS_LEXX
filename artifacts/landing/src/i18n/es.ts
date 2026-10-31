@@ -97,7 +97,25 @@ export const es: Dict = {
   },
   screens: {
     title: "Dentro de WS_DeskOS",
-    items: { risk: "Panel de riesgo en vivo", day: "El día de un trader", academy: "Camino de la academia", analytics: "Analítica de la mesa" },
+    items: {
+      risk: "Panel de riesgo en vivo", day: "El día de un trader", academy: "Camino de la academia", analytics: "Analítica de la mesa",
+      plan: "Plan de juego de la mesa", journal: "Diario y resultado del día", whatif: "Qué pasaría con tus propias operaciones", themes: "Temas de mercado",
+      ideas: "Tablero de ideas", curator: "Gabinete del curador", everywhere: "En el teléfono",
+    },
+    /** Texto alternativo: qué muestra la captura. Todos los nombres y cifras son de una mesa de demostración ficticia. */
+    alt: {
+      risk: "Mesa de riesgo de WS_DeskOS durante la sesión: alertas de riesgo de hoy por trader (rachas de pérdidas, más tamaño justo después de una pérdida, 75% del stop diario) y la estimación de lo ahorrado por la mesa en el mes.",
+      day: "Panel de un trader en la sesión: P&L neto del día y de la semana, límite diario restante, una alerta en vivo por subir el tamaño tras una pérdida y la ventaja de los últimos 90 días.",
+      academy: "Camino del trader en la academia: etapas Junior, Trader y Senior, preparación para el ascenso con 11 de 14 criterios, el principal cuello de botella y los criterios con sus objetivos.",
+      analytics: "Estadísticas de la oficina para los propietarios: rentabilidad neta del año frente a un objetivo del 40%, mejor y peor estrategia, días en verde, caída máxima y la curva acumulada por año.",
+      plan: "Plan de juego de la mesa antes de la apertura: régimen de mercado y límite del día, foco del día, visión del mercado y niveles clave de SPY / QQQ.",
+      journal: "Diario después del cierre: el resultado del día con la curva intradía, las fugas encontradas en las operaciones, el calendario del mes y el resumen de la semana.",
+      whatif: "Qué pasaría con las propias operaciones de un trader: el mismo trimestre con otra regla, P&L real frente al hipotético y la curva de ambos.",
+      themes: "Temas de mercado: cestas de igual peso ordenadas por el movimiento desde la apertura, con el cambio en premercado y en el día.",
+      ideas: "Tablero de ideas: ideas en revisión, que funcionaron y que no, con entrada, objetivo, stop, relación beneficio-riesgo y autor.",
+      curator: "Gabinete del curador: quién opera, quién está cerca del stop, días pendientes de revisión y el siguiente paso para cada trader, con el panel de riesgo al lado.",
+      everywhere: "WS_DeskOS en un teléfono: el día del trader con una alerta en vivo, la bandeja de notificaciones y la mesa de riesgo.",
+    },
     pending: "Espacio para captura",
   },
   form: {

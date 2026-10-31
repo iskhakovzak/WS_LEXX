@@ -168,19 +168,33 @@ export class Cloud {
     this.camera.lookAt(0, 0, 0);
   }
 
-  /** Fit the mark to the viewport: centred between the hero columns on wide screens, higher up on portrait. */
-  resize(width: number, height: number) {
+  /**
+   * Fit the mark into `stage` (CSS px, viewport coordinates with the page at the top): the box the layout keeps clear of
+   * the card column and the text column (Home.astro --stage-*). Without a box: centred, higher up on portrait.
+   * Returns the mark's on-screen width in CSS px (the caller scales the brightness with it).
+   */
+  resize(width: number, height: number, stage: { x: number; y: number; w: number; h: number } | null = null): number {
     const aspect = width / height;
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
     const dist = 7;
     const visH = 2 * dist * Math.tan(15 * DEG);
     const visW = visH * aspect;
-    const portrait = aspect < 0.9;
-    const s = portrait ? Math.min(visW * 0.72, 2.2) : Math.min(2.4, visW * 0.37, visH * 0.72);
+    let s: number;
+    if (stage) {
+      // The cloud reaches past the 1.0-wide mark (tilt, depth and drifting particles): leave that margin in the box.
+      s = Math.min(2.4, ((stage.w / width) * visW) / 1.3, ((stage.h / height) * visH) / 1.0);
+      const cx = stage.x + stage.w / 2, cy = stage.y + stage.h / 2;
+      // The camera sits left of the axis and looks at the origin, so a mark one unit behind it drifts left on screen.
+      const parallax = -this.base.x / this.base.z;
+      this.group.position.set((cx / width - 0.5) * visW + parallax, (0.5 - cy / height) * visH, -1);
+    } else {
+      const portrait = aspect < 0.9;
+      s = portrait ? Math.min(visW * 0.72, 2.2) : Math.min(2.4, visW * 0.37, visH * 0.72);
+      this.group.position.set(portrait ? 0.22 : 0.04, portrait ? visH * 0.2 : 0.08, -1);
+    }
     this.group.scale.set(s, s, s * 1.2);
-    // Wide screens: centre the mark in the gap between the card column (left) and the text column (right).
-    this.group.position.set(portrait ? 0.22 : 0.04, portrait ? visH * 0.2 : 0.08, -1);
+    return (s / visW) * width;
   }
 
   /** pointer in -1..1 (y up); null keeps the camera at rest. */

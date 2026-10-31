@@ -62,7 +62,8 @@ if (failures.length) {
 
 const config = readFileSync(path.join(root, "src", "site.config.ts"), "utf8");
 const open = [...new Set(config.match(/\{\{[A-Z_]+\}\}/g) ?? [])];
-const shots = ["live-risk", "trader-day", "academy", "analytics"].filter((n) => !existsSync(path.join(root, "public", "screens", `${n}.webp`)));
+const shotNames = [...config.matchAll(/name: "([a-z-]+)", hero:/g)].map((x) => x[1]);
+const shots = shotNames.filter((n) => ![`${n}.webp`, `${n}-800.webp`].every((f) => existsSync(path.join(root, "public", "screens", f))));
 console.log(`landing smoke: ${pages.length} pages ok, noindex=${noindex}, umami=${umami}, dist ${(size(dist) / 1024).toFixed(0)} KB`);
 if (open.length) console.log(`  placeholders still to fill in src/site.config.ts: ${open.join(" ")}`);
 if (shots.length) console.log(`  screenshots not added yet (public/screens/*.webp): ${shots.join(", ")}`);

@@ -46,14 +46,24 @@ export const NUMBERS = {
 };
 
 /**
- * Product screenshots (README.md "Screenshots"): drop the files into public/screens/ and keep these names. A slot
- * whose file is missing is not shown (placeholder frames appear only with PUBLIC_SHOW_PLACEHOLDERS=1).
+ * Product screenshots (README.md "Screenshots"): public/screens/<name>.webp (1600x1000) plus <name>-800.webp
+ * (800x500), captured from the synthetic demo desk only. `hero: true` slots fill the hero's card column; every slot can
+ * be the picture of an explorer group (content/features.ts `screen`). A slot whose file is missing is not shown
+ * (placeholder frames appear only with PUBLIC_SHOW_PLACEHOLDERS=1).
  */
 export const SCREENS = [
-  { id: "risk", file: "/screens/live-risk.webp" },
-  { id: "day", file: "/screens/trader-day.webp" },
-  { id: "academy", file: "/screens/academy.webp" },
-  { id: "analytics", file: "/screens/analytics.webp" },
+  { id: "risk", name: "live-risk", hero: true },
+  { id: "day", name: "trader-day", hero: true },
+  { id: "academy", name: "academy", hero: true },
+  { id: "analytics", name: "analytics", hero: true },
+  { id: "plan", name: "plan", hero: false },
+  { id: "journal", name: "journal", hero: false },
+  { id: "whatif", name: "what-if", hero: false },
+  { id: "themes", name: "themes", hero: false },
+  { id: "ideas", name: "ideas", hero: false },
+  { id: "curator", name: "curator", hero: false },
+  { id: "everywhere", name: "everywhere", hero: false },
 ] as const;
+export type ScreenId = (typeof SCREENS)[number]["id"];
 
 export const isPlaceholder = (v: string): boolean => /^\{\{[A-Z_]+\}\}$/.test(v.trim());

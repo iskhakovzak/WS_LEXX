@@ -95,7 +95,25 @@ export const en = {
   },
   screens: {
     title: "Inside WS_DeskOS",
-    items: { risk: "Live risk panel", day: "A trader's day", academy: "Academy path", analytics: "Desk analytics" },
+    items: {
+      risk: "Live risk panel", day: "A trader's day", academy: "Academy path", analytics: "Desk analytics",
+      plan: "Desk game plan", journal: "Journal and day result", whatif: "What-if on your own trades", themes: "Market themes",
+      ideas: "Trade ideas board", curator: "Curator cabinet", everywhere: "On the phone",
+    },
+    /** Alt text: what the screenshot shows. All names and numbers come from a fictional demo desk. */
+    alt: {
+      risk: "WS_DeskOS risk desk during the session: today's risk alerts per trader (losing streaks, bigger size right after a loss, 75% of the daily stop) and the desk saved estimate for the month.",
+      day: "A trader's dashboard in the session: net P&L for the day and week, daily limit left, a live alert about sizing up after a loss, and the edge for the last 90 days.",
+      academy: "Trader path in the academy: Junior, Trader and Senior stages, promotion readiness at 11 of 14 criteria, the main bottleneck and the criteria with targets.",
+      analytics: "Office stats for owners: net return for the year against a 40% target, best and worst strategy, green days, max drawdown and the cumulative curve by year.",
+      plan: "The desk game plan before the open: market regime and day limit, focus of the day, market view and SPY / QQQ key levels.",
+      journal: "Journal after the close: the day result with the intraday curve, leaks found in the trades, the month calendar by day and the week summary.",
+      whatif: "What-if on a trader's own trades: the same quarter under a different rule, actual versus would-have-been P&L and the equity curve of both.",
+      themes: "Market themes: equal-weight baskets ranked by move from the open, with premarket and full-day change.",
+      ideas: "Trade ideas board: ideas in review, worked and didn't work, with entry, target, stop, reward to risk and the author.",
+      curator: "Curator cabinet: who is trading, who is near the stop, days waiting for review and the next step for each trader, with the risk panel beside it.",
+      everywhere: "WS_DeskOS on a phone: the trader's day with a live alert, the notification inbox and the risk desk.",
+    },
     pending: "Screenshot slot",
   },
   form: {

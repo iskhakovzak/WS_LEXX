@@ -5,10 +5,11 @@
  * out or marked optional. Each feature: the pain, what WS_DeskOS does, the outcome.
  */
 import type { Locale } from "../i18n";
+import type { ScreenId } from "../site.config";
 
 export type Feature = { name: string; pain: string; does: string; outcome: string };
 export type Illo = "plan" | "feed" | "chart" | "equity" | "market" | "ladder" | "team" | "desk" | "platform";
-export type Group = { id: string; label: string; headline: string; who: string; illo: Illo; screen?: "risk" | "day" | "academy" | "analytics"; features: Feature[] };
+export type Group = { id: string; label: string; headline: string; who: string; illo: Illo; screen?: ScreenId; features: Feature[] };
 export type Role = { id: string; label: string; value: string; points: string[] };
 export type Features = {
   rolesTitle: string;
@@ -38,7 +39,7 @@ const en: Features = {
   labels: { pain: "The problem", does: "What WS_DeskOS does", outcome: "What changes", groups: "Parts of the day", illo: "Illustration with sample data", more: "tools" },
   groups: [
     {
-      id: "premarket", label: "Before the open", illo: "plan",
+      id: "premarket", label: "Before the open", illo: "plan", screen: "plan",
       headline: "Every trader starts with a plan the desk can check.",
       who: "Traders write it in minutes. Curators see who has none before 9:30.",
       features: [
@@ -88,7 +89,7 @@ const en: Features = {
       ],
     },
     {
-      id: "close", label: "After the close", illo: "chart", screen: "day",
+      id: "close", label: "After the close", illo: "chart", screen: "journal",
       headline: "Closing the day takes minutes, and the lesson reaches tomorrow.",
       who: "Traders review their own day. Curators get it in a queue ranked by money.",
       features: [
@@ -113,7 +114,7 @@ const en: Features = {
       ],
     },
     {
-      id: "week", label: "Week and season", illo: "equity", screen: "analytics",
+      id: "week", label: "Week and season", illo: "equity", screen: "whatif",
       headline: "Find the edge and the leaks in dollars, not in feelings.",
       who: "Traders learn what to keep. Owners see what works across the desk.",
       features: [
@@ -138,7 +139,7 @@ const en: Features = {
       ],
     },
     {
-      id: "market", label: "Market", illo: "market",
+      id: "market", label: "Market", illo: "market", screen: "themes",
       headline: "The context for the plan, next to the trades.",
       who: "Traders prepare faster. Curators build the desk plan from one place.",
       features: [
@@ -182,7 +183,7 @@ const en: Features = {
       ],
     },
     {
-      id: "team", label: "Team", illo: "team",
+      id: "team", label: "Team", illo: "team", screen: "ideas",
       headline: "The desk learns from itself without exposing anyone's P&L.",
       who: "Traders compare and share. Curators turn good ideas into desk habits.",
       features: [
@@ -204,7 +205,7 @@ const en: Features = {
       ],
     },
     {
-      id: "management", label: "Management", illo: "desk",
+      id: "management", label: "Management", illo: "desk", screen: "curator",
       headline: "Curators, risk managers and owners run the floor from one place.",
       who: "Every staff screen starts from the same trades the traders see.",
       features: [
@@ -229,7 +230,7 @@ const en: Features = {
       ],
     },
     {
-      id: "platform", label: "Everywhere", illo: "platform",
+      id: "platform", label: "Everywhere", illo: "platform", screen: "everywhere",
       headline: "Built for a real floor: phones, Telegram, three languages.",
       who: "The same system on the desk, on the phone and in the chat.",
       features: [
@@ -274,7 +275,7 @@ const es: Features = {
   labels: { pain: "El problema", does: "Qué hace WS_DeskOS", outcome: "Qué cambia", groups: "Partes del día", illo: "Ilustración con datos de ejemplo", more: "herramientas" },
   groups: [
     {
-      id: "premarket", label: "Antes de la apertura", illo: "plan",
+      id: "premarket", label: "Antes de la apertura", illo: "plan", screen: "plan",
       headline: "Cada trader empieza con un plan que la mesa puede comprobar.",
       who: "Los traders lo escriben en minutos. Los curadores ven quién no lo tiene antes de las 9:30.",
       features: [
@@ -324,7 +325,7 @@ const es: Features = {
       ],
     },
     {
-      id: "close", label: "Después del cierre", illo: "chart", screen: "day",
+      id: "close", label: "Después del cierre", illo: "chart", screen: "journal",
       headline: "Cerrar el día lleva minutos, y la lección llega a mañana.",
       who: "Los traders revisan su día. Los curadores lo reciben en una cola ordenada por dinero.",
       features: [
@@ -349,7 +350,7 @@ const es: Features = {
       ],
     },
     {
-      id: "week", label: "Semana y temporada", illo: "equity", screen: "analytics",
+      id: "week", label: "Semana y temporada", illo: "equity", screen: "whatif",
       headline: "Encuentra la ventaja y las fugas en dólares, no en sensaciones.",
       who: "Los traders aprenden qué conservar. Los propietarios ven qué funciona en la mesa.",
       features: [
@@ -374,7 +375,7 @@ const es: Features = {
       ],
     },
     {
-      id: "market", label: "Mercado", illo: "market",
+      id: "market", label: "Mercado", illo: "market", screen: "themes",
       headline: "El contexto del plan, junto a las operaciones.",
       who: "Los traders se preparan más rápido. Los curadores arman el plan de la mesa en un solo lugar.",
       features: [
@@ -418,7 +419,7 @@ const es: Features = {
       ],
     },
     {
-      id: "team", label: "Equipo", illo: "team",
+      id: "team", label: "Equipo", illo: "team", screen: "ideas",
       headline: "La mesa aprende de sí misma sin exponer el P&L de nadie.",
       who: "Los traders comparan y comparten. Los curadores convierten las buenas ideas en hábitos de la mesa.",
       features: [
@@ -440,7 +441,7 @@ const es: Features = {
       ],
     },
     {
-      id: "management", label: "Gestión", illo: "desk",
+      id: "management", label: "Gestión", illo: "desk", screen: "curator",
       headline: "Curadores, gestores de riesgo y propietarios dirigen la mesa desde un lugar.",
       who: "Cada pantalla del personal parte de las mismas operaciones que ven los traders.",
       features: [
@@ -465,7 +466,7 @@ const es: Features = {
       ],
     },
     {
-      id: "platform", label: "En todas partes", illo: "platform",
+      id: "platform", label: "En todas partes", illo: "platform", screen: "everywhere",
       headline: "Hecho para una mesa real: móvil, Telegram y tres idiomas.",
       who: "El mismo sistema en la mesa, en el teléfono y en el chat.",
       features: [

@@ -9,6 +9,8 @@ export interface HeroOptions {
   canvas: HTMLCanvasElement;
   /** The hero section: rendering pauses while it is off-screen. */
   hero: HTMLElement;
+  /** Where the mark should sit (a CSS box clear of the hero columns); without it the mark is centred. */
+  stage?: HTMLElement | null;
   reducedMotion: boolean;
   onReady: () => void;
   onLost: () => void;
@@ -29,12 +31,20 @@ export function startHero(o: HeroOptions): () => void {
   const cloud = new Cloud(renderer, mobile ? 128 : 512, dpr);
   const fluid = o.reducedMotion ? null : new Fluid(renderer, { simSize: mobile ? 128 : 256, dyeSize: mobile ? 256 : 512, type: THREE.HalfFloatType });
 
-  let width = 0, height = 0;
+  let width = 0, height = 0, gain = 0;
+  // Brightness: the desktop cloud has 16x the points of the mobile one on the same surface. A smaller mark packs the
+  // same points into less area, so the gain falls with the mark's on-screen area (else it saturates into a solid shape).
+  const baseGain = mobile ? 0.85 : 0.38;
+  const refPx = mobile ? 260 : 533;
   const resize = () => {
     width = o.canvas.clientWidth || window.innerWidth;
     height = o.canvas.clientHeight || window.innerHeight;
     renderer.setSize(width, height, false);
-    cloud.resize(width, height);
+    const r = o.stage?.getBoundingClientRect();
+    // The canvas is fixed and the hero starts at the top of the page: stage coordinates as if scrolled to the top.
+    const box = r && r.width > 40 && r.height > 40 ? { x: r.left, y: r.top + window.scrollY, w: r.width, h: r.height } : null;
+    const markPx = cloud.resize(width, height, box);
+    gain = baseGain * Math.min(1, Math.max(0.3, (markPx / refPx) ** 2));
   };
   resize();
 
@@ -67,8 +77,6 @@ export function startHero(o: HeroOptions): () => void {
   // Lifecycle: run only while the tab is visible and the hero is on screen.
   let visible = !document.hidden, onScreen = true, raf = 0, last = 0, time = 0, frames = 0, ready = false;
   const speed = o.reducedMotion ? 0.15 : 1;
-  // Brightness: the desktop cloud has 16x the points of the mobile one on the same surface.
-  const gain = mobile ? 0.85 : 0.38;
   if (o.reducedMotion) {
     // Settle the cloud before the first frame, then let it drift very slowly with no cursor input.
     for (let i = 0; i < 240; i++) cloud.step({ dt: 1 / 60, time: i / 60, fluid: null, pointer: null, gain });

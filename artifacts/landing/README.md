@@ -17,7 +17,7 @@ Build-time switches (none are secrets):
 | `LANDING_SITE_URL` | absolute site URL for canonical and hreflang links |
 | `PUBLIC_LEADS_API_BASE` | where the form posts (`<base>/api/leads`); empty = same origin |
 | `PUBLIC_UMAMI_URL` + `PUBLIC_UMAMI_ID` | both set = Umami script tag; otherwise no analytics |
-| `PUBLIC_SHOW_PLACEHOLDERS=1` | local preview: show unfilled numbers and empty screenshot frames |
+| `PUBLIC_SHOW_PLACEHOLDERS=1` | local preview: show unfilled numbers and empty frames for missing screenshots |
 
 ## Before launch
 
@@ -37,7 +37,9 @@ The hero's live risk feed uses clearly labelled sample data (`src/i18n/*.ts`, "T
 - **Hero background**: a GPU particle cloud shaped like the WS mark, stirred by the cursor through a fluid simulation
   (`src/scripts/hero/`: `shape.ts` SDF of the mark, `cloud.ts` particle sim, `fluid.ts` cursor fluid, `index.ts` lifecycle).
   three.js `0.150.1` is bundled and loaded lazily after first paint, in its own chunk. 262k points on desktop, 16k on
-  phones. It pauses when the tab is hidden or the hero is off screen, and dims as the page scrolls.
+  phones. It pauses when the tab is hidden or the hero is off screen, and dims as the page scrolls. The mark sits in a
+  stage box (`--stage-*` in `Home.astro`, measured from `[data-stage]`) kept clear of the card and text columns at every
+  width, and its brightness falls with its on-screen size so a small mark never saturates into a solid shape.
 - **Fallbacks**: no WebGL2 or no float render targets: three is never downloaded and a static dotted mark stays in
   place (this mark also shows before the cloud starts and when script is off). `prefers-reduced-motion`: the cloud is
   pre-settled and drifts very slowly, with no cursor fluid; illustrations and reveals stop moving.
@@ -48,24 +50,32 @@ The hero's live risk feed uses clearly labelled sample data (`src/i18n/*.ts`, "T
 
 ## Screenshots
 
-Four slots (WebP, 1600x1000, 16:10) in `public/screens/`. The "Inside WS_DeskOS" section and the explorer show a
-screenshot only when its file exists; the hero's card column shows an empty frame until then:
+Eleven slots in `public/screens/` (list in `src/site.config.ts` `SCREENS`): `<name>.webp` at 1600x1000 plus
+`<name>-800.webp` at 800x500, served as a 1x/2x `srcset`. A slot shows only when its file exists. The four `hero`
+slots fill the hero's card column (below the first screen from 1100 px down) and the "Inside WS_DeskOS" section;
+every explorer group points at one slot (`screen` in `src/content/features.ts`) and falls back to its CSS illustration
+when the file is missing. Alt text and captions: `screens.alt` / `screens.items` in `src/i18n/*.ts`.
 
-| File | What to capture |
+| File | Screen (demo user) |
 |---|---|
-| `live-risk.webp` | Risk page during a session: live signals feed with stop 70/90 %, loss streak and revenge alerts, and the "desk saved" counter |
-| `trader-day.webp` | A trader's day: morning plan, the day's trades and the evening review |
-| `academy.webp` | Academy path with the Junior / Trader / Senior ladder and today's daily loop |
-| `analytics.webp` | Desk analytics: edge by setup and time of day, the desk report |
+| `live-risk` | Risk desk in the session: risk alerts, desk saved for the month (admin) |
+| `trader-day` | Dashboard in the session with a live alert (junior trader) |
+| `academy` | Trader path: ladder, readiness, criteria (junior trader) |
+| `analytics` | Office stats against the year target (admin) |
+| `plan` | Desk game plan before the open (junior trader) |
+| `journal` | Journal after the close: day result, leaks, calendar (junior trader) |
+| `what-if` | What-if on the trader's own quarter (junior trader) |
+| `themes` | Market themes (admin) |
+| `ideas` | Trade ideas board (admin) |
+| `curator` | Curator cabinet (curator) |
+| `everywhere` | Three phone screens at 390 px: dashboard, notifications, risk desk |
 
-Capture them from the **seed-demo desk only**, on your own PC (localhost), never from the live desk:
-
-```bash
-pnpm --filter @workspace/scripts run local-db        # local Postgres (keep open)
-pnpm --filter @workspace/scripts run seed-demo       # fictional demo desk; remove later with unseed-demo
-# start the API and the web app as in the root README (localhost only), sign in as a demo user,
-# set the browser window to 1600x1000, dark theme, and capture each screen
-```
+Capture them from the **synthetic seed-demo desk only**, never from the live desk or the local copy of it
+(`edge_tracker`): a scratch database on the local server, migrated by the API on start and filled with
+`scripts/src/seed-demo.ts` (`DATABASE_URL` pointing at the scratch DB for that command only), a second API and web dev
+server on free ports, sessions minted for demo users (no sign-in), the English UI, a 1600x1000 viewport at 2x. The
+seed writes Russian names and notes; give the demo users Latin names (`pnpm --filter @workspace/api-server run
+rename-user`) and English text in the scratch DB before capturing. Drop the scratch DB afterwards.
 
 Check every capture before committing: demo names only, no real trader, account or PropReports data, no browser
-chrome or personal bookmarks. Convert to WebP (for example `cwebp -q 82 in.png -o live-risk.webp`).
+chrome or personal bookmarks.
