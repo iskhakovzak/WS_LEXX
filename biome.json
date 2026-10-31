@@ -103,6 +103,10 @@
     {
       "includes": ["scripts/**", "artifacts/*/scripts/**", "**/*.test.ts", "**/*.test.tsx", "**/__tests__/**", "artifacts/*/build.mjs"],
       "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
+    {
+      "includes": ["**/*.astro"],
+      "linter": { "rules": { "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" } } }
     }
   ]
 }

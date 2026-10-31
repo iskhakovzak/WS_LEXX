@@ -1,0 +1,188 @@
+---
+import LiveFeed from "./LiveFeed.astro";
+import LeadForm from "./LeadForm.astro";
+import Proof from "./Proof.astro";
+import { t, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const d = t(locale);
+const segmentCodes = ["prop_desk", "funded_trader", "futures_firm"] as const;
+---
+<section class="hero wrap" aria-labelledby="hero-title">
+  <h1 id="hero-title" data-reveal>{d.hero.title}</h1>
+  <div class="hero-grid">
+    <div class="hero-copy">
+      <p class="lede" data-reveal style="--i:1">{d.hero.lede}</p>
+      <div class="cta" data-reveal style="--i:2">
+        <a class="btn btn-primary" href="#contact" data-segment="prop_desk">{d.hero.demo}</a>
+        <a class="btn btn-quiet" href="#contact" data-segment="funded_trader">{d.hero.access}</a>
+      </div>
+    </div>
+    <div class="hero-feed" data-reveal style="--i:3"><LiveFeed locale={locale} /></div>
+  </div>
+</section>
+
+<section id="risk" class="section wrap risk" aria-labelledby="risk-title">
+  <div class="risk-head">
+    <h2 id="risk-title" data-reveal>{d.risk.title}</h2>
+    <p class="lede" data-reveal style="--i:1">{d.risk.lede}</p>
+  </div>
+  <dl class="risk-list">
+    {d.risk.list.map(([term, desc], i) => (
+      <div class:list={["risk-item", i === d.risk.list.length - 1 && "risk-saved"]} data-reveal style={`--i:${i % 2}`}>
+        <dt>{term}</dt>
+        <dd>{desc}</dd>
+      </div>
+    ))}
+  </dl>
+</section>
+
+<section id="growth" class="section wrap growth" aria-labelledby="growth-title">
+  <div class="growth-head">
+    <h2 id="growth-title" data-reveal>{d.growth.title}</h2>
+    <p class="lede" data-reveal style="--i:1">{d.growth.lede}</p>
+  </div>
+  <ol class="ladder">
+    {d.growth.stages.map(([name, desc], i) => (
+      <li data-reveal style={`--i:${i}`}>
+        <p class="ladder-name">{name}</p>
+        <p>{desc}</p>
+      </li>
+    ))}
+  </ol>
+  <div class="loop" data-reveal>
+    <h3>{d.growth.loopTitle}</h3>
+    <ol class="loop-steps">{d.growth.loop.map((s) => <li>{s}</li>)}</ol>
+    <p class="loop-guide">{d.growth.guide}</p>
+  </div>
+</section>
+
+<section id="analytics" class="section paper" aria-labelledby="analytics-title">
+  <div class="wrap paper-in">
+    <div>
+      <h2 id="analytics-title" data-reveal>{d.analytics.title}</h2>
+      <p class="lede" data-reveal style="--i:1">{d.analytics.lede}</p>
+    </div>
+    <ul class="truths">
+      {d.analytics.points.map((p, i) => <li data-reveal style={`--i:${i}`}>{p}</li>)}
+    </ul>
+  </div>
+</section>
+
+<section class="section wrap segments" aria-labelledby="segments-title">
+  <h2 id="segments-title" data-reveal>{d.segments.title}</h2>
+  <ul class="seg-list">
+    {d.segments.items.map(([name, desc, cta], i) => (
+      <li class="seg" data-reveal style={`--i:${i}`}>
+        <h3 class="seg-name">{name}</h3>
+        <p>{desc}</p>
+        <a class="seg-cta" href="#contact" data-segment={segmentCodes[i]}>{cta}<span aria-hidden="true"> &rarr;</span></a>
+      </li>
+    ))}
+  </ul>
+</section>
+
+<section class="section wrap integrations" aria-labelledby="int-title">
+  <h2 id="int-title" data-reveal>{d.integrations.title}</h2>
+  <div class="int-grid">
+    <div class="int-main" data-reveal>
+      <p class="int-name"><span class="live" aria-hidden="true"></span>{d.integrations.primaryName}</p>
+      <p>{d.integrations.primary}</p>
+    </div>
+    <div class="int-more" data-reveal style="--i:1">
+      <h3>{d.integrations.othersTitle}</h3>
+      <p>{d.integrations.others}</p>
+    </div>
+  </div>
+</section>
+
+<section id="security" class="section security-band" aria-labelledby="sec-title">
+  <div class="wrap sec-in">
+    <h2 id="sec-title" data-reveal>{d.security.title}</h2>
+    <dl class="sec-list">
+      {d.security.items.map(([term, desc], i) => (
+        <div data-reveal style={`--i:${i}`}>
+          <dt>{term}</dt>
+          <dd>{desc}</dd>
+        </div>
+      ))}
+    </dl>
+  </div>
+</section>
+
+<Proof locale={locale} />
+
+<LeadForm locale={locale} />
+
+<style>
+  .hero { padding-top: clamp(40px, 7vw, 104px); }
+  .hero h1 { max-width: 19ch; }
+  .hero-grid { display: grid; gap: 40px; margin-top: clamp(32px, 4vw, 56px); align-items: start; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  @media (min-width: 960px) {
+    .hero-grid { grid-template-columns: 5fr 6fr; gap: 64px; }
+  }
+
+  .risk { display: grid; gap: 48px; }
+  .risk-list { display: grid; gap: 12px; }
+  .risk-item { background: var(--surface); border-radius: 16px; padding: 24px 26px; }
+  .risk-item dt { font-weight: 600; font-size: var(--step-h3); letter-spacing: -0.015em; line-height: 1.2; }
+  .risk-item dd { margin-top: 8px; color: var(--ink-2); }
+  .risk-saved { background: var(--up); color: #06140d; }
+  .risk-saved dd { color: #0b2a1a; }
+  @media (min-width: 900px) {
+    .risk { grid-template-columns: 5fr 7fr; gap: 64px; }
+    .risk-head { position: sticky; top: 112px; align-self: start; }
+    .risk-head .lede { margin-top: 28px; }
+    .risk-list { grid-template-columns: 1fr 1fr; }
+  }
+  .risk-head .lede, .growth-head .lede { margin-top: 24px; }
+
+  .growth-head { display: grid; gap: 0; max-width: 980px; }
+  .ladder { display: grid; gap: 32px; margin-top: 56px; counter-reset: none; }
+  .ladder-name { font-size: clamp(2.75rem, 7vw, 6rem); font-weight: 700; letter-spacing: -0.045em; line-height: 1; margin-bottom: 14px; }
+  .ladder li:nth-child(1) .ladder-name { color: var(--ink-2); }
+  .ladder li p:last-child { max-width: 32ch; }
+  @media (min-width: 900px) { .ladder { grid-template-columns: repeat(3, 1fr); gap: 40px; } }
+  .loop { margin-top: 72px; background: var(--surface); border-radius: 20px; padding: clamp(24px, 4vw, 48px); display: grid; gap: 24px; }
+  .loop-steps { display: grid; gap: 10px; }
+  .loop-steps li { background: var(--surface-2); border-radius: 999px; padding: 14px 22px; font-weight: 550; }
+  .loop-guide { color: var(--ink-2); max-width: 60ch; }
+  @media (min-width: 900px) { .loop-steps { grid-template-columns: repeat(3, 1fr); } }
+
+  .paper { background: var(--paper); color: var(--paper-ink); padding-bottom: var(--section); margin-top: var(--section); padding-top: var(--section); }
+  .paper .lede { margin-top: 24px; }
+  .paper-in { display: grid; gap: 48px; }
+  .truths { display: grid; gap: 4px; }
+  .truths li { font-size: clamp(1.125rem, 1vw + 0.9rem, 1.5rem); line-height: 1.35; font-weight: 550; letter-spacing: -0.01em; padding: 20px 0; }
+  .truths li + li { box-shadow: inset 0 1px 0 rgb(0 0 0 / 0.12); }
+  @media (min-width: 900px) { .paper-in { grid-template-columns: 6fr 5fr; gap: 80px; align-items: end; } }
+  .paper + .segments { padding-top: var(--section); }
+
+  .seg-list { display: grid; gap: 12px; margin-top: 48px; }
+  .seg { display: grid; gap: 10px; background: var(--surface); border-radius: 16px; padding: 26px; transition: background-color 200ms; }
+  .seg:hover { background: var(--surface-2); }
+  .seg-name { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.03em; }
+  .seg p { color: var(--ink-2); }
+  .seg-cta { font-weight: 600; text-decoration: none; justify-self: start; padding: 6px 0; }
+  .seg-cta:hover { text-decoration: underline; }
+  @media (min-width: 900px) {
+    .seg { grid-template-columns: 4fr 6fr auto; align-items: center; gap: 32px; padding: 32px 36px; }
+  }
+
+  .int-grid { display: grid; gap: 16px; margin-top: 48px; }
+  .int-main { background: var(--primary); color: var(--primary-ink); border-radius: 20px; padding: clamp(28px, 4vw, 48px); display: grid; gap: 16px; align-content: start; }
+  .int-name { display: flex; align-items: center; gap: 14px; font-size: clamp(2.25rem, 5vw, 4.25rem); font-weight: 700; letter-spacing: -0.045em; line-height: 1; }
+  .int-main .live { width: 14px; height: 14px; border-radius: 50%; background: hsl(151 55% 38%); flex: none; }
+  .int-main p:last-child { max-width: 40ch; font-size: 1.125rem; }
+  .int-more { background: var(--surface); border-radius: 20px; padding: clamp(28px, 4vw, 48px); display: grid; gap: 16px; align-content: start; }
+  .int-more p { color: var(--ink-2); max-width: 44ch; }
+  @media (min-width: 900px) { .int-grid { grid-template-columns: 7fr 5fr; } }
+
+  .security-band { background: var(--surface); margin-top: var(--section); padding-bottom: var(--section); }
+  .sec-list { display: grid; gap: 36px; margin-top: 56px; }
+  .sec-list dt { font-size: var(--step-h3); font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+  .sec-list dd { margin-top: 10px; color: var(--ink-2); max-width: 40ch; }
+  @media (min-width: 900px) { .sec-list { grid-template-columns: repeat(3, 1fr); gap: 48px; } }
+</style>

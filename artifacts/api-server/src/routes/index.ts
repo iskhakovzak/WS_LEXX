@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import leadsRouter from "./leads";
 import tradesRouter from "./trades";
 import eventsRouter from "./events";
 import researchRouter from "./research";
@@ -133,6 +134,7 @@ import newsChannelRouter from "./news-channel";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(leadsRouter); // POST /leads — public landing lead form (own per-IP limiter)
 router.use(cronRouter); // POST|GET /cron/tick — PropReports heartbeat (Bearer CRON_SECRET)
 router.use(tradesVersionMiddleware); // cross-instance trade-cache stamp (≤ 1 SELECT / 15 s / instance)
 // Sections closed per ladder stage (desk setting access.sections, default {} = open): 403 SECTION_BLOCKED, staff never.

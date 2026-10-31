@@ -56,6 +56,15 @@ export function corsMiddleware(production: boolean = config.isProduction): Reque
   return cors({ origin: true, credentials: false });
 }
 
+/**
+ * POST /api/leads from a landing on another origin (LEADS_ALLOWED_ORIGINS). Null when the list is empty: the landing
+ * is then served same-origin through Caddy (docs/DEPLOY.md) and needs no CORS. No credentials, JSON only.
+ */
+export function leadsCors(origins: readonly string[] = config.leadsAllowedOrigins): RequestHandler | null {
+  if (!origins.length) return null;
+  return cors({ origin: [...origins], methods: ["POST"], allowedHeaders: ["Content-Type", "X-Lang"], credentials: false, maxAge: 600 });
+}
+
 // ─── CSP ────────────────────────────────────────────────────────────────────────────────────────────────
 /**
  * External origins the SPA needs (checked in the code, 2026-10-17):
@@ -147,6 +156,7 @@ export const JSON_BODY_OVERRIDES: readonly BodyOverride[] = [
   { methods: ["PUT", "PATCH"], path: /^\/author-notes(\/\d+)?$/, limit: "1mb", note: "author notes" },
   { methods: ["POST"], path: /^\/client-errors$/, limit: "32kb", note: "browser error reports" },
   { methods: ["POST"], path: /^\/usage\/batch$/, limit: "32kb", note: "usage tracker batches (≤ 50 events)" },
+  { methods: ["POST"], path: /^\/leads$/, limit: "16kb", note: "public landing lead form" },
 ];
 
 function bodyLimitFor(method: string, path: string): string {

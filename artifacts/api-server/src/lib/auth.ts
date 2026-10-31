@@ -218,6 +218,7 @@ export const PUBLIC_API_ROUTES: readonly PublicRoute[] = [
   { method: "POST", path: "/auth/guest" },
   { method: "POST", path: "/client-errors" },  // browser error reports (also from the login screen); own limiter + 32 KB
   { method: "POST", path: "/csp-report" },     // CSP violation reports (browsers send them without credentials)
+  { method: "POST", path: "/leads" },          // landing lead form (routes/leads.ts); own per-IP limiter + 16 KB
   { method: "GET", path: "/holidays" },        // market calendar for the login/shell clock
   { method: "POST", path: "/telegram/webhook" }, // Telegram calls us; verified by its own secret
   { method: "POST", path: "/cron/tick" },       // PropReports heartbeat (pg_cron); Bearer CRON_SECRET checked by routes/cron.ts

@@ -1,0 +1,39 @@
+---
+import Mark from "./Mark.astro";
+import { LEGAL, isPlaceholder } from "../site.config";
+import { t, pathFor, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const d = t(locale);
+const year = new Date().getFullYear();
+const email = isPlaceholder(LEGAL.contactEmail) ? null : LEGAL.contactEmail;
+const entity = isPlaceholder(LEGAL.entity) ? "WS_DeskOS" : LEGAL.entity;
+---
+<footer class="foot">
+  <div class="wrap">
+    <p class="foot-name"><Mark size={64} /><span>WS<span class="soft">_DeskOS</span></span></p>
+    <div class="foot-row">
+      <p class="muted">{d.footer.tagline}</p>
+      <nav aria-label="Legal" class="foot-links">
+        <a href={pathFor(locale, "terms")}>{d.footer.terms}</a>
+        <a href={pathFor(locale, "privacy")}>{d.footer.privacy}</a>
+        <a href={pathFor(locale, "refund")}>{d.footer.refund}</a>
+        {email && <a href={`mailto:${email}`}>{d.footer.contact}</a>}
+      </nav>
+    </div>
+    <p class="foot-copy muted">&copy; {year} {entity}. {d.footer.rights}</p>
+  </div>
+</footer>
+
+<style>
+  .foot { margin-top: var(--section); padding-block: 72px 40px; background: var(--surface); }
+  .foot-name { display: flex; align-items: center; gap: clamp(12px, 2vw, 24px); font-size: clamp(2.75rem, 10vw, 9rem); overflow: hidden; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
+  .foot-name :global(svg) { width: 0.62em; height: 0.62em; flex: none; }
+  .soft { color: var(--ink-2); font-weight: 450; }
+  .foot-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 32px; margin-top: 48px; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+  .foot-links a { text-decoration: none; color: var(--ink); }
+  .foot-links a:hover { text-decoration: underline; }
+  .foot-copy { margin-top: 24px; font-size: var(--step-small); }
+</style>

@@ -424,3 +424,61 @@ node --enable-source-maps dist/index.mjs`) и сайт (`pnpm --filter @workspac
 только целиком: «Админка → Люди → ⋯ → Переименовать…» или скриптом `rename-user` на сервере (пробный прогон
 `--dry-run` печатает, сколько строк в какой таблице поменяется). Пошагово, на примере владельца
 «Закир» → «Zakir Iskhakov»: [RENAME.md](RENAME.md).
+
+## 15. Публичный лендинг (`artifacts/landing`)
+
+Статический сайт на Astro: английский на `/`, испанский на `/es/`, страницы Terms / Privacy / Refund (черновики).
+Форма заявки шлёт `POST /api/leads` в тот же API (таблица `leads`, уведомление админам в Telegram). Что заполнить
+перед запуском и как снять скриншоты — `artifacts/landing/README.md`.
+
+**Сборка** (на сервере, после `git pull`, вместе с разделом 8):
+
+```bash
+pnpm --filter @workspace/landing run build          # → artifacts/landing/dist (≈ 0,3 МБ), в конце smoke-проверка
+sudo rsync -a --delete artifacts/landing/dist/ /var/www/ws-landing/
+```
+
+Переменные сборки (не секреты; задаются в команде сборки, в `.env`-файлы не пишутся):
+
+| Переменная | Значение |
+|---|---|
+| `LANDING_INDEXABLE` | не задана = на всех страницах `noindex` и `robots.txt: Disallow: /`. `1` — только когда куплен домен и тексты готовы |
+| `LANDING_SITE_URL` | `https://<домен>` — для canonical / hreflang |
+| `PUBLIC_LEADS_API_BASE` | пусто = форма шлёт на свой же хост (Caddy проксирует `/api/leads`, ниже). Иначе — адрес API |
+| `PUBLIC_UMAMI_URL`, `PUBLIC_UMAMI_ID` | заданы обе — добавляется скрипт Umami; иначе аналитики нет |
+
+**Временный хост** (пока домена нет): отдельный адрес в `/etc/caddy/Caddyfile`, например поддомен уже работающего
+адреса или `http://<IP сервера>:8088`. Заявки идут на тот же хост, поэтому CORS не нужен:
+
+```
+landing.example.com {
+	encode zstd gzip
+	handle /api/leads {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		root * /var/www/ws-landing
+		try_files {path} {path}/index.html
+		file_server
+	}
+	header /_astro/* Cache-Control "public, max-age=31536000, immutable"
+	log {
+		output file /var/log/caddy/ws-landing.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}
+```
+
+Через этот хост наружу открыт только `POST /api/leads` (у маршрута свой лимит: 5 заявок с IP за 15 минут, тело до
+16 КБ, поле-ловушка для ботов); остальной API остаётся на адресе деска. Затем `sudo systemctl reload caddy`.
+
+**Домен.** Когда домен куплен: заменить адрес в блоке выше на домен (Caddy сам выпустит сертификат), собрать заново с
+`LANDING_SITE_URL=https://<домен>` и, когда всё проверено, с `LANDING_INDEXABLE=1`. Если лендинг окажется на другом
+хосте, чем прокси к API, — собрать с `PUBLIC_LEADS_API_BASE=https://<адрес API>` и в `api.env` задать
+`LEADS_ALLOWED_ORIGINS=https://<домен лендинга>` (CORS только для `/api/leads`, только в production).
+
+**Проверка:** `curl -sI https://landing.example.com/ | head -1` → 200; в исходнике страницы есть
+`<meta name="robots" content="noindex">`, пока `LANDING_INDEXABLE` не задана; тестовая заявка видна в
+`SELECT id, segment, email, created_at FROM leads ORDER BY id DESC LIMIT 5;` и приходит админам в Telegram.

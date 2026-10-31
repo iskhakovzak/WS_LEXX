@@ -1,0 +1,37 @@
+---
+// DRAFT: legal pages come from SaaS templates and are not lawyer-reviewed (src/legal/content.ts).
+import Base from "../layouts/Base.astro";
+import { legalDoc, type LegalSlug } from "../legal/content";
+import { LEGAL } from "../site.config";
+import { t, pathFor, type Locale } from "../i18n";
+
+interface Props { locale: Locale; slug: LegalSlug }
+const { locale, slug } = Astro.props;
+const d = t(locale);
+const doc = legalDoc(locale, slug);
+---
+<Base locale={locale} slug={slug} title={doc.title} description={doc.intro.slice(0, 155)}>
+  <article class="wrap legal">
+    <p class="draft">{d.legal.draft} &middot; {d.legal.updated}: {LEGAL.effectiveDate}</p>
+    <h1>{doc.title}</h1>
+    <p class="intro">{doc.intro}</p>
+    {doc.sections.map((s) => (
+      <section>
+        <h2>{s.h}</h2>
+        {s.p.map((para) => <p>{para}</p>)}
+      </section>
+    ))}
+    <p class="back"><a href={pathFor(locale)}>{d.legal.back}</a></p>
+  </article>
+</Base>
+
+<style>
+  .legal { max-width: calc(760px + 2 * var(--gutter)); padding-top: clamp(48px, 7vw, 96px); }
+  .legal h1 { font-size: clamp(2.25rem, 5vw, 3.75rem); }
+  .draft { color: var(--warn); font-size: var(--step-small); font-weight: 600; margin-bottom: 20px; }
+  .intro { margin-top: 28px; font-size: 1.1875rem; }
+  .legal section { margin-top: 40px; }
+  .legal h2 { font-size: 1.375rem; letter-spacing: -0.015em; line-height: 1.25; }
+  .legal section p { margin-top: 12px; color: #d6d6d6; }
+  .back { margin-top: 56px; }
+</style>

@@ -1,0 +1,180 @@
+---
+// One lead form for both calls to action: "Book a demo" (desks) and "Get access" (traders) preselect the segment.
+// Posts JSON to `${PUBLIC_LEADS_API_BASE}/api/leads` (artifacts/api-server routes/leads.ts).
+import { LEADS_API_BASE } from "../site.config";
+import { t, pathFor, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const f = t(locale).form;
+const sizes = ["1", "2-10", "11-25", "26-50", "51-100", "100+"];
+const segments = ["prop_desk", "funded_trader", "futures_firm"] as const;
+const messages = { sending: f.sending, submit: f.submit, generic: f.errorGeneric, validation: f.errorValidation, rate: f.errorRate };
+---
+<section id="contact" class="section wrap contact" aria-labelledby="contact-title">
+  <div class="contact-copy">
+    <h2 id="contact-title" data-reveal>{f.title}</h2>
+    <p class="lede" data-reveal style="--i:1">{f.lede}</p>
+    <p class="muted note" data-reveal style="--i:2">{f.traderNote}</p>
+  </div>
+
+  <div class="contact-form" data-reveal style="--i:1">
+    <form data-lead-form data-endpoint={`${LEADS_API_BASE}/api/leads`} data-locale={locale} data-messages={JSON.stringify(messages)} novalidate>
+      <div class="field">
+        <label for="lf-segment">{f.segment}</label>
+        <select id="lf-segment" name="segment" required>
+          {segments.map((s) => <option value={s}>{f.segments[s]}</option>)}
+        </select>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="lf-name">{f.name}</label>
+          <input id="lf-name" name="name" autocomplete="name" required maxlength="120" />
+        </div>
+        <div class="field">
+          <label for="lf-email">{f.email}</label>
+          <input id="lf-email" name="email" type="email" autocomplete="email" required maxlength="254" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="lf-company">{f.company}</label>
+          <input id="lf-company" name="company" autocomplete="organization" maxlength="160" aria-describedby="lf-company-hint" />
+          <p id="lf-company-hint" class="hint">{f.companyHint}</p>
+        </div>
+        <div class="field">
+          <label for="lf-traders">{f.traders}</label>
+          <select id="lf-traders" name="tradersCount">
+            <option value="">{f.tradersChoose}</option>
+            {sizes.map((s) => <option value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="lf-platform">{f.platform}</label>
+        <select id="lf-platform" name="platform">
+          <option value="">{f.platformChoose}</option>
+          {f.platforms.map((p) => <option value={p}>{p}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="lf-message">{f.message} <span class="muted">({f.optional})</span></label>
+        <textarea id="lf-message" name="message" rows="4" maxlength="2000"></textarea>
+      </div>
+      <div class="hp" aria-hidden="true">
+        <label for="lf-website">Website</label>
+        <input id="lf-website" name="website" tabindex="-1" autocomplete="off" />
+      </div>
+      <p class="form-error" role="alert" data-error hidden></p>
+      <div class="submit-row">
+        <button class="btn btn-primary" type="submit" data-submit>{f.submit}</button>
+        <p class="hint"><a href={pathFor(locale, "privacy")}>{f.privacy}</a></p>
+      </div>
+    </form>
+    <div class="done" data-done hidden tabindex="-1">
+      <p class="done-title">{f.successTitle}</p>
+      <p class="muted">{f.success}</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .contact { display: grid; gap: 40px; }
+  .contact-copy .lede { margin-top: 24px; }
+  .note { margin-top: 20px; max-width: 44ch; }
+  @media (min-width: 960px) { .contact { grid-template-columns: 5fr 7fr; gap: 72px; } }
+  .contact-form { background: var(--surface); border-radius: 20px; padding: clamp(20px, 3.5vw, 40px); }
+  form { display: grid; gap: 18px; }
+  .row { display: grid; gap: 18px; }
+  @media (min-width: 640px) { .row { grid-template-columns: 1fr 1fr; } }
+  .field { display: grid; gap: 8px; align-content: start; }
+  label { font-size: var(--step-small); font-weight: 550; }
+  input, select, textarea {
+    width: 100%; min-height: 48px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--field-border);
+    background: var(--surface-2); color: var(--ink); font: 400 1rem/1.4 var(--font);
+    transition: border-color 160ms, background-color 160ms;
+  }
+  textarea { resize: vertical; min-height: 112px; }
+  input:hover, select:hover, textarea:hover { border-color: rgb(255 255 255 / 0.24); }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  [aria-invalid="true"] { border-color: var(--down); }
+  .hint { font-size: 0.8125rem; color: var(--ink-2); }
+  .hint a { color: var(--ink-2); }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .form-error { color: var(--down); font-weight: 550; }
+  .submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 4px; }
+  .done { padding: 24px 4px; }
+  .done-title { font-size: var(--step-h3); font-weight: 650; letter-spacing: -0.02em; margin-bottom: 8px; }
+</style>
+
+<script>
+  type Msgs = { sending: string; submit: string; generic: string; validation: string; rate: string };
+  const form = document.querySelector<HTMLFormElement>("[data-lead-form]");
+  if (form) {
+    const msgs = JSON.parse(form.dataset.messages ?? "{}") as Msgs;
+    const segment = form.querySelector<HTMLSelectElement>("select[name=segment]")!;
+    const errorBox = form.querySelector<HTMLElement>("[data-error]")!;
+    const button = form.querySelector<HTMLButtonElement>("[data-submit]")!;
+    const done = form.parentElement!.querySelector<HTMLElement>("[data-done]")!;
+
+    // "Book a demo" / "Get access" anywhere on the page preselect the segment.
+    const pick = (code: string | undefined | null) => {
+      if (code && Array.from(segment.options).some((o) => o.value === code)) segment.value = code;
+    };
+    document.querySelectorAll<HTMLElement>("[data-segment]").forEach((el) => {
+      el.addEventListener("click", () => pick(el.dataset.segment));
+    });
+    pick(new URLSearchParams(location.search).get("segment"));
+
+    const fail = (text: string) => { errorBox.textContent = text; errorBox.hidden = false; };
+    const required = ["name", "email"];
+
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      errorBox.hidden = true;
+      const data = new FormData(form);
+      let bad = false;
+      for (const el of Array.from(form.querySelectorAll<HTMLInputElement>("input, select, textarea"))) el.removeAttribute("aria-invalid");
+      for (const name of required) {
+        const el = form.elements.namedItem(name) as HTMLInputElement;
+        if (!el.value.trim() || (name === "email" && !el.checkValidity())) { el.setAttribute("aria-invalid", "true"); bad = true; }
+      }
+      if (bad) { fail(msgs.validation); form.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); return; }
+
+      const body: Record<string, string> = { locale: form.dataset.locale ?? "en", page: location.pathname };
+      for (const [k, v] of data.entries()) if (typeof v === "string") body[k] = v;
+      button.disabled = true;
+      button.textContent = msgs.sending;
+      try {
+        const res = await fetch(form.dataset.endpoint ?? "/api/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          form.hidden = true;
+          done.hidden = false;
+          done.focus();
+          const umami = (window as unknown as { umami?: { track: (e: string, d?: object) => void } }).umami;
+          umami?.track("lead", { segment: body.segment });
+          return;
+        }
+        if (res.status === 429) fail(msgs.rate);
+        else if (res.status === 400) {
+          const j = await res.json().catch(() => null) as { details?: { path?: string }[] } | null;
+          for (const det of j?.details ?? []) {
+            const field = det.path?.split(".")[1];
+            const el = field ? form.elements.namedItem(field) : null;
+            if (el instanceof HTMLElement) el.setAttribute("aria-invalid", "true");
+          }
+          fail(msgs.validation);
+        } else fail(msgs.generic);
+      } catch {
+        fail(msgs.generic);
+      } finally {
+        button.disabled = false;
+        button.textContent = msgs.submit;
+      }
+    });
+  }
+</script>

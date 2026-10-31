@@ -207,6 +207,7 @@ CREATE SEQUENCE public.holiday_calendar_id_seq AS integer START WITH 1 INCREMENT
 CREATE SEQUENCE public.journal_days_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.junior_note_reminders_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.junior_notes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.leads_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.leak_guard_events_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.market_events_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.market_open_brief_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -1768,6 +1769,34 @@ CREATE TABLE public.junior_notes (
   feedback_seen_at timestamp with time zone,
   CONSTRAINT junior_notes_pkey PRIMARY KEY (id),
   CONSTRAINT junior_notes_trader_note_date_key UNIQUE (trader, note_date)
+);
+
+CREATE TABLE public.leads (
+  id bigint DEFAULT nextval('public.leads_id_seq'::regclass) NOT NULL,
+  segment text NOT NULL,
+  "name" text NOT NULL,
+  company text,
+  traders_count text,
+  platform text,
+  email text NOT NULL,
+  locale text DEFAULT 'en'::text NOT NULL,
+  message text,
+  source_page text,
+  user_agent text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  notified_at timestamp with time zone,
+  handled_at timestamp with time zone,
+  CONSTRAINT leads_pkey PRIMARY KEY (id),
+  CONSTRAINT leads_company_check CHECK (company IS NULL OR char_length(company) <= 160),
+  CONSTRAINT leads_email_check CHECK (char_length(email) >= 3 AND char_length(email) <= 254),
+  CONSTRAINT leads_locale_check CHECK (locale = ANY (ARRAY['en'::text, 'es'::text])),
+  CONSTRAINT leads_message_check CHECK (message IS NULL OR char_length(message) <= 2000),
+  CONSTRAINT leads_name_check CHECK (char_length(name) >= 1 AND char_length(name) <= 120),
+  CONSTRAINT leads_platform_check CHECK (platform IS NULL OR char_length(platform) <= 80),
+  CONSTRAINT leads_segment_check CHECK (segment = ANY (ARRAY['prop_desk'::text, 'funded_trader'::text, 'futures_firm'::text])),
+  CONSTRAINT leads_source_page_check CHECK (source_page IS NULL OR char_length(source_page) <= 300),
+  CONSTRAINT leads_traders_count_check CHECK (traders_count IS NULL OR (traders_count = ANY (ARRAY['1'::text, '2-10'::text, '11-25'::text, '26-50'::text, '51-100'::text, '100+'::text]))),
+  CONSTRAINT leads_user_agent_check CHECK (user_agent IS NULL OR char_length(user_agent) <= 400)
 );
 
 CREATE TABLE public.leak_guard_events (
@@ -3808,6 +3837,7 @@ ALTER SEQUENCE public.holiday_calendar_id_seq OWNED BY public.holiday_calendar.i
 ALTER SEQUENCE public.journal_days_id_seq OWNED BY public.journal_days.id;
 ALTER SEQUENCE public.junior_note_reminders_id_seq OWNED BY public.junior_note_reminders.id;
 ALTER SEQUENCE public.junior_notes_id_seq OWNED BY public.junior_notes.id;
+ALTER SEQUENCE public.leads_id_seq OWNED BY public.leads.id;
 ALTER SEQUENCE public.leak_guard_events_id_seq OWNED BY public.leak_guard_events.id;
 ALTER SEQUENCE public.market_events_id_seq OWNED BY public.market_events.id;
 ALTER SEQUENCE public.market_open_brief_cache_id_seq OWNED BY public.market_open_brief_cache.id;
@@ -3992,6 +4022,7 @@ CREATE UNIQUE INDEX holiday_calendar_unique ON public.holiday_calendar USING btr
 CREATE INDEX job_runs_job_started_idx ON public.job_runs USING btree (job, started_at DESC);
 CREATE INDEX junior_notes_date_idx ON public.junior_notes USING btree (note_date DESC);
 CREATE INDEX junior_notes_trader_date_idx ON public.junior_notes USING btree (trader, note_date);
+CREATE INDEX leads_created_idx ON public.leads USING btree (created_at DESC);
 CREATE INDEX leak_guard_events_day_idx ON public.leak_guard_events USING btree (day, trader);
 CREATE INDEX leak_guard_events_open_idx ON public.leak_guard_events USING btree (day) WHERE (settled_at IS NULL);
 CREATE INDEX market_events_date_idx ON public.market_events USING btree (date);

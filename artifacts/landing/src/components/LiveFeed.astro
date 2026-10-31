@@ -1,0 +1,106 @@
+---
+// The hero's live thing: a sample session of the app's live risk feed (sample data, labelled as such). Without
+// script every alert is listed; with script one is shown at a time, chosen by the chips or advancing on its own.
+import { t, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const d = t(locale).feed;
+---
+<figure class="feed" data-ui data-feed aria-label={d.label}>
+  <div class="feed-panel">
+    <div class="feed-head">
+      <span class="live" aria-hidden="true"></span>
+      <span>{d.label}</span>
+    </div>
+    <div class="chips" role="group" aria-label={d.pick} hidden data-chips>
+      {d.items.map((it, i) => (
+        <button type="button" class:list={["chip", `tone-${it.tone}`]} aria-pressed={i === 0 ? "true" : "false"} data-chip={i}>{it.chip}</button>
+      ))}
+    </div>
+    <ol class="alerts" data-alerts>
+      {d.items.map((it, i) => (
+        <li class:list={["alert", `tone-${it.tone}`]} data-alert={i}>
+          <span class="dot" aria-hidden="true"></span>
+          <div>
+            <p class="alert-top"><span class="num">{it.time}</span> <strong>{it.title}</strong></p>
+            <p class="alert-body">{it.body}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+    <div class="saved">
+      <p class="saved-label">{d.saved}</p>
+      <p class="saved-value num">+$1,240</p>
+      <p class="saved-note">{d.savedNote}</p>
+    </div>
+  </div>
+  <figcaption>{d.caption}</figcaption>
+</figure>
+
+<style>
+  .feed { margin: 0; }
+  .feed-panel { background: var(--surface); border-radius: 18px; padding: clamp(18px, 2.4vw, 28px); }
+  .feed-head { display: flex; align-items: center; gap: 10px; font-size: var(--step-small); color: var(--ink-2); }
+  .live { width: 8px; height: 8px; border-radius: 50%; background: var(--up); flex: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .chip {
+    font: 500 0.875rem/1 var(--font); color: var(--ink-2); background: var(--surface-2); border: 0; border-radius: 999px;
+    padding: 9px 14px; cursor: pointer; transition: background-color 160ms, color 160ms, transform 160ms;
+  }
+  .chip:hover { color: var(--ink); background: var(--surface-3); }
+  .chip:active { transform: scale(0.96); }
+  .chip[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
+  .alerts { display: grid; gap: 10px; margin-top: 18px; }
+  .alert { display: grid; grid-template-columns: 12px 1fr; gap: 14px; align-items: start; background: var(--surface-2); border-radius: 12px; padding: 16px 18px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 8px; background: var(--warn); }
+  .tone-crit .dot { background: var(--down); }
+  .alert-top { font-size: 1.0625rem; }
+  .alert-top .num { color: var(--ink-2); margin-right: 6px; }
+  .alert-body { color: var(--ink-2); margin-top: 4px; font-size: var(--step-small); line-height: 1.5; }
+  .saved { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; align-items: baseline; margin-top: 18px; padding: 18px; background: var(--surface-2); border-radius: 12px; }
+  .saved-label { font-size: var(--step-small); }
+  .saved-value { grid-row: span 2; color: var(--up); font-size: clamp(1.75rem, 3vw, 2.5rem); font-weight: 650; letter-spacing: -0.03em; }
+  .saved-note { color: var(--ink-2); font-size: 0.8125rem; }
+  figcaption { margin-top: 12px; color: var(--ink-2); font-size: 0.875rem; }
+
+  /* Script on: one alert at a time. */
+  .feed.js .alert { display: none; }
+  .feed.js .alert.on { display: grid; animation: rise 420ms var(--ease); }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .feed.js .alert.on { animation: none; } .chip { transition: none; } }
+</style>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>("[data-feed]")) {
+    const chips = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-chip]"));
+    const alerts = Array.from(root.querySelectorAll<HTMLElement>("[data-alert]"));
+    const group = root.querySelector<HTMLElement>("[data-chips]");
+    if (!chips.length || !group) continue;
+    root.classList.add("js");
+    group.hidden = false;
+    let idx = 0;
+    let timer: number | undefined;
+    let held = false;
+    const show = (i: number) => {
+      idx = (i + alerts.length) % alerts.length;
+      alerts.forEach((a, k) => a.classList.toggle("on", k === idx));
+      chips.forEach((c, k) => c.setAttribute("aria-pressed", k === idx ? "true" : "false"));
+    };
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const start = () => {
+      if (reduce || held) return;
+      window.clearInterval(timer);
+      timer = window.setInterval(() => show(idx + 1), 4200);
+    };
+    const stop = () => window.clearInterval(timer);
+    // Announce only alerts the visitor picked, never the automatic rotation.
+    const list = root.querySelector<HTMLElement>("[data-alerts]");
+    chips.forEach((c, k) => c.addEventListener("click", () => { held = true; stop(); list?.setAttribute("aria-live", "polite"); show(k); }));
+    root.addEventListener("pointerenter", stop);
+    root.addEventListener("pointerleave", start);
+    root.addEventListener("focusin", stop);
+    show(0);
+    start();
+  }
+</script>

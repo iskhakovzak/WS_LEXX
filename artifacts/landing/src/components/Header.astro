@@ -1,0 +1,46 @@
+---
+import Mark from "./Mark.astro";
+import { t, pathFor, type Locale } from "../i18n";
+
+interface Props { locale: Locale; slug?: string }
+const { locale, slug = "" } = Astro.props;
+const d = t(locale);
+const home = pathFor(locale);
+const other: Locale = locale === "en" ? "es" : "en";
+---
+<header class="bar">
+  <div class="wrap bar-in">
+    <a class="brand" href={home} aria-label="WS_DeskOS">
+      <Mark size={26} />
+      <span>WS<span class="brand-soft">_DeskOS</span></span>
+    </a>
+    <nav class="links" aria-label="Main">
+      <a href={`${home}#risk`}>{d.nav.risk}</a>
+      <a href={`${home}#growth`}>{d.nav.growth}</a>
+      <a href={`${home}#analytics`}>{d.nav.analytics}</a>
+      <a href={`${home}#security`}>{d.nav.security}</a>
+    </nav>
+    <div class="actions">
+      <a class="lang" href={pathFor(other, slug)} hreflang={other} lang={other} aria-label={`${d.nav.language}: ${other === "es" ? "Español" : "English"}`}>{other.toUpperCase()}</a>
+      <a class="btn btn-primary bar-cta" href={`${home}#contact`} data-segment="prop_desk">{d.nav.demo}</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .bar { position: sticky; top: 0; z-index: 20; background: var(--ground); }
+  .bar-in { display: flex; align-items: center; gap: 24px; min-height: 68px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 1.125rem; letter-spacing: -0.02em; text-decoration: none; }
+  .brand-soft { color: var(--ink-2); font-weight: 450; }
+  .links { display: none; gap: 28px; margin-left: auto; font-size: var(--step-small); }
+  .links a { text-decoration: none; color: var(--ink-2); transition: color 160ms; }
+  .links a:hover { color: var(--ink); }
+  .actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+  .lang { font-size: var(--step-small); font-weight: 600; color: var(--ink-2); text-decoration: none; padding: 10px 6px; }
+  .lang:hover { color: var(--ink); }
+  .bar-cta { min-height: 40px; padding: 0 18px; font-size: var(--step-small); }
+  @media (min-width: 960px) {
+    .links { display: flex; }
+    .actions { margin-left: 28px; }
+  }
+</style>

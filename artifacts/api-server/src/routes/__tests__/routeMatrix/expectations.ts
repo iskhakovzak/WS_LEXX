@@ -141,6 +141,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /big7/tickers/bulk": member("any member adds to the shared Big 7 lists (author recorded)"),
   "POST /big7levels": member("any member adds to the shared Big 7 lists (author recorded)"),
   "POST /client-errors": pub("browser error and CSP reports are public by design (own limiter, small body)"),
+  "POST /leads": pub("public landing lead form (own per-IP limiter, 16 KB body, honeypot)"),
   "POST /cron/tick": pub("PropReports heartbeat; the route checks Bearer CRON_SECRET itself"),
   "POST /csp-report": pub("browser error and CSP reports are public by design (own limiter, small body)"),
   "POST /curator-requests": cap("journal.write.own", "a trader asks the own curator (checked after the body is validated)"),

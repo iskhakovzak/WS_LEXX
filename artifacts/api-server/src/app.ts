@@ -12,8 +12,8 @@ import { jsonCompression } from "./lib/jsonCompression";
 import { requestLang } from "./i18n";
 import { errorMiddleware, toAppError } from "./lib/http";
 import {
-  corsMiddleware, genReqId, helmetMiddleware, inlineScriptHashes, jsonBody, loginBody, loginIpLimiter, loginNameLimiter,
-  reportingEndpoints, trustProxySetting,
+  corsMiddleware, genReqId, helmetMiddleware, inlineScriptHashes, jsonBody, leadsCors, loginBody, loginIpLimiter,
+  loginNameLimiter, reportingEndpoints, trustProxySetting,
 } from "./lib/security/http";
 import { shutdownConnectionClose } from "./lib/security/lifecycle";
 import { captureFailedResponse, captureServerError } from "./lib/errorTracking";
@@ -62,6 +62,9 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
 // Production is same-origin (no CORS layer at all); development is permissive for the API_TARGET setup.
 const devCors = corsMiddleware();
 if (devCors) app.use(devCors);
+// The public landing may post its lead form from another origin (LEADS_ALLOWED_ORIGINS; empty = same-origin only).
+const landingCors = isProduction ? leadsCors() : null;
+if (landingCors) app.use("/api/leads", landingCors);
 // CSP is report-only here (violations → /api/csp-report → error tracker); the enforced script policy is the <meta>
 // CSP the Vite build writes into index.html. The inline theme script of the served index.html is hashed in.
 const indexHtml = path.join(staticDir, "index.html");

@@ -53,6 +53,8 @@ const schema = z.object({
   RELEASE_SHA: str,
   REPLIT_DEPLOYMENT_ID: str,
   SITE_URL: str,
+  /** Landing origins allowed to POST /api/leads cross-origin (comma list). Empty = same-origin only (Caddy proxy). */
+  LEADS_ALLOWED_ORIGINS: str,
   // telegram
   TELEGRAM_BOT_TOKEN: str,
   TELEGRAM_BOT_USERNAME: str,
@@ -144,6 +146,7 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
     trustProxy: e.TRUST_PROXY,
     /** Build/deploy id for the error tracker. */
     release: (e.RELEASE_SHA ?? e.REPLIT_DEPLOYMENT_ID ?? "").slice(0, 64) || null,
+    leadsAllowedOrigins: (e.LEADS_ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
     telegram: {
       botToken: e.TELEGRAM_BOT_TOKEN ?? "",
       botUsername: e.TELEGRAM_BOT_USERNAME ?? "DailyDigest_WS_bot",

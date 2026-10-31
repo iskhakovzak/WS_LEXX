@@ -1,0 +1,73 @@
+---
+// Real desk aggregates and product screenshots (site.config.ts). Each block is built only when its content is
+// filled in; PUBLIC_SHOW_PLACEHOLDERS=1 shows the raw placeholders for a local preview.
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { NUMBERS, SCREENS, SHOW_PLACEHOLDERS, isPlaceholder } from "../site.config";
+import { t, type Locale } from "../i18n";
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const d = t(locale);
+
+const figures = [
+  { value: NUMBERS.savedUsd, label: d.numbers.saved, up: true },
+  { value: NUMBERS.alertsFired, label: d.numbers.alerts, up: false },
+  { value: NUMBERS.tradersOnDesk, label: d.numbers.traders, up: false },
+  { value: NUMBERS.sessionsTracked, label: d.numbers.sessions, up: false },
+];
+const numbersFilled = figures.every((f) => !isPlaceholder(f.value));
+const showNumbers = numbersFilled || SHOW_PLACEHOLDERS;
+const period = isPlaceholder(NUMBERS.period) && !SHOW_PLACEHOLDERS ? "" : NUMBERS.period;
+
+const publicDir = new URL("../../public/", import.meta.url);
+const screens = SCREENS.map((s) => ({ ...s, exists: existsSync(fileURLToPath(new URL(s.file.replace(/^\//, ""), publicDir))) }))
+  .filter((s) => s.exists || SHOW_PLACEHOLDERS);
+---
+{showNumbers && (
+  <section class="section wrap numbers" aria-labelledby="numbers-title">
+    <h2 id="numbers-title" data-reveal>{d.numbers.title}{period && <span class="period">{period}</span>}</h2>
+    <dl class="figs">
+      {figures.map((f, i) => (
+        <div data-reveal style={`--i:${i}`}>
+          <dt class="visually-hidden">{f.label}</dt>
+          <dd class:list={["fig num", f.up && "fig-up"]}>{f.value}</dd>
+          <dd class="fig-label">{f.label}</dd>
+        </div>
+      ))}
+    </dl>
+  </section>
+)}
+
+{screens.length > 0 && (
+  <section class="section wrap screens" aria-labelledby="screens-title">
+    <h2 id="screens-title" data-reveal>{d.screens.title}</h2>
+    <div class="shots">
+      {screens.map((s, i) => (
+        <figure data-reveal style={`--i:${i % 2}`}>
+          {s.exists
+            ? <img src={s.file} alt={d.screens.items[s.id]} width="1600" height="1000" loading="lazy" decoding="async" />
+            : <div class="slot" role="img" aria-label={`${d.screens.pending}: ${d.screens.items[s.id]}`}>{d.screens.pending}: {s.file}</div>}
+          <figcaption>{d.screens.items[s.id]}</figcaption>
+        </figure>
+      ))}
+    </div>
+  </section>
+)}
+
+<style>
+  .period { color: var(--ink-2); font-weight: 500; margin-left: 0.3em; overflow-wrap: anywhere; }
+  .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px 24px; margin-top: 56px; }
+  .figs > div { min-width: 0; }
+  .fig { overflow-wrap: anywhere; font-size: clamp(2.5rem, 6vw, 5.5rem); font-weight: 700; letter-spacing: -0.045em; line-height: 1; }
+  .fig-up { color: var(--up); }
+  .fig-label { margin-top: 10px; color: var(--ink-2); }
+  @media (min-width: 900px) { .figs { grid-template-columns: repeat(4, 1fr); } }
+
+  .shots { display: grid; gap: 24px; margin-top: 48px; }
+  .shots figure { margin: 0; }
+  .shots img, .slot { width: 100%; aspect-ratio: 16 / 10; border-radius: 14px; background: var(--surface); object-fit: cover; object-position: top left; }
+  .slot { display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink-2); font-size: var(--step-small); outline: 2px dashed var(--surface-3); outline-offset: -2px; }
+  .shots figcaption { margin-top: 12px; color: var(--ink-2); font-size: var(--step-small); }
+  @media (min-width: 900px) { .shots { grid-template-columns: 1fr 1fr; } .shots figure:first-child { grid-column: 1 / -1; } }
+</style>

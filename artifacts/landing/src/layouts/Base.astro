@@ -1,0 +1,67 @@
+---
+import "../styles/global.css";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import { NOINDEX, UMAMI } from "../site.config";
+import { t, pathFor, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+  slug?: string;
+  title?: string;
+  description?: string;
+}
+const { locale, slug = "", title, description } = Astro.props;
+const d = t(locale);
+const pageTitle = title ? `${title} | WS_DeskOS` : d.meta.title;
+const pageDescription = description ?? d.meta.description;
+const site = Astro.site ?? new URL("https://example.invalid");
+const canonical = new URL(pathFor(locale, slug), site).toString();
+const alternates = (["en", "es"] as const).map((l) => ({ l, href: new URL(pathFor(l, slug), site).toString() }));
+const umami = UMAMI.url && UMAMI.id ? UMAMI : null;
+---
+<!doctype html>
+<html lang={d.htmlLang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    {NOINDEX && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical} />
+    {alternates.map((a) => <link rel="alternate" hreflang={a.l} href={a.href} />)}
+    <link rel="alternate" hreflang="x-default" href={alternates[0].href} />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:url" content={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    {umami && <script is:inline defer src={`${umami.url}/script.js`} data-website-id={umami.id}></script>}
+  </head>
+  <body>
+    <a class="skip" href="#main">{d.nav.skip}</a>
+    <Header locale={locale} slug={slug} />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer locale={locale} />
+    <script>
+      // Section entrances: once, as each block enters. Without script (or with reduced motion) everything is visible.
+      const items = document.querySelectorAll<HTMLElement>("[data-reveal]");
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduce && "IntersectionObserver" in window && items.length) {
+        // What is already on screen stays put (no flash, no delayed first paint); the rest rises in on scroll.
+        items.forEach((el) => { if (el.getBoundingClientRect().top < window.innerHeight) el.classList.add("in"); });
+        document.documentElement.classList.add("reveal-ready");
+        const io = new IntersectionObserver((entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+          }
+        }, { rootMargin: "0px 0px -8% 0px" });
+        items.forEach((el) => io.observe(el));
+      }
+    </script>
+  </body>
+</html>

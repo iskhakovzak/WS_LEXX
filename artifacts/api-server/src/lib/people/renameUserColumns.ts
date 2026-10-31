@@ -257,6 +257,7 @@ export const KEPT: Readonly<Record<string, string>> = {
   "users.name": "the identity itself: updated by id in renameUser",
   "audit_log.actor": "immutable security history; the rename is audited (user.rename {from, to}) so old entries stay traceable",
   "daily_quotes.psychology_author": "author of a published quote, not a desk person",
+  "leads.name": "a prospect from the public landing form, not a desk person",
   "daily_quotes.trading_author": "author of a published quote, not a desk person",
   "job_runs.host": "machine host name",
   "propreports_tick_lease.holder": "process lease holder id",
